@@ -1,0 +1,16 @@
+[12:23:32] [DEBUG] Anim=Game/Animations/BigGuy/Attacks/Barehands/Heavy/BigGuy_attack_barehands_reverseHook_60fps, CompressedType=null, HasRaw=False, NumFrames=80
+[12:23:32] [ANIMATION] System.Exception: Failed to load Game/Animations/BigGuy/Attacks/Barehands/Heavy/BigGuy_attack_barehands_reverseHook_60fps: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
+ ---> System.ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
+   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertSequence(UAnimSequence animSequence, USkeleton skeleton)
+   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertAnims(USkeleton skeleton, UAnimSequence animSequence)
+   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 225
+   --- End of inner exception stack trace ---
+   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 233
+   at SifuMovesetEditor.MainWindow.<>c__DisplayClass16_0.<LoadAnimationAsync>b__0() in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 302
+   at System.Threading.Tasks.Task`1.InnerInvoke()
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+--- End of stack trace from previous location ---
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+--- End of stack trace from previous location ---
+   at SifuMovesetEditor.MainWindow.LoadAnimationAsync(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 301

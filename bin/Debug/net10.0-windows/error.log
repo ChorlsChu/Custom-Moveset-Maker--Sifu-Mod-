@@ -1,0 +1,105 @@
+[12:07:26] [ANIMATION] System.Exception: Failed to load Game/Animations/BigGuy/Attacks/Barehands/Combo01/BigGuy_attack_barehands_Combo01_Hook: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
+ ---> System.ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
+   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertSequence(UAnimSequence animSequence, USkeleton skeleton)
+   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertAnims(USkeleton skeleton, UAnimSequence animSequence)
+   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 220
+   --- End of inner exception stack trace ---
+   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 228
+   at SifuMovesetEditor.MainWindow.<>c__DisplayClass16_0.<LoadAnimationAsync>b__0() in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 296
+   at System.Threading.Tasks.Task`1.InnerInvoke()
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+--- End of stack trace from previous location ---
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+--- End of stack trace from previous location ---
+   at SifuMovesetEditor.MainWindow.LoadAnimationAsync(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 295
+[12:07:28] [ANIMATION] System.Exception: Failed to load Game/Animations/BigGuy/Attacks/Barehands/Combo01/BigGuy_attack_barehands_Combo01_Uppercut: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
+ ---> System.ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
+   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertSequence(UAnimSequence animSequence, USkeleton skeleton)
+   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertAnims(USkeleton skeleton, UAnimSequence animSequence)
+   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 220
+   --- End of inner exception stack trace ---
+   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 228
+   at SifuMovesetEditor.MainWindow.<>c__DisplayClass16_0.<LoadAnimationAsync>b__0() in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 296
+   at System.Threading.Tasks.Task`1.InnerInvoke()
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+--- End of stack trace from previous location ---
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+--- End of stack trace from previous location ---
+   at SifuMovesetEditor.MainWindow.LoadAnimationAsync(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 295
+[12:07:28] [ANIMATION] System.Exception: Failed to load Game/Animations/BigGuy/Attacks/Barehands/Combo01/BigGuy_attack_barehands_Combo01_Hook: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
+ ---> System.ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
+   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertSequence(UAnimSequence animSequence, USkeleton skeleton)
+   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertAnims(USkeleton skeleton, UAnimSequence animSequence)
+   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 220
+   --- End of inner exception stack trace ---
+   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 228
+   at SifuMovesetEditor.MainWindow.<>c__DisplayClass16_0.<LoadAnimationAsync>b__0() in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 296
+   at System.Threading.Tasks.Task`1.InnerInvoke()
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+--- End of stack trace from previous location ---
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+--- End of stack trace from previous location ---
+   at SifuMovesetEditor.MainWindow.LoadAnimationAsync(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 295
+[12:07:28] [ANIMATION] System.Exception: Failed to load Game/Animations/BigGuy/Attacks/Barehands/Combo01/BigGuy_attack_barehands_Combo01_DoubleRibs: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
+ ---> System.ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
+   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertSequence(UAnimSequence animSequence, USkeleton skeleton)
+   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertAnims(USkeleton skeleton, UAnimSequence animSequence)
+   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 220
+   --- End of inner exception stack trace ---
+   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 228
+   at SifuMovesetEditor.MainWindow.<>c__DisplayClass16_0.<LoadAnimationAsync>b__0() in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 296
+   at System.Threading.Tasks.Task`1.InnerInvoke()
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+--- End of stack trace from previous location ---
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+--- End of stack trace from previous location ---
+   at SifuMovesetEditor.MainWindow.LoadAnimationAsync(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 295
+[12:07:29] [ANIMATION] System.Exception: Failed to load Game/Animations/BigGuy/Attacks/Barehands/Combo01/BigGuy_attack_barehands_Combo01_Hook: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
+ ---> System.ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
+   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertSequence(UAnimSequence animSequence, USkeleton skeleton)
+   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertAnims(USkeleton skeleton, UAnimSequence animSequence)
+   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 220
+   --- End of inner exception stack trace ---
+   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 228
+   at SifuMovesetEditor.MainWindow.<>c__DisplayClass16_0.<LoadAnimationAsync>b__0() in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 296
+   at System.Threading.Tasks.Task`1.InnerInvoke()
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+--- End of stack trace from previous location ---
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+--- End of stack trace from previous location ---
+   at SifuMovesetEditor.MainWindow.LoadAnimationAsync(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 295
+[12:13:49] [ANIMATION] System.Exception: Failed to load Game/Animations/BigGuy/Attacks/Barehands/GroundAttack/BigGuy_attack_barehands_GroundAttack_60fps: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
+ ---> System.ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
+   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertSequence(UAnimSequence animSequence, USkeleton skeleton)
+   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertAnims(USkeleton skeleton, UAnimSequence animSequence)
+   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 220
+   --- End of inner exception stack trace ---
+   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 228
+   at SifuMovesetEditor.MainWindow.<>c__DisplayClass16_0.<LoadAnimationAsync>b__0() in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 296
+   at System.Threading.Tasks.Task`1.InnerInvoke()
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+--- End of stack trace from previous location ---
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+--- End of stack trace from previous location ---
+   at SifuMovesetEditor.MainWindow.LoadAnimationAsync(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 295
+[12:14:15] [ANIMATION] System.Exception: Failed to load Game/Animations/BigGuy/Attacks/Barehands/Heavy/BigGuy_attack_barehands_Heavy_DownUppercut: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
+ ---> System.ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
+   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertSequence(UAnimSequence animSequence, USkeleton skeleton)
+   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertAnims(USkeleton skeleton, UAnimSequence animSequence)
+   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 220
+   --- End of inner exception stack trace ---
+   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 228
+   at SifuMovesetEditor.MainWindow.<>c__DisplayClass16_0.<LoadAnimationAsync>b__0() in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 296
+   at System.Threading.Tasks.Task`1.InnerInvoke()
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+--- End of stack trace from previous location ---
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+--- End of stack trace from previous location ---
+   at SifuMovesetEditor.MainWindow.LoadAnimationAsync(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 295
