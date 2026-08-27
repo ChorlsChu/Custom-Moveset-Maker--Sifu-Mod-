@@ -892,7 +892,27 @@ public partial class MainWindow : Window
             ErrorLog.Write("RAWPATCH", new Exception($"  name[{oldIdx}]='{nameTable[oldIdx]}' -> name[{newIdx}]"));
 
         ErrorLog.Write("RAWPATCH", new Exception("Skipping .uasset blind scan — old FName indices preserved in expanded name table"));
-        ErrorLog.Write("RAWPATCH", new Exception("Skipping .uexp blind scan — old FName indices preserved in expanded name table"));
+
+        int patchedUexp = 0;
+        foreach (var (oldIdx, newIdx) in oldIndices)
+        {
+            byte[] oldBytes = BitConverter.GetBytes(oldIdx);
+            byte[] newBytes = BitConverter.GetBytes(newIdx);
+            for (int i = 0; i < uexp.Length - 8; i++)
+            {
+                if (uexp[i] == oldBytes[0] && uexp[i + 1] == oldBytes[1] &&
+                    uexp[i + 2] == oldBytes[2] && uexp[i + 3] == oldBytes[3] &&
+                    uexp[i + 4] == 0 && uexp[i + 5] == 0 && uexp[i + 6] == 0 && uexp[i + 7] == 0 &&
+                    (i == 0 || uexp[i - 1] == 0) &&
+                    i >= 8 && BitConverter.ToInt32(uexp, i - 8) >= 0 && BitConverter.ToInt32(uexp, i - 8) < nameCount)
+                {
+                    newBytes.CopyTo(uexp, i);
+                    patchedUexp++;
+                    ErrorLog.Write("RAWPATCH", new Exception($"  .uexp patched FName at offset {i}: {oldIdx} -> {newIdx} (prev idx={BitConverter.ToInt32(uexp, i - 8)})"));
+                }
+            }
+        }
+        ErrorLog.Write("RAWPATCH", new Exception($"Total .uexp FName patches: {patchedUexp}"));
 
         if (newEntries.Count == 0)
         {
@@ -983,8 +1003,8 @@ public partial class MainWindow : Window
         File.WriteAllBytes(uexpPath, uexp);
 
         ErrorLog.Write("RAWPATCH", new Exception($"WRITTEN: .uasset {origUassetLen} -> {patched.Length} bytes (+{shift} for {newEntries.Count} new name entries)"));
-        ErrorLog.Write("RAWPATCH", new Exception($"WRITTEN: .uexp {origUexpLen} -> {uexp.Length} bytes (same size, no blind scan)"));
-        ErrorLog.Write("RAWPATCH", new Exception($"=== RAW BINARY PATCH COMPLETE: 0 blind scan patches, {newEntries.Count} new names ==="));
+        ErrorLog.Write("RAWPATCH", new Exception($"WRITTEN: .uexp {origUexpLen} -> {uexp.Length} bytes (same size, {patchedUexp} FName patches)"));
+        ErrorLog.Write("RAWPATCH", new Exception($"=== RAW BINARY PATCH COMPLETE: {patchedUexp} .uexp patches, 0 .uasset patches, {newEntries.Count} new names ==="));
     }
 
     private static List<(int pos, int size, string name)> FindTrailingHeaderOffsets(byte[] data, int afterPkgName, int nameTableEnd)
