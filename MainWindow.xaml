@@ -45,6 +45,19 @@
             <Setter Property="BorderBrush" Value="#45475a"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="ItemContainerStyle">
+                <Setter.Value>
+                    <Style TargetType="ComboBoxItem">
+                        <Setter Property="Foreground" Value="#1e1e2e"/>
+                        <Setter Property="Background" Value="White"/>
+                        <Style.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter Property="Background" Value="#cdd6f4"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Setter.Value>
+            </Setter>
         </Style>
         <Style x:Key="DarkListBoxItem" TargetType="ListBoxItem">
             <Setter Property="Background" Value="Transparent"/>
@@ -80,6 +93,27 @@
             <Setter Property="FontSize" Value="11"/>
             <Setter Property="Margin" Value="4,4,4,2"/>
         </Style>
+        <Style x:Key="MoveCard" TargetType="Border">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="Margin" Value="4,1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#45475a"/>
+                    <Setter Property="BorderBrush" Value="#585b70"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="TagBadge" TargetType="Border">
+            <Setter Property="Background" Value="#45475a"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding" Value="5,1"/>
+            <Setter Property="Margin" Value="0,0,4,0"/>
+        </Style>
     </Window.Resources>
 
     <DockPanel>
@@ -107,13 +141,156 @@
         <!-- Main Content -->
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="300" MinWidth="200"/>
-                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*" MinWidth="400"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="300" MinWidth="200"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Left Panel: Move Library -->
-            <Border Grid.Column="0" Background="#181825" Padding="0">
+            <!-- Left Panel: Combo Graph + Preview -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" MinHeight="200"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="250"/>
+                </Grid.RowDefinitions>
+
+                <!-- Combo Graph -->
+                <Border Grid.Row="0" Background="#181825" Margin="4">
+                    <DockPanel>
+                        <Border DockPanel.Dock="Top" Background="#11111b" Padding="8,6">
+                            <DockPanel>
+                                <TextBlock Text="Combo Graph" FontWeight="Bold" 
+                                           Foreground="#89b4fa" VerticalAlignment="Center"/>
+                                <TextBlock Name="txtComboInfo" Text="MainChar - BareHands" 
+                                           Foreground="#6c7086" FontSize="11"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </DockPanel>
+                        </Border>
+                        <Border ClipToBounds="True" Background="#181825" MouseLeftButtonDown="ComboCanvas_MouseLeftButtonDown" MouseMove="ComboCanvas_MouseMove" MouseLeftButtonUp="ComboCanvas_MouseLeftButtonUp">
+                            <Canvas Name="comboCanvas" Background="Transparent" 
+                                    MinWidth="600" MinHeight="400"
+                                    Focusable="True">
+                                <Canvas.RenderTransform>
+                                    <TranslateTransform x:Name="_comboTranslate" X="0" Y="0"/>
+                                </Canvas.RenderTransform>
+                            </Canvas>
+                        </Border>
+                    </DockPanel>
+                </Border>
+
+                <!-- Splitter -->
+                <GridSplitter Grid.Row="1" Height="3" Background="#313244"
+                              HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                              ResizeBehavior="PreviousAndNext"/>
+
+                <!-- Preview + Controls -->
+                <Grid Grid.Row="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Timeline -->
+                    <Border Grid.Row="0" Background="#181825" Padding="8,4" Margin="4,0,4,0">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" 
+                                        VerticalAlignment="Center">
+                                <Button Name="btnPlay" Content="&#9654;" Style="{StaticResource DarkButton}"
+                                        Width="36" FontSize="14" Click="Play_Click"/>
+                                <Button Name="btnStop" Content="&#9632;" Style="{StaticResource DarkButton}"
+                                        Width="36" FontSize="14" Click="Stop_Click"/>
+                                <TextBlock Text="Speed:" Foreground="#6c7086" 
+                                           VerticalAlignment="Center" Margin="8,0,4,0"/>
+                                <ComboBox Name="cmbSpeed" Style="{StaticResource DarkComboBox}" 
+                                          Width="60" SelectionChanged="Speed_Changed">
+                                    <ComboBoxItem Content="0.25x" Tag="0.25"/>
+                                    <ComboBoxItem Content="0.5x" Tag="0.5"/>
+                                    <ComboBoxItem Content="1x" Tag="1.0"/>
+                                    <ComboBoxItem Content="1.5x" Tag="1.5"/>
+                                    <ComboBoxItem Content="2x" Tag="2.0"/>
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                                        HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <TextBlock Name="txtFrameInfo" Text="Frame: 0 / 0" 
+                                           Foreground="#a6adc8" FontSize="11" Margin="8,0"/>
+                                <TextBlock Name="txtTimeInfo" Text="0.00s / 0.00s" 
+                                           Foreground="#a6adc8" FontSize="11"/>
+                            </StackPanel>
+                            <Slider Name="sliderTimeline" Minimum="0" Maximum="100" Value="0"
+                                    ValueChanged="Timeline_Changed"
+                                    TickPlacement="BottomRight" TickFrequency="1"
+                                    IsSnapToTickEnabled="False" Margin="4,0"/>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- Info Panel | 3D Preview side by side -->
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="220"/>
+                            <ColumnDefinition Width="3"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Info Panel (left) -->
+                        <Border Grid.Column="0" Background="#181825" Margin="4,0,0,4" Padding="8">
+                            <StackPanel>
+                                <TextBlock Text="Animation Info" FontWeight="Bold" 
+                                           Foreground="#a6e3a1" Margin="0,0,0,4"/>
+                                <TextBlock Name="txtAnimName" Text="Name: -" 
+                                           Foreground="#cdd6f4" FontSize="11"/>
+                                <TextBlock Name="txtAnimFrames" Text="Frames: -" 
+                                           Foreground="#cdd6f4" FontSize="11"/>
+                                <TextBlock Name="txtAnimDuration" Text="Duration: -" 
+                                           Foreground="#cdd6f4" FontSize="11"/>
+                                <TextBlock Name="txtAnimFPS" Text="FPS: -" 
+                                           Foreground="#cdd6f4" FontSize="11"/>
+                                <Border Height="1" Background="#313244" Margin="0,8,0,8"/>
+                                <TextBlock Text="Skeleton Info" FontWeight="Bold" 
+                                           Foreground="#f9e2af" Margin="0,0,0,4"/>
+                                <TextBlock Name="txtBoneCount" Text="Bones: -" 
+                                           Foreground="#cdd6f4" FontSize="11"/>
+                                <TextBlock Name="txtFilePath" Text="Path: -" 
+                                           Foreground="#cdd6f4" FontSize="11"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Splitter -->
+                        <GridSplitter Grid.Column="1" Width="3" Background="#313244"
+                                      HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                                      ResizeBehavior="PreviousAndNext"/>
+
+                        <!-- 3D Preview (right) -->
+                        <Border Grid.Column="2" Background="#11111b" Margin="0,0,4,4">
+                            <DockPanel>
+                                <Border DockPanel.Dock="Top" Padding="6,4" Background="#11111b">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Character:" Foreground="#6c7086" 
+                                                   VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <ComboBox Name="cmbCharacter" Style="{StaticResource DarkComboBox}"
+                                                  Width="150" SelectionChanged="Character_Changed">
+                                            <ComboBoxItem Content="None" IsSelected="True" Tag=""/>
+                                        </ComboBox>
+                                        <CheckBox Name="chkShowMesh" Content="Show Mesh" 
+                                                  Foreground="#6c7086" VerticalAlignment="Center" 
+                                                  Margin="12,0,0,0" IsChecked="True"/>
+                                    </StackPanel>
+                                </Border>
+                                <wv2:WebView2 Name="webView" />
+                            </DockPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Grid>
+
+            <!-- Splitter -->
+            <GridSplitter Grid.Column="1" Width="3" Background="#313244"
+                          HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                          ResizeBehavior="PreviousAndNext"/>
+
+            <!-- Right Panel: Move Library -->
+            <Border Grid.Column="2" Background="#181825" Padding="0">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Background="#11111b" Padding="8,6">
                         <DockPanel>
@@ -144,124 +321,156 @@
                             <ComboBoxItem Content="Bosses"/>
                         </ComboBox>
                     </Border>
-                    <TreeView Name="treeMoves" Background="Transparent" 
-                              BorderThickness="0" Foreground="#cdd6f4"
-                              SelectedItemChanged="TreeMove_Selected"
-                              Padding="4">
-                        <TreeView.Resources>
-                            <Style TargetType="TreeViewItem">
-                                <Setter Property="Foreground" Value="#cdd6f4"/>
-                                <Setter Property="FontSize" Value="12"/>
+                    <TabControl Name="tabMoves" Background="Transparent" BorderThickness="0"
+                                SelectionChanged="TabChanged">
+                        <TabControl.Resources>
+                            <Style TargetType="TabItem">
+                                <Setter Property="Foreground" Value="#6c7086"/>
+                                <Setter Property="Background" Value="#181825"/>
+                                <Setter Property="Padding" Value="12,6"/>
                                 <Style.Triggers>
                                     <Trigger Property="IsSelected" Value="True">
-                                        <Setter Property="Background" Value="#45475a"/>
+                                        <Setter Property="Foreground" Value="#1e1e2e"/>
+                                        <Setter Property="Background" Value="#cdd6f4"/>
                                     </Trigger>
                                 </Style.Triggers>
                             </Style>
-                        </TreeView.Resources>
-                    </TreeView>
+                        </TabControl.Resources>
+                        <TabItem>
+                            <TabItem.Header>
+                                <TextBlock Name="tabHeaderVanilla" Text="Vanilla Attacks"/>
+                            </TabItem.Header>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" Background="Transparent">
+                                <ItemsControl Name="listVanilla" Padding="4">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource MoveCard}"
+                                                    MouseLeftButtonDown="MoveCard_Click"
+                                                    MouseMove="MoveCard_MouseMove"
+                                                    Tag="{Binding}">
+                                                <DockPanel>
+                                                    <TextBlock Text="&#x2630;" DockPanel.Dock="Left"
+                                                               Foreground="#585b70" FontSize="13"
+                                                               VerticalAlignment="Center" Margin="0,0,10,0"
+                                                               IsHitTestVisible="False"/>
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding DisplayName}"
+                                                                   Foreground="#cdd6f4" FontSize="12"
+                                                                   FontWeight="SemiBold"
+                                                                   TextTrimming="CharacterEllipsis"/>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                                            <Border Style="{StaticResource TagBadge}">
+                                                                <TextBlock Text="{Binding Character}"
+                                                                           Foreground="#a6adc8" FontSize="9"/>
+                                                            </Border>
+                                                            <Border Style="{StaticResource TagBadge}">
+                                                                <TextBlock Text="{Binding WeaponType}"
+                                                                           Foreground="#a6adc8" FontSize="9"/>
+                                                            </Border>
+                                                            <Border Style="{StaticResource TagBadge}">
+                                                                <TextBlock Text="{Binding Category}"
+                                                                           Foreground="#a6adc8" FontSize="9"/>
+                                                            </Border>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </DockPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </TabItem>
+                        <TabItem>
+                            <TabItem.Header>
+                                <TextBlock Name="tabHeaderUnused" Text="Unused Attacks"/>
+                            </TabItem.Header>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" Background="Transparent">
+                                <ItemsControl Name="listUnused" Padding="4">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource MoveCard}"
+                                                    MouseLeftButtonDown="MoveCard_Click"
+                                                    MouseMove="MoveCard_MouseMove"
+                                                    Tag="{Binding}">
+                                                <DockPanel>
+                                                    <TextBlock Text="&#x2630;" DockPanel.Dock="Left"
+                                                               Foreground="#585b70" FontSize="13"
+                                                               VerticalAlignment="Center" Margin="0,0,10,0"
+                                                               IsHitTestVisible="False"/>
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding DisplayName}"
+                                                                   Foreground="#cdd6f4" FontSize="12"
+                                                                   FontWeight="SemiBold"
+                                                                   TextTrimming="CharacterEllipsis"/>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                                            <Border Style="{StaticResource TagBadge}">
+                                                                <TextBlock Text="{Binding Character}"
+                                                                           Foreground="#a6adc8" FontSize="9"/>
+                                                            </Border>
+                                                            <Border Style="{StaticResource TagBadge}">
+                                                                <TextBlock Text="{Binding WeaponType}"
+                                                                           Foreground="#a6adc8" FontSize="9"/>
+                                                            </Border>
+                                                            <Border Style="{StaticResource TagBadge}">
+                                                                <TextBlock Text="{Binding Category}"
+                                                                           Foreground="#a6adc8" FontSize="9"/>
+                                                            </Border>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </DockPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </TabItem>
+                        <TabItem>
+                            <TabItem.Header>
+                                <TextBlock Name="tabHeaderLoco" Text="Locomotion"/>
+                            </TabItem.Header>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" Background="Transparent">
+                                <ItemsControl Name="listLoco" Padding="4">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource MoveCard}"
+                                                    MouseLeftButtonDown="MoveCard_Click"
+                                                    MouseMove="MoveCard_MouseMove"
+                                                    Tag="{Binding}">
+                                                <DockPanel>
+                                                    <TextBlock Text="&#x2630;" DockPanel.Dock="Left"
+                                                               Foreground="#585b70" FontSize="13"
+                                                               VerticalAlignment="Center" Margin="0,0,10,0"
+                                                               IsHitTestVisible="False"/>
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding DisplayName}"
+                                                                   Foreground="#cdd6f4" FontSize="12"
+                                                                   FontWeight="SemiBold"
+                                                                   TextTrimming="CharacterEllipsis"/>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                                            <Border Style="{StaticResource TagBadge}">
+                                                                <TextBlock Text="{Binding Character}"
+                                                                           Foreground="#a6adc8" FontSize="9"/>
+                                                            </Border>
+                                                            <Border Style="{StaticResource TagBadge}">
+                                                                <TextBlock Text="{Binding WeaponType}"
+                                                                           Foreground="#a6adc8" FontSize="9"/>
+                                                            </Border>
+                                                            <Border Style="{StaticResource TagBadge}">
+                                                                <TextBlock Text="{Binding Category}"
+                                                                           Foreground="#a6adc8" FontSize="9"/>
+                                                            </Border>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </DockPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </TabItem>
+                    </TabControl>
                 </DockPanel>
             </Border>
-
-            <!-- Splitter -->
-            <GridSplitter Grid.Column="1" Width="3" Background="#313244"
-                          HorizontalAlignment="Center" VerticalAlignment="Stretch"
-                          ResizeBehavior="PreviousAndNext"/>
-
-            <!-- Right Panel: Animation Preview + Controls -->
-            <Grid Grid.Column="2">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*" MinHeight="300"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="120"/>
-                </Grid.RowDefinitions>
-
-                <!-- 3D Preview + Character Selector -->
-                <Border Grid.Row="0" Background="#11111b" Margin="4">
-                    <DockPanel>
-                        <Border DockPanel.Dock="Top" Padding="6,4" Background="#11111b">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Character:" Foreground="#6c7086" 
-                                           VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                <ComboBox Name="cmbCharacter" Style="{StaticResource DarkComboBox}"
-                                          Width="150" SelectionChanged="Character_Changed">
-                                    <ComboBoxItem Content="None" IsSelected="True" Tag=""/>
-                                </ComboBox>
-                                <CheckBox Name="chkShowMesh" Content="Show Mesh" 
-                                          Foreground="#6c7086" VerticalAlignment="Center" 
-                                          Margin="12,0,0,0" IsChecked="True"/>
-                            </StackPanel>
-                        </Border>
-                        <wv2:WebView2 Name="webView" />
-                    </DockPanel>
-                </Border>
-
-                <!-- Timeline -->
-                <Border Grid.Row="1" Background="#181825" Padding="8,4" Margin="4,0,4,4">
-                    <DockPanel>
-                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" 
-                                    VerticalAlignment="Center">
-                            <Button Name="btnPlay" Content="&#9654;" Style="{StaticResource DarkButton}"
-                                    Width="36" FontSize="14" Click="Play_Click"/>
-                            <Button Name="btnStop" Content="&#9632;" Style="{StaticResource DarkButton}"
-                                    Width="36" FontSize="14" Click="Stop_Click"/>
-                            <TextBlock Text="Speed:" Foreground="#6c7086" 
-                                       VerticalAlignment="Center" Margin="8,0,4,0"/>
-                            <ComboBox Name="cmbSpeed" Style="{StaticResource DarkComboBox}" 
-                                      Width="60" SelectionChanged="Speed_Changed"
-                                      SelectedIndex="2">
-                                <ComboBoxItem Content="0.25x" Tag="0.25"/>
-                                <ComboBoxItem Content="0.5x" Tag="0.5"/>
-                                <ComboBoxItem Content="1x" Tag="1.0"/>
-                                <ComboBoxItem Content="1.5x" Tag="1.5"/>
-                                <ComboBoxItem Content="2x" Tag="2.0"/>
-                            </ComboBox>
-                        </StackPanel>
-                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
-                                    HorizontalAlignment="Right" VerticalAlignment="Center">
-                            <TextBlock Name="txtFrameInfo" Text="Frame: 0 / 0" 
-                                       Foreground="#a6adc8" FontSize="11" Margin="8,0"/>
-                            <TextBlock Name="txtTimeInfo" Text="0.00s / 0.00s" 
-                                       Foreground="#a6adc8" FontSize="11"/>
-                        </StackPanel>
-                        <Slider Name="sliderTimeline" Minimum="0" Maximum="100" Value="0"
-                                ValueChanged="Timeline_Changed"
-                                TickPlacement="BottomRight" TickFrequency="1"
-                                IsSnapToTickEnabled="False" Margin="4,0"/>
-                    </DockPanel>
-                </Border>
-
-                <!-- Info Panel -->
-                <Border Grid.Row="2" Background="#181825" Margin="4,0,4,4" Padding="8">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0">
-                            <TextBlock Text="Animation Info" FontWeight="Bold" 
-                                       Foreground="#a6e3a1" Margin="0,0,0,4"/>
-                            <TextBlock Name="txtAnimName" Text="Name: -" 
-                                       Foreground="#cdd6f4" FontSize="11"/>
-                            <TextBlock Name="txtAnimFrames" Text="Frames: -" 
-                                       Foreground="#cdd6f4" FontSize="11"/>
-                            <TextBlock Name="txtAnimDuration" Text="Duration: -" 
-                                       Foreground="#cdd6f4" FontSize="11"/>
-                            <TextBlock Name="txtAnimFPS" Text="FPS: -" 
-                                       Foreground="#cdd6f4" FontSize="11"/>
-                        </StackPanel>
-                        <StackPanel Grid.Column="1">
-                            <TextBlock Text="Skeleton Info" FontWeight="Bold" 
-                                       Foreground="#f9e2af" Margin="0,0,0,4"/>
-                            <TextBlock Name="txtBoneCount" Text="Bones: -" 
-                                       Foreground="#cdd6f4" FontSize="11"/>
-                            <TextBlock Name="txtFilePath" Text="Path: -" 
-                                       Foreground="#cdd6f4" FontSize="11"
-                                       TextTrimming="CharacterEllipsis"/>
-                        </StackPanel>
-                    </Grid>
-                </Border>
-            </Grid>
         </Grid>
     </DockPanel>
 </Window>

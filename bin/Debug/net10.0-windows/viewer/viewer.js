@@ -11,14 +11,18 @@ let boneMap = {};
 let rootBone = null;
 let currentMesh = null;
 let currentSkeleton = null;
-
+let orbitSpherical = { theta: 0, phi: Math.PI / 3, radius: 3 };
+let orbitTarget = new THREE.Vector3(0, 0.8, 0);
+let updateOrbitCamera = null;
+let cameraInitialized = false;
+let lastLoadedCharacter = "";
 function init() {
     const container = document.getElementById('container');
 
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x11111b);
 
-    camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+    camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 10000);
     camera.position.set(0, 1.2, 3);
     camera.lookAt(0, 0.8, 0);
 
@@ -50,15 +54,15 @@ function init() {
 function setupOrbitControls() {
     let isDragging = false;
     let previousMouse = { x: 0, y: 0 };
-    let spherical = { theta: 0, phi: Math.PI / 3, radius: 3 };
-    let target = new THREE.Vector3(0, 0.8, 0);
 
     function updateCamera() {
-        camera.position.x = target.x + spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
-        camera.position.y = target.y + spherical.radius * Math.cos(spherical.phi);
-        camera.position.z = target.z + spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta);
-        camera.lookAt(target);
+        camera.position.x = orbitTarget.x + orbitSpherical.radius * Math.sin(orbitSpherical.phi) * Math.sin(orbitSpherical.theta);
+        camera.position.y = orbitTarget.y + orbitSpherical.radius * Math.cos(orbitSpherical.phi);
+        camera.position.z = orbitTarget.z + orbitSpherical.radius * Math.sin(orbitSpherical.phi) * Math.cos(orbitSpherical.theta);
+        camera.lookAt(orbitTarget);
     }
+
+    updateOrbitCamera = updateCamera;
 
     const canvas = renderer.domElement;
 
@@ -73,13 +77,13 @@ function setupOrbitControls() {
         const dy = e.clientY - previousMouse.y;
 
         if (e.buttons === 1) {
-            spherical.theta -= dx * 0.005;
-            spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi - dy * 0.005));
+            orbitSpherical.theta -= dx * 0.005;
+            orbitSpherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, orbitSpherical.phi - dy * 0.005));
         } else if (e.buttons === 2) {
-            const panSpeed = 0.002 * spherical.radius;
-            target.x -= dx * panSpeed * Math.cos(spherical.theta);
-            target.z += dx * panSpeed * Math.sin(spherical.theta);
-            target.y += dy * panSpeed;
+            const panSpeed = 0.002 * orbitSpherical.radius;
+            orbitTarget.x -= dx * panSpeed * Math.cos(orbitSpherical.theta);
+            orbitTarget.z += dx * panSpeed * Math.sin(orbitSpherical.theta);
+            orbitTarget.y += dy * panSpeed;
         }
 
         previousMouse = { x: e.clientX, y: e.clientY };
@@ -90,7 +94,9 @@ function setupOrbitControls() {
     canvas.addEventListener('mouseleave', () => { isDragging = false; });
 
     canvas.addEventListener('wheel', (e) => {
-        spherical.radius = Math.max(0.5, Math.min(10, spherical.radius + e.deltaY * 0.002));
+        const clampedDelta = Math.max(-120, Math.min(120, e.deltaY));
+        const zoomFactor = Math.pow(1.001, clampedDelta);
+        orbitSpherical.radius = Math.max(0.3, Math.min(1000, orbitSpherical.radius * zoomFactor));
         updateCamera();
         e.preventDefault();
     }, { passive: false });
@@ -141,8 +147,12 @@ function clearMesh() {
     currentSkeleton = null;
 }
 
-function loadMesh(data) {
+function loadMesh(data, characterName) {
     clearMesh();
+    if (characterName && characterName !== lastLoadedCharacter) {
+        cameraInitialized = false;
+        lastLoadedCharacter = characterName;
+    }
 
     const positions = new Float32Array(data.positions);
     const normals = new Float32Array(data.normals);
@@ -191,7 +201,7 @@ function loadMesh(data) {
     currentSkeleton.update();
 
     const material = new THREE.MeshPhongMaterial({
-        color: 0x888899,
+        color: 0xcccccc,
         side: THREE.DoubleSide,
         skinning: true
     });
@@ -213,54 +223,62 @@ function buildSkeleton(data) {
         scene.remove(skeletonHelper);
         skeletonHelper = null;
     }
-    if (rootBone) {
+    if (rootBone && !currentMesh) {
         scene.remove(rootBone);
         rootBone = null;
     }
     bones = [];
     boneMap = {};
 
-    const boneData = data.skeleton.bones;
-    const bindPose = data.skeleton.bindPose;
-
-    for (let i = 0; i < boneData.length; i++) {
-        const bone = new THREE.Bone();
-        bone.name = boneData[i].name;
-
-        if (bindPose && bindPose[i]) {
-            const pos = bindPose[i].position;
-            const rot = bindPose[i].rotation;
-            bone.position.set(pos.x, pos.y, pos.z);
-            bone.quaternion.set(rot.x, rot.y, rot.z, rot.w);
-        }
-
-        bones.push(bone);
-        boneMap[boneData[i].name] = bone;
-        boneMap[i] = bone;
-    }
-
-    for (let i = 0; i < boneData.length; i++) {
-        const parentIdx = boneData[i].parent;
-        if (parentIdx >= 0 && boneMap[parentIdx]) {
-            boneMap[parentIdx].add(bones[i]);
-        }
-    }
-
-    rootBone = bones[0];
-    if (!rootBone) return;
-
     if (currentMesh) {
-        currentMesh.add(rootBone);
+        currentMesh.traverse((child) => {
+            if (child.isBone) {
+                bones.push(child);
+                boneMap[child.name] = child;
+            }
+        });
+        rootBone = bones[0];
     } else {
+        const boneData = data.skeleton.bones;
+        const bindPose = data.skeleton.bindPose;
+
+        for (let i = 0; i < boneData.length; i++) {
+            const bone = new THREE.Bone();
+            bone.name = boneData[i].name;
+
+            if (bindPose && bindPose[i]) {
+                const pos = bindPose[i].position;
+                const rot = bindPose[i].rotation;
+                bone.position.set(pos.x, pos.y, pos.z);
+                bone.quaternion.set(rot.x, rot.y, rot.z, rot.w);
+            }
+
+            bones.push(bone);
+            boneMap[boneData[i].name] = bone;
+            boneMap[i] = bone;
+        }
+
+        for (let i = 0; i < boneData.length; i++) {
+            const parentIdx = boneData[i].parent;
+            if (parentIdx >= 0 && boneMap[parentIdx]) {
+                boneMap[parentIdx].add(bones[i]);
+            }
+        }
+
+        rootBone = bones[0];
+        if (!rootBone) return;
+
         scene.add(rootBone);
     }
+
+    if (!rootBone) return;
 
     skeletonHelper = new THREE.SkeletonHelper(rootBone);
     skeletonHelper.material.color.set(0x89b4fa);
     skeletonHelper.material.linewidth = 2;
     scene.add(skeletonHelper);
 
-    document.getElementById('info').textContent = `${boneData.length} bones`;
+    document.getElementById('info').textContent = `${bones.length} bones`;
 
     return rootBone;
 }
@@ -268,6 +286,9 @@ function buildSkeleton(data) {
 function loadAnimation(data) {
     animationData = data;
     const anim = data.animation;
+
+    document.getElementById('no-data').style.display = 'none';
+    document.getElementById('error-overlay').style.display = 'none';
 
     if (!anim || !anim.tracks || anim.tracks.length === 0) {
         console.warn('No animation tracks found');
@@ -342,6 +363,11 @@ function loadAnimation(data) {
     currentAction.play();
     isPlaying = true;
 
+    if (!cameraInitialized) {
+        resetCamera();
+        cameraInitialized = true;
+    }
+
     clock.start();
     clock.getDelta();
 
@@ -394,6 +420,71 @@ function seekTo(progress) {
 }
 
 function resetCamera() {
+    const box = new THREE.Box3();
+
+    if (currentMesh && currentMesh.geometry) {
+        currentMesh.geometry.computeBoundingBox();
+        box.copy(currentMesh.geometry.boundingBox);
+        currentMesh.updateMatrixWorld(true);
+        box.applyMatrix4(currentMesh.matrixWorld);
+    } else if (bones.length > 0) {
+        for (let i = 0; i < bones.length; i++) {
+            bones[i].updateMatrixWorld(true);
+            const pos = new THREE.Vector3();
+            pos.setFromMatrixPosition(bones[i].matrixWorld);
+            box.expandByPoint(pos);
+        }
+    } else {
+        return;
+    }
+
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const fov = camera.fov * (Math.PI / 180);
+    let distance = (maxDim / 2) / Math.tan(fov / 2);
+    distance = Math.max(distance, 1.0);
+    distance *= 1.2;
+
+    orbitTarget.copy(center);
+    orbitSpherical.radius = distance;
+    orbitSpherical.phi = Math.PI / 3.5;
+    orbitSpherical.theta = Math.PI / 4;
+
+    if (updateOrbitCamera) updateOrbitCamera();
+}
+
+function showError(message) {
+    if (currentAction) {
+        currentAction.stop();
+        currentAction = null;
+    }
+    if (mixer) {
+        mixer.stopAllAction();
+        mixer = null;
+    }
+    isPlaying = false;
+
+    if (skeletonHelper) {
+        scene.remove(skeletonHelper);
+        skeletonHelper = null;
+    }
+    if (rootBone) {
+        scene.remove(rootBone);
+        rootBone = null;
+    }
+    bones = [];
+    boneMap = {};
+    animationData = null;
+
+    document.getElementById('error-text').textContent = message;
+    document.getElementById('error-overlay').style.display = '';
+    document.getElementById('no-data').style.display = 'none';
+
+    window.chrome.webview.postMessage(JSON.stringify({ action: 'animationError' }));
 }
 
 window.chrome.webview.addEventListener('message', event => {

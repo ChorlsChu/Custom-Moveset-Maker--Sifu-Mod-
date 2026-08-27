@@ -16,7 +16,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Reference Include="UAssetAPI">
+      <HintPath>C:\Users\Charles\Downloads\Sifu Modding\Sifu mod prototype\UAssetAPI.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="viewer\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="settings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="C:\Users\Charles\AppData\Local\Temp\opencode\CUE4Parse\CUE4Parse-Natives\build\Release\CUE4Parse-Natives.dll">

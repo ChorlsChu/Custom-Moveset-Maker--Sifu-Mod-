@@ -1,16 +1,106 @@
-[12:23:32] [DEBUG] Anim=Game/Animations/BigGuy/Attacks/Barehands/Heavy/BigGuy_attack_barehands_reverseHook_60fps, CompressedType=null, HasRaw=False, NumFrames=80
-[12:23:32] [ANIMATION] System.Exception: Failed to load Game/Animations/BigGuy/Attacks/Barehands/Heavy/BigGuy_attack_barehands_reverseHook_60fps: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
- ---> System.ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
-   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertSequence(UAnimSequence animSequence, USkeleton skeleton)
-   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertAnims(USkeleton skeleton, UAnimSequence animSequence)
-   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 225
-   --- End of inner exception stack trace ---
-   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 233
-   at SifuMovesetEditor.MainWindow.<>c__DisplayClass16_0.<LoadAnimationAsync>b__0() in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 302
-   at System.Threading.Tasks.Task`1.InnerInvoke()
-   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
---- End of stack trace from previous location ---
-   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
-   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
---- End of stack trace from previous location ---
-   at SifuMovesetEditor.MainWindow.LoadAnimationAsync(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 301
+[00:10:16] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
+[00:10:17] [DT] Loaded Game/DB/AI/Archetypes/Grunt/Attacks/Grunt_AttacksDatatable: 19 rows, struct=AttackDataRow
+[00:10:17] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:10:17] [DT] Loaded Game/DB/AI/Archetypes/Grunt/Attacks/Grunt_WeaponsDatatable: 15 rows, struct=AttackDataRow
+[00:10:17] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:10:17] [DT] Loaded Game/DB/AI/Archetypes/FlashKick/Attacks/FlashKick_AttackData: 30 rows, struct=AttackDataRow
+[00:10:17] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:10:17] [DT] Loaded Game/DB/AI/Archetypes/BigGuy/Attacks/BigGuy_AttackData: 28 rows, struct=AttackDataRow
+[00:10:17] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:10:17] [DT] Loaded Game/DB/AI/Archetypes/Bodyguard/Attacks/BodyGuard_AttackData: 14 rows, struct=AttackDataRow
+[00:10:17] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:10:17] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_AttackData: 22 rows, struct=AttackDataRow
+[00:10:17] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:10:17] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_Staff_AttackData: 11 rows, struct=AttackDataRow
+[00:10:17] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:10:17] [DT] Loaded Game/DB/AI/Archetypes/Fajar/Attacks/Fajar_AttacksDatatable: 18 rows, struct=AttackDataRow
+[00:10:17] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:10:17] [DT] Loaded Game/DB/AI/Archetypes/Sean/Attacks/Sean_AttacksDatatable: 35 rows, struct=AttackDataRow
+[00:10:17] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:10:17] [DT] Loaded Game/DB/AI/Archetypes/Kuroki/Kuroki_AttacksDatatable: 48 rows, struct=AttackDataRow
+[00:10:17] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:10:17] [DT] Loaded Game/DB/AI/Archetypes/Fengjie/Attacks/Fengjie_AttacksDatatable: 31 rows, struct=AttackDataRow
+[00:10:18] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:10:18] [DT] Loaded Game/DB/AI/Archetypes/Yang/Attacks/Yang_Attacks: 29 rows, struct=AttackDataRow
+[00:10:18] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:10:18] [DT] Loaded Game/DB/Attacks/WUGUAN_Attacks: 0 rows, struct=AttackDataRow
+[00:10:18] [DT] Total used animation paths found: 298
+[00:10:18] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/_old/Grunt_Attack_Barehands_Sweep_360
+[00:10:18] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/GroundAttack/Grunt_attack_barehands_GroundAttack
+[00:10:18] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/BaseBallHook/Grunt_Attack_barehands_BaseBallHook
+[00:10:18] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Hook/Grunt_Attack_barehands_Hook
+[00:10:18] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/RollUppercut/Grunt_Attack_Barehands_RollUppercut
+[00:10:18] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/KneeStrike/Grunt_Attack_Barehands_KneeStrike
+[00:10:18] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_FastJab
+[00:10:18] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_StraightJab
+[00:10:18] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Rush/Grunt_Attack_Barehands_RushKick
+[00:10:18] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/FalconPunch/Grunt_attack_barehands_FalconPunch
+[00:10:18] [MATCH] System.Exception: Matched 180/518 as vanilla
+Sample scanned: [Game/Animations/BigGuy/Attacks/Barehands/Combo01/BigGuy_attack_barehands_Combo01_DoubleRibs, Game/Animations/BigGuy/Attacks/Barehands/Combo01/BigGuy_attack_barehands_Combo01_Hook, Game/Animations/BigGuy/Attacks/Barehands/Combo01/BigGuy_attack_barehands_Combo01_Uppercut, Game/Animations/BigGuy/Attacks/Barehands/GroundAttack/BigGuy_attack_barehands_GroundAttack_60fps, Game/Animations/BigGuy/Attacks/Barehands/Heavy/BigGuy_attack_barehands_Heavy_DownUppercut]
+Sample used:    [Game/Animations/Grunt/Attacks/Barehands/_old/Grunt_Attack_Barehands_Sweep_360, Game/Animations/Grunt/Attacks/Barehands/GroundAttack/Grunt_attack_barehands_GroundAttack, Game/Animations/Grunt/Attacks/Barehands/BaseBallHook/Grunt_Attack_barehands_BaseBallHook, Game/Animations/Grunt/Attacks/Barehands/Hook/Grunt_Attack_barehands_Hook, Game/Animations/Grunt/Attacks/Barehands/RollUppercut/Grunt_Attack_Barehands_RollUppercut]
+[00:10:41] [MAP] Built anim→DB mapping: 492 entries
+[00:10:41] [COMBO] Loaded MainChar_ComboTree: exportType=Combo
+[00:10:41] [COMBO] Parsed 57 raw nodes
+[00:10:41] [COMBO] Parsed 47 raw edges
+[00:10:41] [COMBO] Final: 36 nodes, 21 edges (removed 21 conduits)
+[00:11:12] [MESH] Loaded 'FireDisciple' from Game/Characters/PNJ/Disicple/M/Meshes/SK_Disciple_M_Hideout02_Fighter_01 (13990 verts, 254 bones)
+[00:11:12] [DEBUG] Anim=Game/Animations/FireDisciple/Attacks/Barehands/MixUpCombo/FireDisicple_Attack_Barehands_Sweep, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:11:14] [MESH] Loaded 'FireDisciple' from Game/Characters/PNJ/Disicple/M/Meshes/SK_Disciple_M_Hideout02_Fighter_01 (13990 verts, 254 bones)
+[00:11:14] [DEBUG] Anim=Game/Animations/FireDisciple/Attacks/Barehands/MixUpCombo/FireDisicple_Attack_Barehands_Sweep, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:11:17] [MESH] Loaded 'Grunt' from Game/Characters/PNJ/Grunt/M/Meshes/Hideout3/SK_Grunt_M_Hideout_03_Fighter_01 (12735 verts, 249 bones)
+[00:11:17] [DEBUG] Anim=Game/Animations/Grunt/Attacks/Barehands/Sweep/Grunt_Attack_Barehands_Sweep, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=76, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:11:18] [MESH] Loaded 'Grunt' from Game/Characters/PNJ/Grunt/M/Meshes/Hideout3/SK_Grunt_M_Hideout_03_Fighter_01 (12735 verts, 249 bones)
+[00:11:18] [DEBUG] Anim=Game/Animations/Grunt/Attacks/Barehands/Sweep/Grunt_Attack_Barehands_Sweep, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=76, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:11:21] [EXPORT] System.Exception: === EXPORT START: 2 modified nodes ===
+[00:11:21] [EXPORT] System.Exception:   SWAP: /Game/DB/_MainChar/Combos/Attacks/BareHands/Skills/LightCombo/MultiHit/MainChar_Skill_LightCombo_MultiHit_FL -> /Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_Sweep
+[00:11:21] [EXPORT] System.Exception:   SWAP: /Game/DB/_MainChar/Combos/Attacks/BareHands/Knockdown/MainChar_KD_LowKick_FL -> /Game/DB/AI/Archetypes/FireDisciple/Attacks/Barehands/MixUpCombo/FireDisciple_barehands_Sweep
+[00:11:21] [RAWPATCH] System.Exception: Loaded .uasset=49993 bytes, .uexp=101941 bytes
+[00:11:21] [RAWPATCH] System.Exception: Header: NameCount=604, NameOffset=193
+[00:11:21] [RAWPATCH] System.Exception: Name table ends at 39905 (read 604 entries)
+[00:11:21] [RAWPATCH] System.Exception:   New long path '/Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_Sweep' -> name[604]
+[00:11:21] [RAWPATCH] System.Exception:   New short name 'Grunt_Sweep' -> name[605]
+[00:11:21] [RAWPATCH] System.Exception:   New qualified path '/Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_Sweep.Grunt_Sweep' -> name[606]
+[00:11:21] [RAWPATCH] System.Exception:   New long path '/Game/DB/AI/Archetypes/FireDisciple/Attacks/Barehands/MixUpCombo/FireDisciple_barehands_Sweep' -> name[607]
+[00:11:21] [RAWPATCH] System.Exception:   New short name 'FireDisciple_barehands_Sweep' -> name[608]
+[00:11:21] [RAWPATCH] System.Exception:   New qualified path '/Game/DB/AI/Archetypes/FireDisciple/Attacks/Barehands/MixUpCombo/FireDisciple_barehands_Sweep.FireDisciple_barehands_Sweep' -> name[609]
+[00:11:21] [RAWPATCH] System.Exception: Old->New index mappings: 6
+[00:11:21] [RAWPATCH] System.Exception:   name[214]='/Game/DB/_MainChar/Combos/Attacks/BareHands/Skills/LightCombo/MultiHit/MainChar_Skill_LightCombo_MultiHit_FL' -> name[604]
+[00:11:21] [RAWPATCH] System.Exception:   name[480]='MainChar_Skill_LightCombo_MultiHit_FL' -> name[605]
+[00:11:21] [RAWPATCH] System.Exception:   name[215]='/Game/DB/_MainChar/Combos/Attacks/BareHands/Skills/LightCombo/MultiHit/MainChar_Skill_LightCombo_MultiHit_FL.MainChar_Skill_LightCombo_MultiHit_FL' -> name[606]
+[00:11:21] [RAWPATCH] System.Exception:   name[162]='/Game/DB/_MainChar/Combos/Attacks/BareHands/Knockdown/MainChar_KD_LowKick_FL' -> name[607]
+[00:11:21] [RAWPATCH] System.Exception:   name[469]='MainChar_KD_LowKick_FL' -> name[608]
+[00:11:21] [RAWPATCH] System.Exception:   name[163]='/Game/DB/_MainChar/Combos/Attacks/BareHands/Knockdown/MainChar_KD_LowKick_FL.MainChar_KD_LowKick_FL' -> name[609]
+[00:11:21] [RAWPATCH] System.Exception: Skipping .uasset blind scan — old FName indices preserved in expanded name table
+[00:11:21] [RAWPATCH] System.Exception: Skipping .uexp blind scan — old FName indices preserved in expanded name table
+[00:11:21] [RAWPATCH] System.Exception:   Header trace: GenerationsCount=1, after Generations at offset 121
+[00:11:21] [RAWPATCH] System.Exception:   Header trace: after EngineVersions at offset 149
+[00:11:21] [RAWPATCH] System.Exception:   Header trace: after PackageSource at offset 161
+[00:11:21] [RAWPATCH] System.Exception:   Found AssetRegistryDataOffset at offset 165 = 49209
+[00:11:21] [RAWPATCH] System.Exception:   Found BulkDataStartOffset at offset 169 = 151930
+[00:11:21] [RAWPATCH] System.Exception:   Found PreloadDependencyOffset at offset 189 = 49213
+[00:11:21] [RAWPATCH] System.Exception:   Header trace complete: found 3 offset fields to patch
+[00:11:21] [RAWPATCH] System.Exception:   Patched AssetRegistryDataOffset at offset 165: 49209 -> 49645
+[00:11:21] [RAWPATCH] System.Exception:   Patched BulkDataStartOffset at offset 169: 151930 -> 152366
+[00:11:21] [RAWPATCH] System.Exception:   Patched PreloadDependencyOffset at offset 189: 49213 -> 49649
+[00:11:21] [RAWPATCH] System.Exception:   Patched SerialOffset export[0] at offset 47629: 49993 -> 50429
+[00:11:21] [RAWPATCH] System.Exception:   Patched SerialOffset export[1] at offset 47733: 50194 -> 50630
+[00:11:21] [RAWPATCH] System.Exception:   Patched SerialOffset export[2] at offset 47837: 50421 -> 50857
+[00:11:21] [RAWPATCH] System.Exception:   Patched SerialOffset export[3] at offset 47941: 50622 -> 51058
+[00:11:21] [RAWPATCH] System.Exception:   Patched SerialOffset export[4] at offset 48045: 50823 -> 51259
+[00:11:21] [RAWPATCH] System.Exception:   Patched SerialOffset export[5] at offset 48149: 51024 -> 51460
+[00:11:21] [RAWPATCH] System.Exception:   Patched SerialOffset export[6] at offset 48253: 51251 -> 51687
+[00:11:21] [RAWPATCH] System.Exception:   Patched SerialOffset export[7] at offset 48357: 51452 -> 51888
+[00:11:21] [RAWPATCH] System.Exception:   Patched SerialOffset export[8] at offset 48461: 51653 -> 52089
+[00:11:21] [RAWPATCH] System.Exception:   Patched SerialOffset export[9] at offset 48565: 51854 -> 52290
+[00:11:21] [RAWPATCH] System.Exception:   Patched SerialOffset export[10] at offset 48669: 52055 -> 52491
+[00:11:21] [RAWPATCH] System.Exception:   Patched SerialOffset export[11] at offset 48773: 52256 -> 52692
+[00:11:21] [RAWPATCH] System.Exception:   Patched SerialOffset export[12] at offset 48877: 52629 -> 53065
+[00:11:21] [RAWPATCH] System.Exception:   Patched SerialOffset export[13] at offset 48981: 53002 -> 53438
+[00:11:21] [RAWPATCH] System.Exception:   Patched SerialOffset export[14] at offset 49085: 150192 -> 150628
+[00:11:21] [RAWPATCH] System.Exception:   Patched SerialOffset export[15] at offset 49189: 150510 -> 150946
+[00:11:21] [RAWPATCH] System.Exception:   Patched SerialOffset export[16] at offset 49293: 151120 -> 151556
+[00:11:21] [RAWPATCH] System.Exception:   Patched SerialOffset export[17] at offset 49397: 151730 -> 152166
+[00:11:21] [RAWPATCH] System.Exception:   Patched SerialOffset export[18] at offset 49501: 151803 -> 152239
+[00:11:21] [RAWPATCH] System.Exception: WRITTEN: .uasset 49993 -> 50429 bytes (+436 for 6 new name entries)
+[00:11:21] [RAWPATCH] System.Exception: WRITTEN: .uexp 101941 -> 101941 bytes (same size, no blind scan)
+[00:11:21] [RAWPATCH] System.Exception: === RAW BINARY PATCH COMPLETE: 0 blind scan patches, 6 new names ===

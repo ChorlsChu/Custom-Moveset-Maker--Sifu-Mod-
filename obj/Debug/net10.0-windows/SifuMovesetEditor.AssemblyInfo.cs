@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("SifuMovesetEditor")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+23d636063773c0ece4de028d35460533999c234c")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d3f49f8fc771d8504912756c645b7e223a70dbf3")]
 [assembly: System.Reflection.AssemblyProductAttribute("SifuMovesetEditor")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SifuMovesetEditor")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

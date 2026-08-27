@@ -102,3 +102,1120 @@
 2026-08-24 09:23:06.975: [INFO] BookmarksLoadDropped droppedNodes=0
 2026-08-24 09:23:06.975: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
 2026-08-24 09:28:35.502: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 14:18:35.265: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 14:18:35.265: [INFO] Profiles total count: 1
+2026-08-24 14:18:35.266: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T08:29:49.070Z
+2026-08-24 14:18:35.266: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 14:18:35.266: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T08:29:49.070Z
+2026-08-24 14:18:35.266: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 14:18:35.266: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 14:18:35.266: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 14:18:35.266: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 14:21:32.192: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 14:25:27.360: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 14:25:27.360: [INFO] Profiles total count: 1
+2026-08-24 14:25:27.360: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T14:21:32.152Z
+2026-08-24 14:25:27.360: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 14:25:27.360: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T14:21:32.152Z
+2026-08-24 14:25:27.360: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 14:25:27.360: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 14:25:27.360: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 14:25:27.360: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 14:29:54.172: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 14:38:35.011: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 14:38:35.011: [INFO] Profiles total count: 1
+2026-08-24 14:38:35.011: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T14:25:44.560Z
+2026-08-24 14:38:35.011: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 14:38:35.011: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T14:25:44.560Z
+2026-08-24 14:38:35.011: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 14:38:35.011: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 14:38:35.011: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 14:38:35.011: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 14:45:35.085: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 14:45:40.235: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 14:45:40.235: [INFO] Profiles total count: 1
+2026-08-24 14:45:40.236: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T14:41:37.199Z
+2026-08-24 14:45:40.236: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 14:45:40.236: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T14:41:37.199Z
+2026-08-24 14:45:40.236: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 14:45:40.236: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 14:45:40.236: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 14:45:40.236: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 14:46:11.417: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 14:47:01.711: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 14:47:01.711: [INFO] Profiles total count: 1
+2026-08-24 14:47:01.712: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T14:46:03.770Z
+2026-08-24 14:47:01.712: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 14:47:01.712: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T14:46:03.770Z
+2026-08-24 14:47:01.712: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 14:47:01.712: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 14:47:01.712: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 14:47:01.712: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 14:47:20.990: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 14:49:51.885: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 14:49:51.885: [INFO] Profiles total count: 1
+2026-08-24 14:49:51.886: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T14:47:20.932Z
+2026-08-24 14:49:51.886: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 14:49:51.886: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T14:47:20.932Z
+2026-08-24 14:49:51.886: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 14:49:51.886: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 14:49:51.886: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 14:49:51.886: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 14:50:16.226: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 14:51:28.636: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 14:51:28.636: [INFO] Profiles total count: 1
+2026-08-24 14:51:28.636: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T14:50:16.166Z
+2026-08-24 14:51:28.636: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 14:51:28.636: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T14:50:16.166Z
+2026-08-24 14:51:28.636: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 14:51:28.636: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 14:51:28.636: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 14:51:28.636: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 14:52:08.021: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 15:00:09.664: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 15:00:09.664: [INFO] Profiles total count: 1
+2026-08-24 15:00:09.665: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T14:52:07.960Z
+2026-08-24 15:00:09.665: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 15:00:09.665: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T14:52:07.960Z
+2026-08-24 15:00:09.665: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 15:00:09.665: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 15:00:09.665: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 15:00:09.665: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 15:03:18.110: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 15:22:57.143: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 15:22:57.143: [INFO] Profiles total count: 1
+2026-08-24 15:22:57.143: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T15:01:35.788Z
+2026-08-24 15:22:57.143: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 15:22:57.143: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T15:01:35.788Z
+2026-08-24 15:22:57.143: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 15:22:57.143: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 15:22:57.143: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 15:22:57.143: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 15:29:21.166: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 15:58:26.180: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 15:58:26.180: [INFO] Profiles total count: 1
+2026-08-24 15:58:26.181: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T15:29:13.561Z
+2026-08-24 15:58:26.181: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 15:58:26.181: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T15:29:13.561Z
+2026-08-24 15:58:26.181: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 15:58:26.181: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 15:58:26.181: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 15:58:26.181: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 15:59:05.857: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 16:11:15.204: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 16:11:15.204: [INFO] Profiles total count: 1
+2026-08-24 16:11:15.204: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T15:59:05.815Z
+2026-08-24 16:11:15.204: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 16:11:15.204: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T15:59:05.815Z
+2026-08-24 16:11:15.204: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 16:11:15.204: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 16:11:15.204: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 16:11:15.204: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 16:11:51.863: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 16:14:20.310: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 16:14:20.310: [INFO] Profiles total count: 1
+2026-08-24 16:14:20.311: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T16:11:32.462Z
+2026-08-24 16:14:20.311: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 16:14:20.311: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T16:11:32.462Z
+2026-08-24 16:14:20.311: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 16:14:20.311: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 16:14:20.311: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 16:14:20.311: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 16:16:40.633: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 16:16:45.357: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 16:16:45.357: [INFO] Profiles total count: 1
+2026-08-24 16:16:45.357: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T16:16:04.631Z
+2026-08-24 16:16:45.357: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 16:16:45.357: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T16:16:04.631Z
+2026-08-24 16:16:45.357: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 16:16:45.357: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 16:16:45.357: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 16:16:45.357: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 16:17:00.885: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 16:20:25.943: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 16:20:25.943: [INFO] Profiles total count: 1
+2026-08-24 16:20:25.944: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T16:17:00.822Z
+2026-08-24 16:20:25.944: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 16:20:25.944: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T16:17:00.822Z
+2026-08-24 16:20:25.944: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 16:20:25.944: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 16:20:25.944: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 16:20:25.944: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 16:22:49.737: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 16:25:56.644: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 16:25:56.644: [INFO] Profiles total count: 1
+2026-08-24 16:25:56.645: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T16:22:49.694Z
+2026-08-24 16:25:56.645: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 16:25:56.645: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T16:22:49.694Z
+2026-08-24 16:25:56.645: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 16:25:56.645: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 16:25:56.645: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 16:25:56.645: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 16:29:30.930: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 16:57:07.017: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 16:57:07.017: [INFO] Profiles total count: 1
+2026-08-24 16:57:07.018: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T16:29:30.888Z
+2026-08-24 16:57:07.018: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 16:57:07.018: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T16:29:30.888Z
+2026-08-24 16:57:07.018: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 16:57:07.018: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 16:57:07.018: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 16:57:07.018: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 17:18:04.929: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 18:01:55.278: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 18:01:55.278: [INFO] Profiles total count: 1
+2026-08-24 18:01:55.279: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T16:57:33.889Z
+2026-08-24 18:01:55.279: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 18:01:55.279: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T16:57:33.889Z
+2026-08-24 18:01:55.279: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 18:01:55.279: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 18:01:55.279: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 18:01:55.279: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 18:02:36.061: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 18:27:44.030: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 18:27:44.030: [INFO] Profiles total count: 1
+2026-08-24 18:27:44.031: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T16:57:33.889Z
+2026-08-24 18:27:44.031: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 18:27:44.031: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T16:57:33.889Z
+2026-08-24 18:27:44.031: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 18:27:44.031: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 18:27:44.031: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 18:27:44.031: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 18:28:11.476: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 18:28:23.007: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 18:28:23.007: [INFO] Profiles total count: 1
+2026-08-24 18:28:23.008: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T16:57:33.889Z
+2026-08-24 18:28:23.008: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 18:28:23.008: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T16:57:33.889Z
+2026-08-24 18:28:23.008: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 18:28:23.008: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 18:28:23.008: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 18:28:23.008: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 18:30:51.824: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 18:33:05.667: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 18:33:05.667: [INFO] Profiles total count: 1
+2026-08-24 18:33:05.667: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T18:30:51.781Z
+2026-08-24 18:33:05.667: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 18:33:05.667: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T18:30:51.781Z
+2026-08-24 18:33:05.667: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 18:33:05.667: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 18:33:05.667: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 18:33:05.667: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 18:35:12.901: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 18:41:26.078: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 18:41:26.078: [INFO] Profiles total count: 1
+2026-08-24 18:41:26.079: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T18:35:12.829Z
+2026-08-24 18:41:26.079: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 18:41:26.079: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T18:35:12.829Z
+2026-08-24 18:41:26.079: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 18:41:26.079: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 18:41:26.079: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 18:41:26.079: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 18:52:00.138: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 18:58:18.276: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 18:58:18.276: [INFO] Profiles total count: 1
+2026-08-24 18:58:18.276: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T18:49:40.218Z
+2026-08-24 18:58:18.276: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 18:58:18.277: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T18:49:40.218Z
+2026-08-24 18:58:18.277: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 18:58:18.277: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 18:58:18.277: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 18:58:18.277: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 19:17:32.796: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 20:47:10.490: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 20:47:10.490: [INFO] Profiles total count: 1
+2026-08-24 20:47:10.491: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T19:17:32.724Z
+2026-08-24 20:47:10.491: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 20:47:10.491: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T19:17:32.724Z
+2026-08-24 20:47:10.491: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 20:47:10.491: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 20:47:10.491: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 20:47:10.491: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 20:47:45.596: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 20:47:59.399: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 20:47:59.399: [INFO] Profiles total count: 1
+2026-08-24 20:47:59.399: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T19:17:32.724Z
+2026-08-24 20:47:59.399: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 20:47:59.399: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T19:17:32.724Z
+2026-08-24 20:47:59.399: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 20:47:59.399: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 20:47:59.399: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 20:47:59.399: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 20:48:13.428: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 20:48:41.105: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 20:48:41.105: [INFO] Profiles total count: 1
+2026-08-24 20:48:41.106: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T19:17:32.724Z
+2026-08-24 20:48:41.106: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 20:48:41.106: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T19:17:32.724Z
+2026-08-24 20:48:41.106: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 20:48:41.106: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 20:48:41.106: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 20:48:41.106: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 20:49:27.177: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 21:18:59.049: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 21:18:59.049: [INFO] Profiles total count: 1
+2026-08-24 21:18:59.049: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T19:17:32.724Z
+2026-08-24 21:18:59.049: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 21:18:59.049: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T19:17:32.724Z
+2026-08-24 21:18:59.049: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 21:18:59.049: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 21:18:59.049: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 21:18:59.049: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 21:21:21.901: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 21:21:39.142: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 21:21:39.142: [INFO] Profiles total count: 1
+2026-08-24 21:21:39.143: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T19:17:32.724Z
+2026-08-24 21:21:39.143: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 21:21:39.143: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T19:17:32.724Z
+2026-08-24 21:21:39.143: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 21:21:39.143: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 21:21:39.143: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 21:21:39.143: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 21:46:57.574: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 21:49:08.814: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 21:49:08.814: [INFO] Profiles total count: 1
+2026-08-24 21:49:08.814: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T21:45:50.286Z
+2026-08-24 21:49:08.814: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 21:49:08.814: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T21:45:50.286Z
+2026-08-24 21:49:08.814: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 21:49:08.814: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 21:49:08.814: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 21:49:08.814: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 21:53:26.411: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 22:29:46.825: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 22:29:46.825: [INFO] Profiles total count: 1
+2026-08-24 22:29:46.825: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T21:53:26.371Z
+2026-08-24 22:29:46.825: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-24 22:29:46.825: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T21:53:26.371Z
+2026-08-24 22:29:46.825: [INFO] OnDoneLoading sync enabled: 0
+2026-08-24 22:29:46.825: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-24 22:29:46.825: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-24 22:29:46.825: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-24 22:30:38.284: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 09:37:24.495: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 09:37:24.495: [INFO] Profiles total count: 1
+2026-08-25 09:37:24.495: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T21:53:26.371Z
+2026-08-25 09:37:24.495: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 09:37:24.496: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-24T21:53:26.371Z
+2026-08-25 09:37:24.496: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 09:37:24.496: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 09:37:24.496: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 09:37:24.496: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 09:40:49.201: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 10:26:43.396: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 10:26:43.396: [INFO] Profiles total count: 1
+2026-08-25 10:26:43.397: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T09:40:49.159Z
+2026-08-25 10:26:43.397: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 10:26:43.397: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T09:40:49.159Z
+2026-08-25 10:26:43.397: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 10:26:43.397: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 10:26:43.397: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 10:26:43.397: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 10:27:27.628: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 10:52:10.180: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 10:52:10.180: [INFO] Profiles total count: 1
+2026-08-25 10:52:10.180: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T09:40:49.159Z
+2026-08-25 10:52:10.180: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 10:52:10.180: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T09:40:49.159Z
+2026-08-25 10:52:10.180: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 10:52:10.180: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 10:52:10.180: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 10:52:10.180: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 10:53:06.905: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 12:32:41.288: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 12:32:41.288: [INFO] Profiles total count: 1
+2026-08-25 12:32:41.288: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T10:53:06.868Z
+2026-08-25 12:32:41.288: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 12:32:41.288: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T10:53:06.868Z
+2026-08-25 12:32:41.288: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 12:32:41.288: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 12:32:41.288: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 12:32:41.288: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 12:36:35.457: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 12:43:46.515: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 12:43:46.515: [INFO] Profiles total count: 1
+2026-08-25 12:43:46.515: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T12:33:40.958Z
+2026-08-25 12:43:46.515: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 12:43:46.515: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T12:33:40.958Z
+2026-08-25 12:43:46.515: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 12:43:46.515: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 12:43:46.515: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 12:43:46.515: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 12:46:47.766: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 12:53:06.065: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 12:53:06.065: [INFO] Profiles total count: 1
+2026-08-25 12:53:06.065: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T12:46:47.722Z
+2026-08-25 12:53:06.065: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 12:53:06.065: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T12:46:47.722Z
+2026-08-25 12:53:06.066: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 12:53:06.066: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 12:53:06.066: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 12:53:06.066: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 12:53:18.426: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 12:54:35.079: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 12:54:35.079: [INFO] Profiles total count: 1
+2026-08-25 12:54:35.079: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T12:53:18.383Z
+2026-08-25 12:54:35.079: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 12:54:35.079: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T12:53:18.383Z
+2026-08-25 12:54:35.079: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 12:54:35.079: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 12:54:35.079: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 12:54:35.080: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 14:34:17.440: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 15:53:58.423: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 15:53:58.423: [INFO] Profiles total count: 1
+2026-08-25 15:53:58.424: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T12:53:18.383Z
+2026-08-25 15:53:58.424: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 15:53:58.424: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T12:53:18.383Z
+2026-08-25 15:53:58.424: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 15:53:58.424: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 15:53:58.424: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 15:53:58.424: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 15:58:34.241: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 16:02:15.704: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 16:02:15.704: [INFO] Profiles total count: 1
+2026-08-25 16:02:15.705: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T15:58:34.205Z
+2026-08-25 16:02:15.705: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 16:02:15.705: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T15:58:34.205Z
+2026-08-25 16:02:15.705: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 16:02:15.705: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 16:02:15.705: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 16:02:15.705: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 16:07:07.770: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 16:08:34.636: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 16:08:34.636: [INFO] Profiles total count: 1
+2026-08-25 16:08:34.637: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T16:02:32.032Z
+2026-08-25 16:08:34.637: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 16:08:34.637: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T16:02:32.032Z
+2026-08-25 16:08:34.637: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 16:08:34.637: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 16:08:34.637: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 16:08:34.637: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 16:09:32.805: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 16:11:18.328: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 16:11:18.328: [INFO] Profiles total count: 1
+2026-08-25 16:11:18.329: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T16:02:32.032Z
+2026-08-25 16:11:18.329: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 16:11:18.329: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T16:02:32.032Z
+2026-08-25 16:11:18.329: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 16:11:18.329: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 16:11:18.329: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 16:11:18.329: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 16:18:11.295: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 16:19:02.333: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 16:19:02.333: [INFO] Profiles total count: 1
+2026-08-25 16:19:02.333: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T16:02:32.032Z
+2026-08-25 16:19:02.333: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 16:19:02.333: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T16:02:32.032Z
+2026-08-25 16:19:02.333: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 16:19:02.333: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 16:19:02.333: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 16:19:02.333: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 16:21:17.277: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 16:24:01.846: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 16:24:01.846: [INFO] Profiles total count: 1
+2026-08-25 16:24:01.846: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T16:02:32.032Z
+2026-08-25 16:24:01.846: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 16:24:01.846: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T16:02:32.032Z
+2026-08-25 16:24:01.846: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 16:24:01.846: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 16:24:01.846: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 16:24:01.846: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 16:26:44.044: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 16:26:44.044: [INFO] Profiles total count: 1
+2026-08-25 16:26:44.045: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T16:02:32.032Z
+2026-08-25 16:26:44.045: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 16:26:44.045: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T16:02:32.032Z
+2026-08-25 16:26:44.045: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 16:26:44.045: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 16:26:44.045: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 16:26:44.045: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 16:38:26.270: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 16:47:01.945: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 16:47:01.945: [INFO] Profiles total count: 1
+2026-08-25 16:47:01.946: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T16:02:32.032Z
+2026-08-25 16:47:01.946: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 16:47:01.946: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T16:02:32.032Z
+2026-08-25 16:47:01.946: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 16:47:01.946: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 16:47:01.946: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 16:47:01.946: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 16:47:26.772: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 16:47:32.851: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 16:47:32.851: [INFO] Profiles total count: 1
+2026-08-25 16:47:32.851: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T16:47:21.801Z
+2026-08-25 16:47:32.851: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 16:47:32.851: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T16:47:21.801Z
+2026-08-25 16:47:32.851: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 16:47:32.851: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 16:47:32.851: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 16:47:32.851: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 16:47:54.250: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 16:51:27.742: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 16:51:27.742: [INFO] Profiles total count: 1
+2026-08-25 16:51:27.742: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T16:47:21.801Z
+2026-08-25 16:51:27.742: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 16:51:27.742: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T16:47:21.801Z
+2026-08-25 16:51:27.742: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 16:51:27.742: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 16:51:27.742: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 16:51:27.742: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 17:00:11.621: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 17:07:50.645: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 17:07:50.645: [INFO] Profiles total count: 1
+2026-08-25 17:07:50.646: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:00:11.586Z
+2026-08-25 17:07:50.646: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 17:07:50.646: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:00:11.586Z
+2026-08-25 17:07:50.646: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 17:07:50.646: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 17:07:50.646: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 17:07:50.646: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 17:08:28.047: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 17:08:41.189: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 17:08:41.189: [INFO] Profiles total count: 1
+2026-08-25 17:08:41.190: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:00:11.586Z
+2026-08-25 17:08:41.190: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 17:08:41.190: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:00:11.586Z
+2026-08-25 17:08:41.190: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 17:08:41.190: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 17:08:41.190: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 17:08:41.190: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 17:09:13.181: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 17:09:20.951: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 17:09:20.951: [INFO] Profiles total count: 1
+2026-08-25 17:09:20.951: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:00:11.586Z
+2026-08-25 17:09:20.951: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 17:09:20.951: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:00:11.586Z
+2026-08-25 17:09:20.951: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 17:09:20.951: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 17:09:20.951: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 17:09:20.951: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 17:09:57.532: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 17:10:03.211: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 17:10:03.211: [INFO] Profiles total count: 1
+2026-08-25 17:10:03.211: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:00:11.586Z
+2026-08-25 17:10:03.211: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 17:10:03.211: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:00:11.586Z
+2026-08-25 17:10:03.211: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 17:10:03.211: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 17:10:03.211: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 17:10:03.211: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 17:10:58.021: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 17:27:32.246: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 17:27:32.246: [INFO] Profiles total count: 1
+2026-08-25 17:27:32.247: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:00:11.586Z
+2026-08-25 17:27:32.247: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 17:27:32.247: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:00:11.586Z
+2026-08-25 17:27:32.247: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 17:27:32.247: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 17:27:32.247: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 17:27:32.247: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 17:29:09.812: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 17:29:13.922: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 17:29:13.922: [INFO] Profiles total count: 1
+2026-08-25 17:29:13.923: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:28:39.905Z
+2026-08-25 17:29:13.923: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 17:29:13.923: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:28:39.905Z
+2026-08-25 17:29:13.923: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 17:29:13.923: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 17:29:13.923: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 17:29:13.923: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 17:31:44.582: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 17:38:28.303: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 17:38:28.303: [INFO] Profiles total count: 1
+2026-08-25 17:38:28.304: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:31:44.550Z
+2026-08-25 17:38:28.304: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 17:38:28.304: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:31:44.550Z
+2026-08-25 17:38:28.304: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 17:38:28.304: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 17:38:28.304: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 17:38:28.304: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 17:39:10.235: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 17:39:16.704: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 17:39:16.704: [INFO] Profiles total count: 1
+2026-08-25 17:39:16.704: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:31:44.550Z
+2026-08-25 17:39:16.704: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 17:39:16.704: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:31:44.550Z
+2026-08-25 17:39:16.704: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 17:39:16.704: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 17:39:16.704: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 17:39:16.704: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 17:40:58.557: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 17:47:38.366: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 17:47:38.366: [INFO] Profiles total count: 1
+2026-08-25 17:47:38.366: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:40:58.508Z
+2026-08-25 17:47:38.366: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 17:47:38.366: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:40:58.508Z
+2026-08-25 17:47:38.366: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 17:47:38.366: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 17:47:38.366: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 17:47:38.366: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 17:48:35.534: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 18:03:12.114: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 18:03:12.114: [INFO] Profiles total count: 1
+2026-08-25 18:03:12.115: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:40:58.508Z
+2026-08-25 18:03:12.115: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 18:03:12.115: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T17:40:58.508Z
+2026-08-25 18:03:12.115: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 18:03:12.115: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 18:03:12.115: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 18:03:12.115: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 18:03:42.310: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 18:03:47.967: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 18:03:47.967: [INFO] Profiles total count: 1
+2026-08-25 18:03:47.967: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T18:03:42.277Z
+2026-08-25 18:03:47.967: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 18:03:47.967: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T18:03:42.277Z
+2026-08-25 18:03:47.967: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 18:03:47.967: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 18:03:47.967: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 18:03:47.967: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 18:05:27.797: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 18:09:52.316: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 18:09:52.316: [INFO] Profiles total count: 1
+2026-08-25 18:09:52.316: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T18:03:42.277Z
+2026-08-25 18:09:52.316: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 18:09:52.316: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T18:03:42.277Z
+2026-08-25 18:09:52.316: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 18:09:52.316: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 18:09:52.316: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 18:09:52.316: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 18:11:05.907: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 18:14:30.806: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 18:14:30.806: [INFO] Profiles total count: 1
+2026-08-25 18:14:30.807: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T18:03:42.277Z
+2026-08-25 18:14:30.807: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 18:14:30.807: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T18:03:42.277Z
+2026-08-25 18:14:30.807: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 18:14:30.807: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 18:14:30.807: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 18:14:30.807: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 18:16:40.915: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 18:17:35.681: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 18:17:35.681: [INFO] Profiles total count: 1
+2026-08-25 18:17:35.682: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T18:16:40.881Z
+2026-08-25 18:17:35.682: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 18:17:35.682: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T18:16:40.881Z
+2026-08-25 18:17:35.682: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 18:17:35.682: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 18:17:35.682: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 18:17:35.682: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 18:19:00.645: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 18:19:09.006: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 18:19:09.006: [INFO] Profiles total count: 1
+2026-08-25 18:19:09.007: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T18:19:00.602Z
+2026-08-25 18:19:09.007: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 18:19:09.007: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T18:19:00.602Z
+2026-08-25 18:19:09.007: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 18:19:09.007: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 18:19:09.007: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 18:19:09.007: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 18:20:35.745: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 18:23:57.706: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 18:23:57.706: [INFO] Profiles total count: 1
+2026-08-25 18:23:57.706: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T18:20:35.712Z
+2026-08-25 18:23:57.706: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 18:23:57.706: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T18:20:35.712Z
+2026-08-25 18:23:57.706: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 18:23:57.706: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 18:23:57.706: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 18:23:57.706: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 18:32:04.131: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 18:35:22.469: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 18:35:22.469: [INFO] Profiles total count: 1
+2026-08-25 18:35:22.469: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T18:31:17.225Z
+2026-08-25 18:35:22.469: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 18:35:22.469: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T18:31:17.225Z
+2026-08-25 18:35:22.469: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 18:35:22.469: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 18:35:22.469: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 18:35:22.469: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 18:37:33.894: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 18:49:30.228: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 18:49:30.228: [INFO] Profiles total count: 1
+2026-08-25 18:49:30.228: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T18:31:17.225Z
+2026-08-25 18:49:30.228: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 18:49:30.229: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T18:31:17.225Z
+2026-08-25 18:49:30.229: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 18:49:30.229: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 18:49:30.229: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 18:49:30.229: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 18:49:59.823: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 19:07:30.931: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 19:07:30.931: [INFO] Profiles total count: 1
+2026-08-25 19:07:30.931: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T18:49:59.747Z
+2026-08-25 19:07:30.931: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 19:07:30.931: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T18:49:59.747Z
+2026-08-25 19:07:30.931: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 19:07:30.931: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 19:07:30.931: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 19:07:30.931: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 19:16:30.618: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 19:19:40.457: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 19:19:40.457: [INFO] Profiles total count: 1
+2026-08-25 19:19:40.458: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T19:08:14.738Z
+2026-08-25 19:19:40.458: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 19:19:40.458: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T19:08:14.738Z
+2026-08-25 19:19:40.458: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 19:19:40.458: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 19:19:40.458: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 19:19:40.458: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 19:22:11.059: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 21:42:45.261: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 21:42:45.261: [INFO] Profiles total count: 1
+2026-08-25 21:42:45.261: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T19:20:14.614Z
+2026-08-25 21:42:45.261: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 21:42:45.261: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T19:20:14.614Z
+2026-08-25 21:42:45.261: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 21:42:45.261: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 21:42:45.261: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 21:42:45.261: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 21:44:20.931: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 22:46:49.892: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 22:46:49.892: [INFO] Profiles total count: 1
+2026-08-25 22:46:49.893: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T21:44:20.883Z
+2026-08-25 22:46:49.893: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-25 22:46:49.893: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T21:44:20.883Z
+2026-08-25 22:46:49.893: [INFO] OnDoneLoading sync enabled: 0
+2026-08-25 22:46:49.893: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-25 22:46:49.893: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-25 22:46:49.893: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-25 22:48:26.843: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 09:14:28.033: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 09:14:28.033: [INFO] Profiles total count: 1
+2026-08-26 09:14:28.034: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T22:47:58.282Z
+2026-08-26 09:14:28.034: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 09:14:28.034: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T22:47:58.282Z
+2026-08-26 09:14:28.034: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 09:14:28.034: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 09:14:28.034: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 09:14:28.034: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 09:14:46.491: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 09:15:22.162: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 09:15:22.162: [INFO] Profiles total count: 1
+2026-08-26 09:15:22.162: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T22:47:58.282Z
+2026-08-26 09:15:22.162: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 09:15:22.162: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T22:47:58.282Z
+2026-08-26 09:15:22.163: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 09:15:22.163: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 09:15:22.163: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 09:15:22.163: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 09:16:04.164: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 10:57:06.264: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 10:57:06.264: [INFO] Profiles total count: 1
+2026-08-26 10:57:06.264: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T22:47:58.282Z
+2026-08-26 10:57:06.264: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 10:57:06.264: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-25T22:47:58.282Z
+2026-08-26 10:57:06.264: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 10:57:06.264: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 10:57:06.264: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 10:57:06.264: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 10:58:40.986: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 11:09:45.810: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 11:09:45.810: [INFO] Profiles total count: 1
+2026-08-26 11:09:45.810: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T10:57:46.278Z
+2026-08-26 11:09:45.810: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 11:09:45.810: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T10:57:46.278Z
+2026-08-26 11:09:45.810: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 11:09:45.810: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 11:09:45.810: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 11:09:45.810: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 11:11:56.047: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 11:16:05.317: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 11:16:05.317: [INFO] Profiles total count: 1
+2026-08-26 11:16:05.318: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T11:10:57.727Z
+2026-08-26 11:16:05.318: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 11:16:05.318: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T11:10:57.727Z
+2026-08-26 11:16:05.318: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 11:16:05.318: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 11:16:05.318: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 11:16:05.318: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 11:18:52.941: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 11:19:54.758: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 11:19:54.758: [INFO] Profiles total count: 1
+2026-08-26 11:19:54.758: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T11:17:12.815Z
+2026-08-26 11:19:54.758: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 11:19:54.759: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T11:17:12.815Z
+2026-08-26 11:19:54.759: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 11:19:54.759: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 11:19:54.759: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 11:19:54.759: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 11:24:13.229: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 11:44:04.627: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 11:44:04.627: [INFO] Profiles total count: 1
+2026-08-26 11:44:04.627: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T11:21:27.067Z
+2026-08-26 11:44:04.627: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 11:44:04.627: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T11:21:27.067Z
+2026-08-26 11:44:04.627: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 11:44:04.627: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 11:44:04.627: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 11:44:04.627: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 11:44:38.027: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 11:45:55.724: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 11:45:55.724: [INFO] Profiles total count: 1
+2026-08-26 11:45:55.724: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T11:44:37.982Z
+2026-08-26 11:45:55.724: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 11:45:55.724: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T11:44:37.982Z
+2026-08-26 11:45:55.724: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 11:45:55.724: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 11:45:55.724: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 11:45:55.724: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 11:46:05.442: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 11:46:09.713: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 11:46:09.713: [INFO] Profiles total count: 1
+2026-08-26 11:46:09.713: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T11:46:05.400Z
+2026-08-26 11:46:09.713: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 11:46:09.713: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T11:46:05.400Z
+2026-08-26 11:46:09.713: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 11:46:09.713: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 11:46:09.713: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 11:46:09.713: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 11:47:17.297: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 11:47:31.364: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 11:47:31.364: [INFO] Profiles total count: 1
+2026-08-26 11:47:31.365: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T11:46:05.400Z
+2026-08-26 11:47:31.365: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 11:47:31.365: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T11:46:05.400Z
+2026-08-26 11:47:31.365: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 11:47:31.365: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 11:47:31.365: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 11:47:31.365: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 11:51:35.758: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 12:34:02.815: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 12:34:02.815: [INFO] Profiles total count: 1
+2026-08-26 12:34:02.816: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T11:51:35.711Z
+2026-08-26 12:34:02.816: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 12:34:02.816: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T11:51:35.711Z
+2026-08-26 12:34:02.816: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 12:34:02.816: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 12:34:02.816: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 12:34:02.816: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 12:35:34.621: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 12:38:06.070: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 12:38:06.070: [INFO] Profiles total count: 1
+2026-08-26 12:38:06.070: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T12:35:34.587Z
+2026-08-26 12:38:06.070: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 12:38:06.070: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T12:35:34.587Z
+2026-08-26 12:38:06.070: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 12:38:06.070: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 12:38:06.070: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 12:38:06.070: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 12:38:30.389: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 12:38:34.792: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 12:38:34.792: [INFO] Profiles total count: 1
+2026-08-26 12:38:34.793: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T12:35:34.587Z
+2026-08-26 12:38:34.793: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 12:38:34.793: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T12:35:34.587Z
+2026-08-26 12:38:34.793: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 12:38:34.793: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 12:38:34.793: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 12:38:34.793: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 12:39:32.752: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 12:39:32.752: [INFO] Profiles total count: 1
+2026-08-26 12:39:32.752: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T12:38:46.907Z
+2026-08-26 12:39:32.752: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 12:39:32.752: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T12:38:46.907Z
+2026-08-26 12:39:32.752: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 12:39:32.752: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 12:39:32.752: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 12:39:32.752: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 12:42:11.418: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 12:45:26.829: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 12:45:26.829: [INFO] Profiles total count: 1
+2026-08-26 12:45:26.830: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T12:40:38.821Z
+2026-08-26 12:45:26.830: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 12:45:26.830: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T12:40:38.821Z
+2026-08-26 12:45:26.830: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 12:45:26.830: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 12:45:26.830: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 12:45:26.830: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 13:46:32.824: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 13:46:32.824: [INFO] Profiles total count: 1
+2026-08-26 13:46:32.824: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T12:40:38.821Z
+2026-08-26 13:46:32.824: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 13:46:32.824: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T12:40:38.821Z
+2026-08-26 13:46:32.824: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 13:46:32.824: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 13:46:32.824: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 13:46:32.824: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 13:49:21.864: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 14:05:07.461: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 14:05:07.461: [INFO] Profiles total count: 1
+2026-08-26 14:05:07.461: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T13:47:24.113Z
+2026-08-26 14:05:07.461: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 14:05:07.461: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T13:47:24.113Z
+2026-08-26 14:05:07.461: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 14:05:07.461: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 14:05:07.461: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 14:05:07.461: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 14:07:55.178: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 14:08:46.705: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 14:08:46.705: [INFO] Profiles total count: 1
+2026-08-26 14:08:46.706: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T13:47:24.113Z
+2026-08-26 14:08:46.706: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 14:08:46.706: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T13:47:24.113Z
+2026-08-26 14:08:46.706: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 14:08:46.706: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 14:08:46.706: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 14:08:46.706: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 14:09:03.623: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 14:09:08.292: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 14:09:08.292: [INFO] Profiles total count: 1
+2026-08-26 14:09:08.292: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T13:47:24.113Z
+2026-08-26 14:09:08.292: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 14:09:08.292: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T13:47:24.113Z
+2026-08-26 14:09:08.292: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 14:09:08.292: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 14:09:08.292: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 14:09:08.292: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 14:09:11.783: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 14:09:28.361: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 14:09:28.361: [INFO] Profiles total count: 1
+2026-08-26 14:09:28.361: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T13:47:24.113Z
+2026-08-26 14:09:28.361: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 14:09:28.361: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T13:47:24.113Z
+2026-08-26 14:09:28.361: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 14:09:28.361: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 14:09:28.361: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 14:09:28.361: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 14:10:05.508: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 14:13:53.902: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 14:13:53.902: [INFO] Profiles total count: 1
+2026-08-26 14:13:53.903: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T13:47:24.113Z
+2026-08-26 14:13:53.903: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 14:13:53.903: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T13:47:24.113Z
+2026-08-26 14:13:53.903: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 14:13:53.903: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 14:13:53.903: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 14:13:53.903: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 14:14:37.061: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 15:07:40.503: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 15:07:40.503: [INFO] Profiles total count: 1
+2026-08-26 15:07:40.504: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T13:47:24.113Z
+2026-08-26 15:07:40.504: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 15:07:40.504: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T13:47:24.113Z
+2026-08-26 15:07:40.504: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 15:07:40.504: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 15:07:40.504: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 15:07:40.504: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 15:13:09.275: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 15:21:23.618: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 15:21:23.618: [INFO] Profiles total count: 1
+2026-08-26 15:21:23.619: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T13:47:24.113Z
+2026-08-26 15:21:23.619: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 15:21:23.619: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T13:47:24.113Z
+2026-08-26 15:21:23.619: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 15:21:23.619: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 15:21:23.619: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 15:21:23.619: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 15:22:48.641: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 15:50:35.747: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 15:50:35.747: [INFO] Profiles total count: 1
+2026-08-26 15:50:35.747: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T15:22:15.875Z
+2026-08-26 15:50:35.747: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 15:50:35.747: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T15:22:15.875Z
+2026-08-26 15:50:35.747: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 15:50:35.747: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 15:50:35.747: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 15:50:35.747: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 15:51:32.985: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 16:42:10.561: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 16:42:10.561: [INFO] Profiles total count: 1
+2026-08-26 16:42:10.562: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T15:51:00.602Z
+2026-08-26 16:42:10.562: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 16:42:10.562: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T15:51:00.602Z
+2026-08-26 16:42:10.562: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 16:42:10.562: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 16:42:10.562: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 16:42:10.562: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 16:43:34.968: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 17:33:34.916: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 17:33:34.916: [INFO] Profiles total count: 1
+2026-08-26 17:33:34.916: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T16:43:08.941Z
+2026-08-26 17:33:34.916: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 17:33:34.916: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T16:43:08.941Z
+2026-08-26 17:33:34.916: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 17:33:34.916: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 17:33:34.916: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 17:33:34.916: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 17:35:47.074: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 17:39:28.597: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 17:39:28.597: [INFO] Profiles total count: 1
+2026-08-26 17:39:28.597: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T17:35:47.038Z
+2026-08-26 17:39:28.597: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 17:39:28.597: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T17:35:47.038Z
+2026-08-26 17:39:28.597: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 17:39:28.597: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 17:39:28.597: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 17:39:28.597: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 17:41:04.579: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 17:41:12.214: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 17:41:12.214: [INFO] Profiles total count: 1
+2026-08-26 17:41:12.214: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T17:35:47.038Z
+2026-08-26 17:41:12.214: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 17:41:12.214: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T17:35:47.038Z
+2026-08-26 17:41:12.214: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 17:41:12.214: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 17:41:12.214: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 17:41:12.214: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 17:51:35.046: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 17:54:12.313: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 17:54:12.313: [INFO] Profiles total count: 1
+2026-08-26 17:54:12.313: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T17:51:34.991Z
+2026-08-26 17:54:12.313: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 17:54:12.313: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T17:51:34.991Z
+2026-08-26 17:54:12.313: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 17:54:12.313: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 17:54:12.313: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 17:54:12.313: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 17:55:37.960: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 18:02:16.347: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 18:02:16.347: [INFO] Profiles total count: 1
+2026-08-26 18:02:16.348: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T17:54:53.804Z
+2026-08-26 18:02:16.348: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 18:02:16.348: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T17:54:53.804Z
+2026-08-26 18:02:16.348: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 18:02:16.348: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 18:02:16.348: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 18:02:16.348: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 18:03:10.219: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 18:31:35.963: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 18:31:35.963: [INFO] Profiles total count: 1
+2026-08-26 18:31:35.963: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T18:02:42.506Z
+2026-08-26 18:31:35.963: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 18:31:35.963: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T18:02:42.506Z
+2026-08-26 18:31:35.963: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 18:31:35.963: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 18:31:35.963: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 18:31:35.963: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 18:32:43.765: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 18:38:06.013: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 18:38:06.013: [INFO] Profiles total count: 1
+2026-08-26 18:38:06.013: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T18:02:42.506Z
+2026-08-26 18:38:06.013: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 18:38:06.013: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T18:02:42.506Z
+2026-08-26 18:38:06.013: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 18:38:06.013: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 18:38:06.013: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 18:38:06.013: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 18:38:59.490: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 19:09:49.712: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 19:09:49.712: [INFO] Profiles total count: 1
+2026-08-26 19:09:49.712: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T18:38:39.470Z
+2026-08-26 19:09:49.712: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 19:09:49.713: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T18:38:39.470Z
+2026-08-26 19:09:49.713: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 19:09:49.713: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 19:09:49.713: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 19:09:49.713: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 19:30:50.168: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 19:32:00.570: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 19:32:00.570: [INFO] Profiles total count: 1
+2026-08-26 19:32:00.571: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T18:38:39.470Z
+2026-08-26 19:32:00.571: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-26 19:32:00.571: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T18:38:39.470Z
+2026-08-26 19:32:00.571: [INFO] OnDoneLoading sync enabled: 0
+2026-08-26 19:32:00.571: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-26 19:32:00.571: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-26 19:32:00.571: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-26 19:33:55.038: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 08:58:11.972: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 08:58:11.972: [INFO] Profiles total count: 1
+2026-08-27 08:58:11.972: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T18:38:39.470Z
+2026-08-27 08:58:11.972: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 08:58:11.972: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-26T18:38:39.470Z
+2026-08-27 08:58:11.972: [INFO] OnDoneLoading sync enabled: 0
+2026-08-27 08:58:11.972: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-27 08:58:11.972: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-27 08:58:11.972: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 08:59:23.874: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 09:26:05.670: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 09:26:05.670: [INFO] Profiles total count: 1
+2026-08-27 09:26:05.670: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-27T08:59:02.629Z
+2026-08-27 09:26:05.670: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 09:26:05.670: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-27T08:59:02.629Z
+2026-08-27 09:26:05.670: [INFO] OnDoneLoading sync enabled: 0
+2026-08-27 09:26:05.670: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-27 09:26:05.670: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-27 09:26:05.670: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 09:26:42.866: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 09:52:54.323: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 09:52:54.323: [INFO] Profiles total count: 1
+2026-08-27 09:52:54.323: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-27T09:26:22.145Z
+2026-08-27 09:52:54.323: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 09:52:54.323: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-27T09:26:22.145Z
+2026-08-27 09:52:54.323: [INFO] OnDoneLoading sync enabled: 0
+2026-08-27 09:52:54.323: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-27 09:52:54.323: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-27 09:52:54.323: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 09:54:09.149: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 09:58:41.779: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 09:58:41.779: [INFO] Profiles total count: 1
+2026-08-27 09:58:41.779: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-27T09:26:22.145Z
+2026-08-27 09:58:41.779: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 09:58:41.779: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-27T09:26:22.145Z
+2026-08-27 09:58:41.779: [INFO] OnDoneLoading sync enabled: 0
+2026-08-27 09:58:41.779: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-27 09:58:41.779: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-27 09:58:41.779: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 09:59:22.284: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 10:40:35.567: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 10:40:35.567: [INFO] Profiles total count: 1
+2026-08-27 10:40:35.568: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-27T09:26:22.145Z
+2026-08-27 10:40:35.568: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 10:40:35.568: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-27T09:26:22.145Z
+2026-08-27 10:40:35.568: [INFO] OnDoneLoading sync enabled: 0
+2026-08-27 10:40:35.568: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-27 10:40:35.568: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-27 10:40:35.568: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 10:44:34.965: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 12:33:25.984: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 12:33:25.984: [INFO] Profiles total count: 1
+2026-08-27 12:33:25.985: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-27T10:44:34.905Z
+2026-08-27 12:33:25.985: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 12:33:25.985: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-27T10:44:34.905Z
+2026-08-27 12:33:25.985: [INFO] OnDoneLoading sync enabled: 0
+2026-08-27 12:33:25.985: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-27 12:33:25.985: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-27 12:33:25.985: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 12:35:55.966: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 14:10:55.382: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 14:10:55.382: [INFO] Profiles total count: 1
+2026-08-27 14:10:55.383: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-27T12:33:53.151Z
+2026-08-27 14:10:55.383: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 14:10:55.383: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-27T12:33:53.151Z
+2026-08-27 14:10:55.383: [INFO] OnDoneLoading sync enabled: 0
+2026-08-27 14:10:55.383: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-27 14:10:55.383: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-27 14:10:55.383: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 14:12:47.538: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 17:05:29.340: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 17:05:29.340: [INFO] Profiles total count: 1
+2026-08-27 17:05:29.341: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-27T14:11:47.602Z
+2026-08-27 17:05:29.341: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 17:05:29.341: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-27T14:11:47.602Z
+2026-08-27 17:05:29.341: [INFO] OnDoneLoading sync enabled: 0
+2026-08-27 17:05:29.341: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-27 17:05:29.341: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-27 17:05:29.341: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 17:06:29.464: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 17:10:36.194: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 17:10:36.194: [INFO] Profiles total count: 1
+2026-08-27 17:10:36.195: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-27T17:06:14.809Z
+2026-08-27 17:10:36.195: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 17:10:36.195: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-27T17:06:14.809Z
+2026-08-27 17:10:36.195: [INFO] OnDoneLoading sync enabled: 0
+2026-08-27 17:10:36.195: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-27 17:10:36.195: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-27 17:10:36.195: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 17:12:31.056: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 21:10:12.488: [INFO] CurrentProfilePath: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 21:10:12.488: [INFO] Profiles total count: 1
+2026-08-27 21:10:12.488: [INFO] Profile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-27T17:12:30.985Z
+2026-08-27 21:10:12.488: [INFO] LastUsedProfileDir: C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default
+2026-08-27 21:10:12.488: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\SifuMovesetEditor.exe.WebView2\EBWebView\Default lastActive=2026-08-27T17:12:30.985Z
+2026-08-27 21:10:12.488: [INFO] OnDoneLoading sync enabled: 0
+2026-08-27 21:10:12.488: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-27 21:10:12.488: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-27 21:10:12.488: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-27 21:11:24.363: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1

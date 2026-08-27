@@ -16,6 +16,14 @@
             color: #45475a; font-size: 14px; text-align: center;
         }
         #no-data .icon { font-size: 48px; margin-bottom: 12px; }
+        #error-overlay {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: #f38ba8; font-size: 13px; text-align: center; max-width: 80%;
+        }
+        #error-overlay .icon { font-size: 48px; margin-bottom: 12px; }
+        #error-overlay .error-msg { color: #a6adc8; font-size: 11px; margin: 8px 0; word-break: break-word; }
+        #error-overlay .hint { color: #45475a; font-size: 12px; margin-top: 12px; }
+        #error-overlay .hint .icon { font-size: 32px; margin-bottom: 6px; }
         canvas { display: block; }
     </style>
 </head>
@@ -25,6 +33,14 @@
         <div id="no-data">
             <div class="icon">&#9760;</div>
             Select an animation from the library<br>to preview it here
+        </div>
+        <div id="error-overlay" style="display:none">
+            <div class="icon">&#9888;</div>
+            <div id="error-text"></div>
+            <div class="hint">
+                <div class="icon">&#9760;</div>
+                Select another animation
+            </div>
         </div>
     </div>
 
