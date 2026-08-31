@@ -150,7 +150,6 @@ function clearMesh() {
 function loadMesh(data, characterName) {
     clearMesh();
     if (characterName && characterName !== lastLoadedCharacter) {
-        cameraInitialized = false;
         lastLoadedCharacter = characterName;
     }
 

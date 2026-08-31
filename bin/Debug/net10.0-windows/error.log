@@ -1,105 +1,190 @@
-[12:07:26] [ANIMATION] System.Exception: Failed to load Game/Animations/BigGuy/Attacks/Barehands/Combo01/BigGuy_attack_barehands_Combo01_Hook: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
- ---> System.ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
-   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertSequence(UAnimSequence animSequence, USkeleton skeleton)
-   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertAnims(USkeleton skeleton, UAnimSequence animSequence)
-   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 220
-   --- End of inner exception stack trace ---
-   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 228
-   at SifuMovesetEditor.MainWindow.<>c__DisplayClass16_0.<LoadAnimationAsync>b__0() in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 296
-   at System.Threading.Tasks.Task`1.InnerInvoke()
-   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
---- End of stack trace from previous location ---
-   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
-   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
---- End of stack trace from previous location ---
-   at SifuMovesetEditor.MainWindow.LoadAnimationAsync(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 295
-[12:07:28] [ANIMATION] System.Exception: Failed to load Game/Animations/BigGuy/Attacks/Barehands/Combo01/BigGuy_attack_barehands_Combo01_Uppercut: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
- ---> System.ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
-   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertSequence(UAnimSequence animSequence, USkeleton skeleton)
-   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertAnims(USkeleton skeleton, UAnimSequence animSequence)
-   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 220
-   --- End of inner exception stack trace ---
-   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 228
-   at SifuMovesetEditor.MainWindow.<>c__DisplayClass16_0.<LoadAnimationAsync>b__0() in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 296
-   at System.Threading.Tasks.Task`1.InnerInvoke()
-   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
---- End of stack trace from previous location ---
-   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
-   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
---- End of stack trace from previous location ---
-   at SifuMovesetEditor.MainWindow.LoadAnimationAsync(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 295
-[12:07:28] [ANIMATION] System.Exception: Failed to load Game/Animations/BigGuy/Attacks/Barehands/Combo01/BigGuy_attack_barehands_Combo01_Hook: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
- ---> System.ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
-   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertSequence(UAnimSequence animSequence, USkeleton skeleton)
-   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertAnims(USkeleton skeleton, UAnimSequence animSequence)
-   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 220
-   --- End of inner exception stack trace ---
-   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 228
-   at SifuMovesetEditor.MainWindow.<>c__DisplayClass16_0.<LoadAnimationAsync>b__0() in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 296
-   at System.Threading.Tasks.Task`1.InnerInvoke()
-   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
---- End of stack trace from previous location ---
-   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
-   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
---- End of stack trace from previous location ---
-   at SifuMovesetEditor.MainWindow.LoadAnimationAsync(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 295
-[12:07:28] [ANIMATION] System.Exception: Failed to load Game/Animations/BigGuy/Attacks/Barehands/Combo01/BigGuy_attack_barehands_Combo01_DoubleRibs: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
- ---> System.ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
-   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertSequence(UAnimSequence animSequence, USkeleton skeleton)
-   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertAnims(USkeleton skeleton, UAnimSequence animSequence)
-   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 220
-   --- End of inner exception stack trace ---
-   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 228
-   at SifuMovesetEditor.MainWindow.<>c__DisplayClass16_0.<LoadAnimationAsync>b__0() in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 296
-   at System.Threading.Tasks.Task`1.InnerInvoke()
-   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
---- End of stack trace from previous location ---
-   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
-   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
---- End of stack trace from previous location ---
-   at SifuMovesetEditor.MainWindow.LoadAnimationAsync(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 295
-[12:07:29] [ANIMATION] System.Exception: Failed to load Game/Animations/BigGuy/Attacks/Barehands/Combo01/BigGuy_attack_barehands_Combo01_Hook: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
- ---> System.ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
-   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertSequence(UAnimSequence animSequence, USkeleton skeleton)
-   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertAnims(USkeleton skeleton, UAnimSequence animSequence)
-   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 220
-   --- End of inner exception stack trace ---
-   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 228
-   at SifuMovesetEditor.MainWindow.<>c__DisplayClass16_0.<LoadAnimationAsync>b__0() in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 296
-   at System.Threading.Tasks.Task`1.InnerInvoke()
-   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
---- End of stack trace from previous location ---
-   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
-   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
---- End of stack trace from previous location ---
-   at SifuMovesetEditor.MainWindow.LoadAnimationAsync(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 295
-[12:13:49] [ANIMATION] System.Exception: Failed to load Game/Animations/BigGuy/Attacks/Barehands/GroundAttack/BigGuy_attack_barehands_GroundAttack_60fps: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
- ---> System.ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
-   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertSequence(UAnimSequence animSequence, USkeleton skeleton)
-   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertAnims(USkeleton skeleton, UAnimSequence animSequence)
-   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 220
-   --- End of inner exception stack trace ---
-   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 228
-   at SifuMovesetEditor.MainWindow.<>c__DisplayClass16_0.<LoadAnimationAsync>b__0() in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 296
-   at System.Threading.Tasks.Task`1.InnerInvoke()
-   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
---- End of stack trace from previous location ---
-   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
-   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
---- End of stack trace from previous location ---
-   at SifuMovesetEditor.MainWindow.LoadAnimationAsync(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 295
-[12:14:15] [ANIMATION] System.Exception: Failed to load Game/Animations/BigGuy/Attacks/Barehands/Heavy/BigGuy_attack_barehands_Heavy_DownUppercut: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
- ---> System.ArgumentOutOfRangeException: Specified argument was out of the range of valid values. (Parameter 'Unsupported compressed data type ')
-   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertSequence(UAnimSequence animSequence, USkeleton skeleton)
-   at CUE4Parse_Conversion.Animations.AnimConverter.ConvertAnims(USkeleton skeleton, UAnimSequence animSequence)
-   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 220
-   --- End of inner exception stack trace ---
-   at SifuMovesetEditor.AnimationParser.LoadAnimation(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\Core\AnimationParser.cs:line 228
-   at SifuMovesetEditor.MainWindow.<>c__DisplayClass16_0.<LoadAnimationAsync>b__0() in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 296
-   at System.Threading.Tasks.Task`1.InnerInvoke()
-   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
---- End of stack trace from previous location ---
-   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
-   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
---- End of stack trace from previous location ---
-   at SifuMovesetEditor.MainWindow.LoadAnimationAsync(String gamePath) in C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\MainWindow.xaml.cs:line 295
+[00:40:20] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
+[00:40:21] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
+[00:40:21] [DT] Loaded Game/DB/AI/Archetypes/Grunt/Attacks/Grunt_AttacksDatatable: 19 rows, struct=AttackDataRow
+[00:40:21] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:40:21] [DT] Loaded Game/DB/AI/Archetypes/Grunt/Attacks/Grunt_WeaponsDatatable: 15 rows, struct=AttackDataRow
+[00:40:21] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:40:21] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:40:21] [DT] Loaded Game/DB/AI/Archetypes/FlashKick/Attacks/FlashKick_AttackData: 30 rows, struct=AttackDataRow
+[00:40:21] [DT] Loaded Game/DB/AI/Archetypes/FlashKick/Attacks/FlashKick_AttackData: 30 rows, struct=AttackDataRow
+[00:40:21] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:40:21] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:40:21] [DT] Loaded Game/DB/AI/Archetypes/BigGuy/Attacks/BigGuy_AttackData: 28 rows, struct=AttackDataRow
+[00:40:21] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:40:21] [DT] Loaded Game/DB/AI/Archetypes/Bodyguard/Attacks/BodyGuard_AttackData: 14 rows, struct=AttackDataRow
+[00:40:21] [DT] Loaded Game/DB/AI/Archetypes/Bodyguard/Attacks/BodyGuard_AttackData: 14 rows, struct=AttackDataRow
+[00:40:21] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:40:21] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:40:21] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_AttackData: 22 rows, struct=AttackDataRow
+[00:40:21] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:40:22] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_Staff_AttackData: 11 rows, struct=AttackDataRow
+[00:40:22] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:40:22] [DT] Loaded Game/DB/AI/Archetypes/Fajar/Attacks/Fajar_AttacksDatatable: 18 rows, struct=AttackDataRow
+[00:40:22] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:40:22] [DT] Loaded Game/DB/AI/Archetypes/Sean/Attacks/Sean_AttacksDatatable: 35 rows, struct=AttackDataRow
+[00:40:22] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:40:22] [DT] Loaded Game/DB/AI/Archetypes/Kuroki/Kuroki_AttacksDatatable: 48 rows, struct=AttackDataRow
+[00:40:22] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:40:22] [DT] Loaded Game/DB/AI/Archetypes/Fengjie/Attacks/Fengjie_AttacksDatatable: 31 rows, struct=AttackDataRow
+[00:40:22] [DT] Loaded Game/DB/AI/Archetypes/Fengjie/Attacks/Fengjie_AttacksDatatable: 31 rows, struct=AttackDataRow
+[00:40:22] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:40:22] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:40:22] [DT] Loaded Game/DB/AI/Archetypes/Yang/Attacks/Yang_Attacks: 29 rows, struct=AttackDataRow
+[00:40:22] [DT] Loaded Game/DB/AI/Archetypes/Yang/Attacks/Yang_Attacks: 29 rows, struct=AttackDataRow
+[00:40:22] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:40:22] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:40:22] [DT] Loaded Game/DB/Attacks/WUGUAN_Attacks: 0 rows, struct=AttackDataRow
+[00:40:22] [DT] Loaded Game/DB/Attacks/WUGUAN_Attacks: 0 rows, struct=AttackDataRow
+[00:40:22] [DT] Total used animation paths found: 298
+[00:40:22] [DT] Total used animation paths found: 298
+[00:40:22] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/_old/Grunt_Attack_Barehands_Sweep_360
+[00:40:22] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/_old/Grunt_Attack_Barehands_Sweep_360
+[00:40:22] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/GroundAttack/Grunt_attack_barehands_GroundAttack
+[00:40:22] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/GroundAttack/Grunt_attack_barehands_GroundAttack
+[00:40:22] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/BaseBallHook/Grunt_Attack_barehands_BaseBallHook
+[00:40:22] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Hook/Grunt_Attack_barehands_Hook
+[00:40:22] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/RollUppercut/Grunt_Attack_Barehands_RollUppercut
+[00:40:22] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/RollUppercut/Grunt_Attack_Barehands_RollUppercut
+[00:40:22] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/KneeStrike/Grunt_Attack_Barehands_KneeStrike
+[00:40:22] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_FastJab
+[00:40:22] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_FastJab
+[00:40:22] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_StraightJab
+[00:40:22] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_StraightJab
+[00:40:22] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Rush/Grunt_Attack_Barehands_RushKick
+[00:40:22] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Rush/Grunt_Attack_Barehands_RushKick
+[00:40:22] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/FalconPunch/Grunt_attack_barehands_FalconPunch
+[00:40:22] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/FalconPunch/Grunt_attack_barehands_FalconPunch
+[00:40:28] [MAP] Built anim→DB mapping: 494 entries
+[00:40:28] [COMBO] Loaded MainChar_ComboTree: exportType=Combo
+[00:40:28] [MAP] Built anim→DB mapping: 494 entries
+[00:40:28] [COMBO] Loaded MainChar_ComboTree: exportType=Combo
+[00:40:28] [COMBO] Parsed 57 raw nodes
+[00:40:28] [COMBO] Parsed 47 raw edges
+[00:40:28] [COMBO] Final: 36 nodes, 21 edges (removed 21 conduits)
+[00:40:28] [COMBO] Parsed 57 raw nodes
+[00:40:28] [COMBO] Parsed 47 raw edges
+[00:40:28] [COMBO] Final: 36 nodes, 21 edges (removed 21 conduits)
+[00:40:32] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:40:33] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Skills/Disengage/MainChar_Attack_Man_Barehands_Skill_Disengage_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=104, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:40:36] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:40:36] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/LightComboVariations/MainChar_Attack_Man_Barehands_PunishRepulse_PushKick_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:40:37] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:40:38] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/PostParry/PostParry_Dizzy/MainChar_Attack_Man_Barehands_FollowUp_TripleHit_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=130, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:40:39] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:40:39] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/HeavyCombo/MainChar_Attack_Man_Barehands_Punish_BellyPalm_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=134, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:40:40] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:40:41] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/LightCombo/MainChar_Attack_Man_Barehands_Pressure_Jab_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=126, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:40:46] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:40:46] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Skills/LightCombo/AoeKnockdown/MainChar_Attack_Man_Barehands_Skill_LightCombo_AoeKnockdown_BR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=94, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:40:48] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:40:48] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Skills/LightCombo/AoeKnockdown/MainChar_Attack_Man_Barehands_Skill_LightCombo_AoeKnockdown_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=100, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:40:52] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:40:52] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Weapons/Blades/Charged/MainChar_Attack_Man_Blades_Charged_AttackCap1_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:40:54] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:40:54] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Weapons/Blades/Charged/MainChar_Attack_Man_Blades_Charged_AttackCap2_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:40:56] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:40:56] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Weapons/Blades/Charged/MainChar_Attack_Man_Blades_Charged_BuildupCap1_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=140, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:41:00] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:41:00] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Weapons/Staff/Hold/Charged/MainChar_Attack_Man_Staff_Charged_BuildupCap2_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=140, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:41:00] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:41:01] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Delay/MainChar_Attack_Man_Barehands_FollowUp_SpinHighKick_BL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=84, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:41:03] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:41:03] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Delay/MainChar_Attack_Man_Barehands_FollowUp_SpinHighKick_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=140, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:41:05] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:41:05] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Delay/MainChar_Attack_Man_Barehands_Grounded_Back, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=134, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:41:08] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:41:08] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Delay/MainChar_Attack_Man_Barehands_FollowUp_SpinHighKick_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=140, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:41:13] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:41:13] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Delay/MainChar_Attack_Man_Barehands_FollowUp_SpinHighKick_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=140, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:41:15] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:41:15] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Delay/MainChar_Attack_Man_Barehands_FollowUp_SpinHighKick_BL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=84, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:41:16] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:41:17] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Delay/MainChar_Attack_Man_Barehands_FollowUp_SpinHighKick_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=140, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:41:19] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:41:19] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Delay/MainChar_Attack_Man_Barehands_Grounded_Back, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=134, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:41:24] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:41:24] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Delay/MainChar_Attack_Man_Barehands_Grounded_Front, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=108, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:41:30] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:41:31] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Delay/MainChar_Attack_Man_Barehands_Grounded_Front, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=108, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:41:32] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:41:33] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Skills/PostGroundPunch/MainChar_Attack_Man_Barehands_Skill_PostGroundPunch_Damage_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=108, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:41:34] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:41:34] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Delay/MainChar_Attack_Man_Barehands_Grounded_Front, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=108, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:41:37] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:41:37] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Skills/PostGroundPunch/MainChar_Attack_Man_Barehands_Skill_PostGroundPunch_Damage_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=108, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:41:39] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:41:39] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Delay/MainChar_Attack_Man_Barehands_Grounded_Front, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=108, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:42:08] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:42:08] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Delay/MainChar_Attack_Man_Barehands_Grounded_Front, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=108, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:42:35] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:42:35] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Delay/MainChar_Attack_Man_Barehands_Grounded_Front, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=108, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:42:36] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:42:36] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Pushback/MC_Attack_Man_Barehands_PushBack_Palm_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=134, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:42:44] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:42:44] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Delay/MainChar_Attack_Man_Barehands_Grounded_Back, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=134, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:42:46] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:42:46] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Delay/MainChar_Attack_Man_Barehands_Grounded_Front, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=108, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:42:48] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:42:49] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Weapons/Blades/Delay/MC_man_attack_Blades_Delay_SlashPommelStroke_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=116, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:42:53] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:42:54] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Skills/Disengage/MainChar_Attack_Man_Barehands_Skill_Disengage_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=104, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:42:56] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:42:56] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Weapons/Staff/Delay/Disengage/MainChar_Attack_Man_Staff_Delay_Disengage_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=82, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:42:58] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:42:59] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/DizzyPunch/MainChar_Attack_Man_Barehands_DizzyPunch_AttackCap0_BL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=88, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:43:01] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:43:01] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/DizzyPunch/MainChar_Attack_Man_Barehands_DizzyPunch_AttackCap0_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=140, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:43:11] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:43:11] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/GuardBreak/MainChar_Attack_Man_Barehands_FollowUp_Dizzy_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=116, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:43:17] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:43:17] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/DizzyPunch/MainChar_Attack_Man_Barehands_DizzyPunch_AttackCap0_BL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=88, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:43:19] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:43:19] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Weapons/Staff/Delay/Disengage/MainChar_Attack_Man_Staff_Delay_Disengage_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=82, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:43:21] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:43:21] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/DizzyPunch/MainChar_Attack_Man_Barehands_DizzyPunch_AttackCap0_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=140, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:43:22] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:43:23] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/DizzyPunch/MainChar_Attack_Man_Barehands_DizzyPunch_AttackCap1_BL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=88, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:43:25] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:43:25] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/DizzyPunch/MainChar_Attack_Man_Barehands_DizzyPunch_AttackCap1_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=140, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:43:26] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:43:26] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/DizzyPunch/MainChar_Attack_Man_Barehands_DizzyPunch_AttackCap2_BL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=80, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:43:28] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:43:28] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/DizzyPunch/MainChar_Attack_Man_Barehands_DizzyPunch_AttackCap2_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=140, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:43:29] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:43:29] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/DizzyPunch/MainChar_Attack_Man_Barehands_DizzyPunch_BuildupCap1_BL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=140, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:43:31] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:43:31] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Engage/MainChar_Attack_Man_Barehands_Engage_ThrustKick_BL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=132, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:43:47] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:43:47] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Weapons/Bats/GenericElements/Engage/MainChar_Attack_Man_bats_Engage_ReverseSlash_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=164, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:43:48] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:43:48] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Engage/MainChar_Attack_Man_Barehands_Engage_ThrustKick_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=132, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:43:49] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:43:50] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Engage/MainChar_Attack_Man_Barehands_Engage_ThrustKick_BL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=132, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:43:53] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:43:53] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Weapons/Staff/GenericElements/Engage/MC_man_attack_staff_Engage_HorizontalMill_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=112, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:43:54] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:43:55] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Weapons/Bats/GenericElements/MC_man_attack_bats_UppercutHeadStrike_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=102, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:43:56] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:43:56] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/GuardBreak/MainChar_Attack_Man_Barehands_FollowUp_Dizzy_BL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=122, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:43:58] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:43:58] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/GuardBreak/MainChar_Attack_Man_Barehands_FollowUp_Dizzy_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=116, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:44:01] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:44:01] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/GuardBreak/MainChar_Attack_Man_Barehands_GuardBreak_BL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=126, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:44:03] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:44:03] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/GuardBreak/MainChar_Attack_Man_Barehands_GuardBreak_BL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=126, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:44:13] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:44:13] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Weapons/Staff/Heavy/MC_man_attack_staff_Heavy_HeadMillCrush_PPVers_BR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:44:15] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:44:15] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/HeavyCombo/MainChar_Attack_Man_Barehands_Punish_ElbowStrike_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=108, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:44:17] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:44:17] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/HeavyCombo/MainChar_Attack_Man_Barehands_Punish_DoubleHit_Finisher_BR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:44:19] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:44:19] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/HeavyCombo/MainChar_Attack_Man_Barehands_Punish_BellyPalm_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=134, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:44:22] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:44:23] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/HeavyCombo/MainChar_Attack_Man_Barehands_Punish_DoubleHit_Finisher_BR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:44:24] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:44:24] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/HeavyCombo/MainChar_Attack_Man_Barehands_Punish_BellyPalm_BR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=134, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:44:26] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:44:26] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/HeavyCombo/MainChar_Attack_Man_Barehands_Pressure_ElbowMonoStrike_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=80, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[00:44:28] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[00:44:28] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/HeavyCombo/MainChar_Attack_Man_Barehands_Punish_BellyPalm_BR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=134, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0

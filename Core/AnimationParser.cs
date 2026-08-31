@@ -27,6 +27,31 @@ public class MoveInfo
     public string WeaponType { get; set; } = "";
     public string Category { get; set; } = "";
     public bool IsUsed { get; set; } = false;
+    public string EnemyType { get; set; } = "";
+
+    public string DisplayNameClean
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(Character) && !string.IsNullOrEmpty(WeaponType))
+            {
+                var prefix = $"{Character}_attack_{WeaponType}_";
+                if (DisplayName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    return DisplayName[prefix.Length..];
+            }
+            return DisplayName;
+        }
+    }
+}
+
+public class GroupHeader
+{
+    public string Name { get; set; } = "";
+    public int Level { get; set; }
+    public int Count { get; set; }
+    public string Subtitle { get; set; } = "";
+    public bool IsExpanded { get; set; }
+    public string ParentName { get; set; } = "";
 }
 
 public class ComboNode
@@ -244,7 +269,7 @@ public class AnimationParser : IDisposable
 
             foreach (var weaponDir in Directory.GetDirectories(attacksDir))
             {
-                var weaponType = Path.GetFileName(weaponDir);
+                var weaponType = NormalizeWeaponType(Path.GetFileName(weaponDir));
                 if (SkipDirectories.Contains(weaponType)) continue;
 
                 ScanAttackMoves(weaponDir, character, weaponType, "", moves);
@@ -524,6 +549,20 @@ public class AnimationParser : IDisposable
         return path;
     }
 
+    internal static string NormalizeWeaponType(string raw)
+    {
+        return raw.ToLowerInvariant() switch
+        {
+            "barehands" or "bare_hands" => "BareHands",
+            "staff" => "Staff",
+            "blade" or "blades" or "machete" or "dagger" => "Blades",
+            "bat" or "bats" or "blunt" => "Bats",
+            "meteor" or "hammer" or "meteorhammer" or "meteor_hammer" => "MeteorHammer",
+            "tristaff" => "TriStaff",
+            _ => raw
+        };
+    }
+
     private void ScanAttackMoves(string dir, string character, string weaponType, string category, List<MoveInfo> moves)
     {
         foreach (var file in Directory.GetFiles(dir, "*.uasset"))
@@ -709,6 +748,44 @@ public class AnimationParser : IDisposable
             {
                 if (incomingInputs.TryGetValue(node.Id, out var inputs))
                     node.InputLabel = string.Join(" / ", inputs.OrderBy(x => x));
+            }
+
+            var firstMoveInputs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Jab"] = "LMB",
+                ["BellyPalm"] = "RMB",
+                ["3Hits"] = "LMB after parry",
+                ["Disengage"] = "RMB + LMB",
+                ["FrontKick"] = "RMB",
+                ["GroundPunch"] = "W W + LMB",
+                ["Palm Strike"] = "S W + LMB",
+                ["2Hits"] = "RMB after parry",
+                ["CrookedFoot"] = "Hold RMB after parry",
+                ["GetUp"] = "LMB/RMB when knocked",
+                ["GuardBreak"] = "Hold LMB",
+                ["Invert"] = "Shift + W/A/S/D",
+                ["LowKick"] = "S W + RMB",
+                ["ResilientAttack"] = "Space + RMB",
+                ["Rush Attack Heavy"] = "RMB while running",
+                ["Rush Attack Light"] = "LMB while running",
+                ["Thrust Kick"] = "W W + RMB",
+                ["3Hits 02"] = "LMB after parry",
+                ["3Hits 03"] = "LMB after parry",
+                ["MultiHit"] = "RMB delay"
+            };
+            foreach (var node in graph.Nodes)
+            {
+                if (!node.IsRoot)
+                {
+                    foreach (var (key, label) in firstMoveInputs)
+                    {
+                        if (node.DisplayName.Contains(key, StringComparison.OrdinalIgnoreCase))
+                        {
+                            node.InputLabel = label;
+                            break;
+                        }
+                    }
+                }
             }
 
             var stanceNode = new ComboNode

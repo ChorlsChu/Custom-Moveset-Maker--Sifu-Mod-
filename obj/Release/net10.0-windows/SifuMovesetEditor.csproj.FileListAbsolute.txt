@@ -87,3 +87,7 @@ C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMo
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\obj\Release\net10.0-windows\SifuMovesetEditor.pdb
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\obj\Release\net10.0-windows\SifuMovesetEditor.genruntimeconfig.cache
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\obj\Release\net10.0-windows\ref\SifuMovesetEditor.dll
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\obj\Release\net10.0-windows\Export\ExportDialog.baml
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\obj\Release\net10.0-windows\Setup\SetupWizard.baml
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\obj\Release\net10.0-windows\Export\ExportDialog.g.cs
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\obj\Release\net10.0-windows\Setup\SetupWizard.g.cs

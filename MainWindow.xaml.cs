@@ -9,9 +9,11 @@ using System.Windows.Media;
 using Microsoft.Web.WebView2.Core;
 using Newtonsoft.Json;
 using SifuMovesetEditor;
+using SifuMovesetEditor.Setup;
+using SifuMovesetEditor.Export;
 
-using System.Text;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Threading;
 
 namespace SifuMovesetEditor;
@@ -58,12 +60,23 @@ public partial class MainWindow : Window
     private Point _panStart;
     private bool _keyW, _keyA, _keyS, _keyD;
     private DispatcherTimer _panTimer;
+    private DateTime _lastPanTick = DateTime.UtcNow;
+    private readonly DispatcherTimer _searchDebounceTimer;
+
+    private readonly HashSet<string> _expandedEnemies = new();
+    private readonly Dictionary<string, HashSet<string>> _expandedWeapons = new();
 
     public MainWindow()
     {
         InitializeComponent();
         _settingsPath = Path.Combine(
             AppDomain.CurrentDomain.BaseDirectory, "settings.json");
+        _searchDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        _searchDebounceTimer.Tick += (s, args) =>
+        {
+            _searchDebounceTimer.Stop();
+            FilterMoves();
+        };
         Loaded += MainWindow_Loaded;
     }
 
@@ -77,9 +90,7 @@ public partial class MainWindow : Window
             AppDomain.CurrentDomain.BaseDirectory, "viewer", "index.html");
         webView.CoreWebView2.Navigate(new Uri(viewerPath).AbsoluteUri);
 
-        LoadSettings();
         cmbSpeed.SelectedIndex = 2;
-        _initialized = true;
 
         PreviewKeyDown += MainWindow_PreviewKeyDown;
         PreviewKeyUp += MainWindow_PreviewKeyUp;
@@ -87,9 +98,12 @@ public partial class MainWindow : Window
         _panTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
         _panTimer.Tick += PanTimer_Tick;
         _panTimer.Start();
+
+        await LoadSettingsAsync();
+        _initialized = true;
     }
 
-    private Settings LoadSettings()
+    private async Task<Settings> LoadSettingsAsync()
     {
         if (File.Exists(_settingsPath))
         {
@@ -102,8 +116,22 @@ public partial class MainWindow : Window
                     _contentPath = settings.ContentPath;
                     if (!string.IsNullOrEmpty(settings.OutputPath))
                         _outputPath = settings.OutputPath;
-                    InitializeParser();
-                    return settings;
+
+                    var detection = ContentDetector.Detect(_contentPath);
+                    if (detection.IsValid)
+                    {
+                        await InitializeParserAsync();
+                        return settings;
+                    }
+
+                    var localContent = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "GameContent");
+                    var localDetection = ContentDetector.Detect(localContent);
+                    if (localDetection.IsValid)
+                    {
+                        _contentPath = localContent;
+                        await InitializeParserAsync();
+                        return settings;
+                    }
                 }
             }
             catch (Exception ex)
@@ -111,6 +139,27 @@ public partial class MainWindow : Window
                 txtStatus.Text = $"Error loading settings: {ex.Message}";
             }
         }
+
+        return await ShowSetupWizardAsync();
+    }
+
+    private async Task<Settings> ShowSetupWizardAsync()
+    {
+        var wizard = new SetupWizard
+        {
+            Owner = this,
+        };
+
+        if (wizard.ShowDialog() == true && !string.IsNullOrEmpty(wizard.SelectedContentPath))
+        {
+            _contentPath = wizard.SelectedContentPath;
+            SaveSettings();
+            await InitializeParserAsync();
+            return new Settings { ContentPath = _contentPath, OutputPath = _outputPath };
+        }
+
+        // User skipped or cancelled — app will run with limited functionality
+        txtStatus.Text = "No game content loaded. Some features won't be available.";
         return new Settings { ContentPath = _contentPath };
     }
 
@@ -120,46 +169,67 @@ public partial class MainWindow : Window
         File.WriteAllText(_settingsPath, JsonConvert.SerializeObject(settings, Formatting.Indented));
     }
 
-    private void InitializeParser()
+    private void UpdateLoading(string text, string detail)
+    {
+        loadingText.Text = text;
+        loadingDetail.Text = detail;
+    }
+
+    private async Task InitializeParserAsync()
     {
         try
         {
             var contentPath = Path.Combine(_contentPath, "Content");
+
+            UpdateLoading("Initializing parser...", _contentPath);
             txtStatus.Text = $"Loading from: {_contentPath}...";
             _parser.Initialize(_contentPath, contentPath);
 
-            _allMoves = _parser.ScanAnimations();
-            txtStatus.Text = $"Scanning attack data tables...";
+            UpdateLoading("Scanning attack animations...", "Walking Animations/ directory...");
+            _allMoves = await Task.Run(() => _parser.ScanAnimations());
 
-            var usedPaths = _parser.ScanUsedAnimations();
+            UpdateLoading("Scanning combo tree data...", "Reading attack data tables...");
+            var usedPaths = await Task.Run(() => _parser.ScanUsedAnimations());
             foreach (var move in _allMoves)
-            {
                 move.IsUsed = usedPaths.Contains(move.FullPath);
-            }
 
-            var matchCount = _allMoves.Count(m => m.IsUsed);
-            var sampleScanned = string.Join(", ", _allMoves.Take(5).Select(m => m.FullPath));
-            var sampleUsed = string.Join(", ", usedPaths.Take(5));
-            ErrorLog.Write("MATCH", new Exception($"Matched {matchCount}/{_allMoves.Count} as vanilla\nSample scanned: [{sampleScanned}]\nSample used:    [{sampleUsed}]"));
+            UpdateLoading("Scanning enemy attack DBs...", "Walking DB/AI/Archetypes/...");
+            var enemyMoves = await Task.Run(() => EnemyAttackScanner.ScanEnemyAttacks(contentPath));
+            foreach (var move in enemyMoves)
+                move.IsUsed = true;
+            _allMoves.AddRange(enemyMoves);
 
-            _allLocomotion = _parser.ScanStanceAnims();
-            _parser.BuildAnimToDbMapping();
+            UpdateLoading("Loading locomotion + building mappings...", "");
+            var locoResult = await Task.Run(() =>
+            {
+                var loco = _parser.ScanStanceAnims();
+                _parser.BuildAnimToDbMapping();
+                return loco;
+            });
+            _allLocomotion = locoResult;
 
+            UpdateLoading($"Building library ({_allMoves.Count} moves)...", "");
             BuildTree(_allMoves);
-            txtStatus.Text = $"Loaded {_allMoves.Count} animations from {_contentPath}";
-
             PopulateCharacterDropdown();
-            LoadComboGraph();
+
+            UpdateLoading("Loading combo graph...", "Parsing MainChar combo tree...");
+            await LoadComboGraphAsync();
+
+            txtStatus.Text = $"Loaded {_allMoves.Count} animations from {_contentPath}";
         }
         catch (Exception ex)
         {
             txtStatus.Text = $"Error: {ex.Message}";
-            MessageBox.Show($"Failed to initialize parser:\n{ex.Message}",
-                "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Failed to initialize:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            loadingOverlay.Visibility = Visibility.Collapsed;
         }
     }
 
-    private void Settings_Click(object sender, RoutedEventArgs e)
+    private async void Settings_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.OpenFolderDialog
         {
@@ -200,14 +270,16 @@ public partial class MainWindow : Window
 
             _contentPath = selectedPath;
             SaveSettings();
-            InitializeParser();
+            loadingOverlay.Visibility = Visibility.Visible;
+            await InitializeParserAsync();
         }
     }
 
     private void Search_Changed(object sender, TextChangedEventArgs e)
     {
         if (!_initialized) return;
-        FilterMoves();
+        _searchDebounceTimer.Stop();
+        _searchDebounceTimer.Start();
     }
 
     private void Filter_Changed(object sender, SelectionChangedEventArgs e)
@@ -245,19 +317,35 @@ public partial class MainWindow : Window
                 4 => m.Character == "FlashKick",
                 5 => m.Character == "BigGuy",
                 6 => m.Character == "BodyGuard",
-                7 => m.Character == "Servant",
-                8 => m.Character is "Fajar" or "Sean" or "Kuroki" or "Yang" or "Fengjie",
+                7 => m.Character == "Fajar",
+                8 => m.Character == "Fengjie",
+                9 => m.Character == "Kuroki",
+                10 => m.Character == "Sean",
+                11 => m.Character == "Yang",
+                12 => m.Character == "Sifu",
+                13 => m.Character == "Servant",
+                14 => m.Character is "Fajar" or "Sean" or "Kuroki" or "Yang" or "Fengjie",
                 _ => true
             };
 
             return matchesSearch && matchesFilter;
         });
 
-        var vanillaMoves = filtered.Where(m => m.IsUsed).ToList();
-        var unusedMoves = filtered.Where(m => !m.IsUsed).ToList();
+        var vanillaMoves = filtered.Where(m => m.IsUsed && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
+        var unusedMoves = filtered.Where(m => !m.IsUsed && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
 
-        listVanilla.ItemsSource = vanillaMoves;
-        listUnused.ItemsSource = unusedMoves;
+        bool useAccordion = string.IsNullOrEmpty(searchText) && filterIndex == 0;
+
+        if (useAccordion)
+        {
+            listVanilla.ItemsSource = BuildAccordionList(vanillaMoves);
+            listUnused.ItemsSource = BuildAccordionList(unusedMoves);
+        }
+        else
+        {
+            listVanilla.ItemsSource = vanillaMoves;
+            listUnused.ItemsSource = unusedMoves;
+        }
 
         var filteredLoco = _allLocomotion.FindAll(m =>
         {
@@ -274,19 +362,98 @@ public partial class MainWindow : Window
         txtMoveCount.Text = $"{vanillaMoves.Count} vanilla / {unusedMoves.Count} unused / {filteredLoco.Count} locomotion";
     }
 
+    private List<object> BuildAccordionList(List<MoveInfo> moves)
+    {
+        var result = new List<object>();
+
+        var enemyGroups = moves
+            .GroupBy(m => m.Character)
+            .OrderBy(g => g.Key);
+
+        foreach (var enemyGroup in enemyGroups)
+        {
+            var enemyExpanded = _expandedEnemies.Contains(enemyGroup.Key);
+
+            result.Add(new GroupHeader
+            {
+                Name = enemyGroup.Key,
+                Level = 1,
+                Count = enemyGroup.Count(),
+                Subtitle = "",
+                IsExpanded = enemyExpanded
+            });
+
+            if (!enemyExpanded) continue;
+
+            var weaponGroups = enemyGroup
+                .GroupBy(m => m.WeaponType)
+                .OrderBy(g => g.Key);
+
+            foreach (var weaponGroup in weaponGroups)
+            {
+                var weaponKey = $"{enemyGroup.Key}|{weaponGroup.Key}";
+                var weaponExpanded = _expandedWeapons.TryGetValue(enemyGroup.Key, out var wSet)
+                    && wSet.Contains(weaponGroup.Key);
+
+                result.Add(new GroupHeader
+                {
+                    Name = weaponGroup.Key,
+                    Level = 2,
+                    Count = weaponGroup.Count(),
+                    IsExpanded = weaponExpanded,
+                    ParentName = enemyGroup.Key
+                });
+
+                if (weaponExpanded)
+                {
+                    result.AddRange(weaponGroup.Cast<object>());
+                }
+            }
+        }
+        return result;
+    }
+
     private void BuildTree(List<MoveInfo> moves)
     {
-        var vanillaMoves = moves.Where(m => m.IsUsed).ToList();
-        var unusedMoves = moves.Where(m => !m.IsUsed).ToList();
+        var vanillaMoves = moves.Where(m => m.IsUsed && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
+        var unusedMoves = moves.Where(m => !m.IsUsed && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
 
-        listVanilla.ItemsSource = vanillaMoves;
-        listUnused.ItemsSource = unusedMoves;
+        listVanilla.ItemsSource = BuildAccordionList(vanillaMoves);
+        listUnused.ItemsSource = BuildAccordionList(unusedMoves);
+
         listLoco.ItemsSource = _allLocomotion;
 
         tabHeaderVanilla.Text = $"Vanilla ({vanillaMoves.Count})";
         tabHeaderUnused.Text = $"Unused ({unusedMoves.Count})";
         tabHeaderLoco.Text = $"Locomotion ({_allLocomotion.Count})";
         txtMoveCount.Text = $"{vanillaMoves.Count} vanilla / {unusedMoves.Count} unused / {_allLocomotion.Count} locomotion";
+    }
+
+    private static List<object> BuildGroupedList(List<MoveInfo> moves)
+    {
+        var result = new List<object>();
+        var grouped = moves
+            .GroupBy(m => m.Character)
+            .OrderBy(g => g.Key);
+
+        foreach (var charGroup in grouped)
+        {
+            var charMoves = charGroup.ToList();
+            result.Add(new GroupHeader { Name = charGroup.Key, Level = 1, Count = charMoves.Count });
+
+            var weaponGroups = charMoves
+                .GroupBy(m => m.WeaponType)
+                .OrderBy(g => g.Key);
+
+            foreach (var weaponGroup in weaponGroups)
+            {
+                var weaponMoves = weaponGroup.ToList();
+                result.Add(new GroupHeader { Name = weaponGroup.Key, Level = 2, Count = weaponMoves.Count });
+                result.AddRange(weaponMoves);
+            }
+        }
+
+        return result;
     }
 
     private async void MoveCard_Click(object sender, MouseButtonEventArgs e)
@@ -309,6 +476,39 @@ public partial class MainWindow : Window
         {
             var data = new DataObject(typeof(MoveInfo), move);
             DragDrop.DoDragDrop(border, data, DragDropEffects.Copy);
+        }
+    }
+
+    private void EnemyHeader_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is Border border && border.Tag is GroupHeader header)
+        {
+            if (_expandedEnemies.Contains(header.Name))
+                _expandedEnemies.Remove(header.Name);
+            else
+                _expandedEnemies.Add(header.Name);
+            FilterMoves();
+        }
+    }
+
+    private void WeaponHeader_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is Border border && border.Tag is GroupHeader header)
+        {
+            var enemyName = header.ParentName;
+            if (string.IsNullOrEmpty(enemyName)) return;
+
+            if (!_expandedWeapons.TryGetValue(enemyName, out var weapons))
+            {
+                weapons = new HashSet<string>();
+                _expandedWeapons[enemyName] = weapons;
+            }
+
+            if (weapons.Contains(header.Name))
+                weapons.Remove(header.Name);
+            else
+                weapons.Add(header.Name);
+            FilterMoves();
         }
     }
 
@@ -369,7 +569,7 @@ public partial class MainWindow : Window
 
     private void Speed_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (webView.CoreWebView2 == null) return;
+        if (webView?.CoreWebView2 == null) return;
         if (cmbSpeed.SelectedItem is ComboBoxItem item && item.Tag is string speedStr)
         {
             if (float.TryParse(speedStr, out float speed))
@@ -478,6 +678,77 @@ public partial class MainWindow : Window
         }
     }
 
+    private void SaveProject_Click(object sender, RoutedEventArgs e)
+    {
+        if (_comboGraph == null)
+        {
+            txtStatus.Text = "No combo graph loaded";
+            return;
+        }
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Filter = "Sifu Edit Files (*.sifu-edit)|*.sifu-edit|JSON Files (*.json)|*.json",
+            Title = "Save Project",
+            FileName = "CustomMoveset.sifu-edit"
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            try
+            {
+                var project = new EditorProject { Name = Path.GetFileNameWithoutExtension(dialog.FileName) };
+                ProjectManager.Save(project, _comboGraph, dialog.FileName);
+                txtStatus.Text = $"Saved project: {dialog.FileName}";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to save project:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+    }
+
+    private void LoadProject_Click(object sender, RoutedEventArgs e)
+    {
+        if (_comboGraph == null)
+        {
+            txtStatus.Text = "No combo graph loaded";
+            return;
+        }
+
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Filter = "Sifu Edit Files (*.sifu-edit)|*.sifu-edit|JSON Files (*.json)|*.json|All Files (*.*)|*.*",
+            Title = "Open Project"
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            try
+            {
+                var (project, swaps) = ProjectManager.Load(dialog.FileName);
+
+                foreach (var node in _comboGraph.Nodes)
+                {
+                    if (swaps.TryGetValue(node.Id.ToString(), out string? animPath) && !string.IsNullOrEmpty(animPath))
+                    {
+                        node.AnimPath = animPath;
+                        var matchedMove = _allMoves.FirstOrDefault(m => m.FullPath == animPath);
+                        if (matchedMove != null)
+                            node.DisplayName = matchedMove.DisplayName;
+                    }
+                }
+
+                RenderComboGraph();
+                txtStatus.Text = $"Loaded project: {project.Name} ({swaps.Count} swaps)";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to load project:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+    }
+
     private void ExportPak_Click(object sender, RoutedEventArgs e)
     {
         if (_comboGraph == null)
@@ -492,167 +763,20 @@ public partial class MainWindow : Window
 
         if (modified.Count == 0)
         {
-            MessageBox.Show("No changes to export. Drag animations onto combo nodes first.", "Export Pak", MessageBoxButton.OK, MessageBoxImage.Information);
+            txtStatus.Text = "No changes to export. Drag animations onto combo nodes first.";
             return;
         }
 
-        var changeList = string.Join("\n\n", modified.Select(n =>
-            $"  {n.DisplayName}\n    {n.DefaultAnimPath}\n    → {n.AnimPath}"));
-
-        var result = MessageBox.Show(
-            $"Export Combo Mod — {modified.Count} change(s) found:\n\n{changeList}\n\nProceed with export?",
-            "Export Pak",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Question);
-
-        if (result != MessageBoxResult.OK) return;
-
-        try
+        var dialog = new ExportDialog(
+            modified,
+            _contentPath,
+            _outputPath,
+            _parser.AnimToDbPath)
         {
-            txtStatus.Text = "Exporting pak...";
-            btnExport.IsEnabled = false;
+            Owner = this,
+        };
 
-            var contentPath = _contentPath;
-            if (string.IsNullOrEmpty(contentPath) || !Directory.Exists(contentPath))
-            {
-                MessageBox.Show("Content path not set or invalid. Check Settings.", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                btnExport.IsEnabled = true;
-                return;
-            }
-
-            var outputPath = _outputPath;
-            if (string.IsNullOrEmpty(outputPath))
-                outputPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods");
-            Directory.CreateDirectory(outputPath);
-
-            var tempDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "temp_mod");
-            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
-
-            var gameRoot = Path.Combine(contentPath, "Content");
-            if (!Directory.Exists(gameRoot))
-            {
-                MessageBox.Show($"Game content not found at: {gameRoot}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                btnExport.IsEnabled = true;
-                return;
-            }
-
-            var fileEntries = new List<(string src, string dest)>();
-
-            var comboTreeSrc = Path.Combine(gameRoot, "DB", "_MainChar", "Combos", "MainChar_ComboTree.uasset");
-            var comboTreeUexp = Path.Combine(gameRoot, "DB", "_MainChar", "Combos", "MainChar_ComboTree.uexp");
-            var comboTreeTempDir = Path.Combine(tempDir, "Sifu", "Content", "DB", "_MainChar", "Combos");
-            Directory.CreateDirectory(comboTreeTempDir);
-            var comboTreeTemp = Path.Combine(comboTreeTempDir, "MainChar_ComboTree.uasset");
-            File.Copy(comboTreeSrc, comboTreeTemp, true);
-            File.Copy(comboTreeUexp, Path.Combine(comboTreeTempDir, "MainChar_ComboTree.uexp"), true);
-
-            fileEntries.Add((comboTreeTemp, "../../../Sifu/Content/DB/_MainChar/Combos/MainChar_ComboTree.uasset"));
-            fileEntries.Add((Path.Combine(comboTreeTempDir, "MainChar_ComboTree.uexp"), "../../../Sifu/Content/DB/_MainChar/Combos/MainChar_ComboTree.uexp"));
-
-            txtStatus.Text = "Patching combo tree (raw binary patch)...";
-            ErrorLog.Write("EXPORT", new Exception($"=== EXPORT START: {modified.Count} modified nodes ==="));
-
-            var swaps = new Dictionary<string, string>();
-            foreach (var node in modified)
-            {
-                if (string.IsNullOrEmpty(node.DefaultDBPath)) continue;
-                if (!_parser.AnimToDbPath.TryGetValue(node.AnimPath, out var newDbPath)) continue;
-
-                var oldDb = AnimationParser.NormalizeAnimPath(node.DefaultDBPath);
-                var newDb = AnimationParser.NormalizeAnimPath(newDbPath);
-
-                if (string.IsNullOrEmpty(oldDb) || string.IsNullOrEmpty(newDb)) continue;
-                if (oldDb == newDb) continue;
-
-                var oldDbWithSlash = "/" + oldDb;
-                var newDbWithSlash = "/" + newDb;
-
-                if (!swaps.ContainsKey(oldDb))
-                {
-                    swaps[oldDb] = newDbWithSlash;
-                    ErrorLog.Write("EXPORT", new Exception($"  SWAP: {oldDbWithSlash} -> {newDbWithSlash}"));
-                }
-            }
-
-            if (swaps.Count == 0)
-            {
-                ErrorLog.Write("EXPORT", new Exception("No valid swaps found — nothing to patch"));
-                MessageBox.Show("No valid DB swaps found for modified nodes.", "Export Error", MessageBoxButton.OK, MessageBoxImage.Warning);
-                btnExport.IsEnabled = true;
-                return;
-            }
-
-            var uexpPath = Path.ChangeExtension(comboTreeTemp, ".uexp");
-            PatchComboTreeRawBinary(comboTreeTemp, uexpPath, swaps);
-
-            txtStatus.Text = $"Building pak file ({fileEntries.Count} files)...";
-
-            var filelistPath = Path.Combine(tempDir, "filelist.txt");
-            var filelistContent = string.Join("\n", fileEntries.Select(f => $"\"{f.src}\" \"{f.dest}\""));
-            File.WriteAllText(filelistPath, filelistContent);
-
-            var pakExe = @"C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\4.26\UE4\UnrealPak\UnrealPak.exe";
-            var pakFileName = "MainCharComboMod.pak";
-            var pakPath = Path.Combine(outputPath, pakFileName);
-
-            if (!File.Exists(pakExe))
-            {
-                MessageBox.Show($"UnrealPak not found at:\n{pakExe}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                btnExport.IsEnabled = true;
-                return;
-            }
-
-            var psi = new ProcessStartInfo
-            {
-                FileName = pakExe,
-                Arguments = $"\"{pakPath}\" -create=\"{filelistPath}\" -compress",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-
-            using var proc = Process.Start(psi);
-            var stdout = proc.StandardOutput.ReadToEnd();
-            var stderr = proc.StandardError.ReadToEnd();
-            proc.WaitForExit();
-
-            if (proc.ExitCode != 0)
-            {
-                MessageBox.Show($"UnrealPak failed (exit {proc.ExitCode}):\n\n{stderr}\n{stdout}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                btnExport.IsEnabled = true;
-                return;
-            }
-
-            var sigSrc = Path.Combine(Path.GetDirectoryName(pakExe)!, "pakchunk0-WindowsNoEditor.sig");
-            var sigDest = Path.ChangeExtension(pakPath, ".sig");
-            if (File.Exists(sigSrc)) File.Copy(sigSrc, sigDest, true);
-
-            Directory.Delete(tempDir, true);
-
-            var pakSize = new FileInfo(pakPath).Length;
-            var sizeStr = pakSize > 1024 * 1024
-                ? $"{pakSize / (1024.0 * 1024.0):F1} MB"
-                : $"{pakSize / 1024.0:F1} KB";
-
-            MessageBox.Show(
-                $"Mod exported successfully!\n\n{pakFileName} ({modified.Count} changes, {sizeStr})\nSaved to: {outputPath}\n\nCopy to your Sifu/Content/Paks/~mods/ folder to use.",
-                "Export Complete",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-
-            txtStatus.Text = $"Exported: {pakFileName} ({sizeStr})";
-        }
-        catch (Exception ex)
-        {
-            ErrorLog.Write("EXPORT", ex);
-            MessageBox.Show($"Export failed:\n{ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            txtStatus.Text = "Export failed — see error.log";
-        }
-        finally
-        {
-            btnExport.IsEnabled = true;
-        }
+        dialog.ShowDialog();
     }
 
     private static void DumpProperty(object prop, string name, string type, int depth)
@@ -729,397 +853,12 @@ public partial class MainWindow : Window
         }
     }
 
-    private static void PatchInt32InRange(byte[] bytes, int start, int end, int oldValue, int newValue)
-    {
-        if (oldValue == newValue) return;
-        byte[] oldBytes = BitConverter.GetBytes(oldValue);
-        byte[] newBytes = BitConverter.GetBytes(newValue);
-        for (int i = start; i <= end - 4; i++)
-        {
-            if (bytes[i] == oldBytes[0] && bytes[i + 1] == oldBytes[1] && bytes[i + 2] == oldBytes[2] && bytes[i + 3] == oldBytes[3])
-            {
-                newBytes.CopyTo(bytes, i);
-                return;
-            }
-        }
-    }
 
-    private static void CopyAssetToTemp(string gameRoot, string tempDir, string gamePath, List<(string src, string dest)> fileEntries)
-    {
-        var srcAsset = Path.Combine(gameRoot, gamePath.Replace("/", "\\") + ".uasset");
-        var srcExport = Path.Combine(gameRoot, gamePath.Replace("/", "\\") + ".uexp");
-
-        var destDir = Path.Combine(tempDir, "Sifu", "Content", gamePath.Replace("/", "\\"));
-        Directory.CreateDirectory(destDir);
-
-        if (File.Exists(srcAsset))
-        {
-            var destAsset = Path.Combine(destDir, Path.GetFileName(srcAsset));
-            File.Copy(srcAsset, destAsset, true);
-            fileEntries.Add((destAsset, "../../../Sifu/Content/" + gamePath + ".uasset"));
-        }
-
-        if (File.Exists(srcExport))
-        {
-            var destExport = Path.Combine(destDir, Path.GetFileName(srcExport));
-            File.Copy(srcExport, destExport, true);
-            fileEntries.Add((destExport, "../../../Sifu/Content/" + gamePath + ".uexp"));
-        }
-    }
-
-    private void PatchComboTreeRawBinary(string uassetPath, string uexpPath, Dictionary<string, string> swaps)
-    {
-        var uasset = File.ReadAllBytes(uassetPath);
-        var uexp = File.ReadAllBytes(uexpPath);
-        var origUassetLen = uasset.Length;
-        var origUexpLen = uexp.Length;
-        ErrorLog.Write("RAWPATCH", new Exception($"Loaded .uasset={origUassetLen} bytes, .uexp={origUexpLen} bytes"));
-
-        int magic = BitConverter.ToInt32(uasset, 0);
-        int legacyFileVersion = BitConverter.ToInt32(uasset, 4);
-        if (magic != unchecked((int)0x9E2A83C1))
-            throw new Exception($"Invalid uasset magic: 0x{magic:X8}");
-
-        int pkgNameLen = BitConverter.ToInt32(uasset, 28);
-        int afterPkgName = 32 + pkgNameLen;
-        int packageFlags = BitConverter.ToInt32(uasset, afterPkgName);
-        int nameCount = BitConverter.ToInt32(uasset, afterPkgName + 4);
-        int nameOffset = BitConverter.ToInt32(uasset, afterPkgName + 8);
-        ErrorLog.Write("RAWPATCH", new Exception($"Header: NameCount={nameCount}, NameOffset={nameOffset}"));
-
-        string[] nameTable = new string[nameCount];
-        int pos = nameOffset;
-        for (int i = 0; i < nameCount; i++)
-        {
-            int strLen = BitConverter.ToInt32(uasset, pos);
-            pos += 4;
-            if (strLen == 0) { nameTable[i] = ""; continue; }
-            if (strLen < 0)
-            {
-                int byteLen = (-strLen) * 2;
-                nameTable[i] = Encoding.Unicode.GetString(uasset, pos, byteLen - 2);
-                pos += byteLen;
-            }
-            else
-            {
-                nameTable[i] = Encoding.ASCII.GetString(uasset, pos, strLen - 1);
-                pos += strLen;
-            }
-            pos += 4;
-        }
-        int nameTableEnd = pos;
-        ErrorLog.Write("RAWPATCH", new Exception($"Name table ends at {nameTableEnd} (read {nameCount} entries)"));
-
-        var nameToIndex = new Dictionary<string, int>();
-        for (int i = 0; i < nameCount; i++)
-            if (!string.IsNullOrEmpty(nameTable[i]) && !nameToIndex.ContainsKey(nameTable[i]))
-                nameToIndex[nameTable[i]] = i;
-
-        var oldIndices = new Dictionary<int, int>();
-        var newEntries = new List<(string name, int index)>();
-        int nextIndex = nameCount;
-
-        foreach (var (oldPath, newPathWithSlash) in swaps)
-        {
-            var longPath = newPathWithSlash;
-            var lastSlash = longPath.LastIndexOf('/');
-            var shortName = lastSlash >= 0 ? longPath.Substring(lastSlash + 1) : longPath;
-            var qualifiedPath = longPath + "." + shortName;
-
-            int longIdx, shortIdx, qualifiedIdx;
-
-            if (nameToIndex.TryGetValue(longPath, out var existingLong))
-            {
-                longIdx = existingLong;
-                ErrorLog.Write("RAWPATCH", new Exception($"  New long path '{longPath}' already at name[{longIdx}]"));
-            }
-            else
-            {
-                longIdx = nextIndex++;
-                newEntries.Add((longPath, longIdx));
-                nameToIndex[longPath] = longIdx;
-                ErrorLog.Write("RAWPATCH", new Exception($"  New long path '{longPath}' -> name[{longIdx}]"));
-            }
-
-            if (nameToIndex.TryGetValue(shortName, out var existingShort))
-            {
-                shortIdx = existingShort;
-                ErrorLog.Write("RAWPATCH", new Exception($"  New short name '{shortName}' already at name[{shortIdx}]"));
-            }
-            else
-            {
-                shortIdx = nextIndex++;
-                newEntries.Add((shortName, shortIdx));
-                nameToIndex[shortName] = shortIdx;
-                ErrorLog.Write("RAWPATCH", new Exception($"  New short name '{shortName}' -> name[{shortIdx}]"));
-            }
-
-            if (nameToIndex.TryGetValue(qualifiedPath, out var existingQ))
-            {
-                qualifiedIdx = existingQ;
-            }
-            else
-            {
-                qualifiedIdx = nextIndex++;
-                newEntries.Add((qualifiedPath, qualifiedIdx));
-                nameToIndex[qualifiedPath] = qualifiedIdx;
-                ErrorLog.Write("RAWPATCH", new Exception($"  New qualified path '{qualifiedPath}' -> name[{qualifiedIdx}]"));
-            }
-
-            if (nameToIndex.TryGetValue(oldPath, out var oldLongIdx))
-                oldIndices[oldLongIdx] = longIdx;
-
-            var oldPathWithSlash = "/" + oldPath;
-            if (nameToIndex.TryGetValue(oldPathWithSlash, out var oldLongIdx2))
-                oldIndices[oldLongIdx2] = longIdx;
-
-            var oldShortParts = oldPath.Split('/');
-            var oldShort = oldShortParts[^1];
-            if (nameToIndex.TryGetValue(oldShort, out var oldShortIdx))
-                oldIndices[oldShortIdx] = shortIdx;
-
-            var oldQualified = oldPath + "." + oldShort;
-            if (nameToIndex.TryGetValue(oldQualified, out var oldQualIdx))
-                oldIndices[oldQualIdx] = qualifiedIdx;
-
-            var oldQualifiedWithSlash = "/" + oldQualified;
-            if (nameToIndex.TryGetValue(oldQualifiedWithSlash, out var oldQualIdx2))
-                oldIndices[oldQualIdx2] = qualifiedIdx;
-        }
-
-        ErrorLog.Write("RAWPATCH", new Exception($"Old->New index mappings: {oldIndices.Count}"));
-        foreach (var (oldIdx, newIdx) in oldIndices)
-            ErrorLog.Write("RAWPATCH", new Exception($"  name[{oldIdx}]='{nameTable[oldIdx]}' -> name[{newIdx}]"));
-
-        ErrorLog.Write("RAWPATCH", new Exception("Skipping .uasset blind scan — old FName indices preserved in expanded name table"));
-
-        int patchedUexp = 0;
-        foreach (var (oldIdx, newIdx) in oldIndices)
-        {
-            byte[] oldBytes = BitConverter.GetBytes(oldIdx);
-            byte[] newBytes = BitConverter.GetBytes(newIdx);
-            for (int i = 0; i < uexp.Length - 8; i++)
-            {
-                if (uexp[i] == oldBytes[0] && uexp[i + 1] == oldBytes[1] &&
-                    uexp[i + 2] == oldBytes[2] && uexp[i + 3] == oldBytes[3] &&
-                    uexp[i + 4] == 0 && uexp[i + 5] == 0 && uexp[i + 6] == 0 && uexp[i + 7] == 0 &&
-                    (i == 0 || uexp[i - 1] == 0) &&
-                    i >= 8 && BitConverter.ToInt32(uexp, i - 8) >= 0 && BitConverter.ToInt32(uexp, i - 8) < nameCount)
-                {
-                    newBytes.CopyTo(uexp, i);
-                    patchedUexp++;
-                    ErrorLog.Write("RAWPATCH", new Exception($"  .uexp patched FName at offset {i}: {oldIdx} -> {newIdx} (prev idx={BitConverter.ToInt32(uexp, i - 8)})"));
-                }
-            }
-        }
-        ErrorLog.Write("RAWPATCH", new Exception($"Total .uexp FName patches: {patchedUexp}"));
-
-        if (newEntries.Count == 0)
-        {
-            File.WriteAllBytes(uassetPath, uasset);
-            File.WriteAllBytes(uexpPath, uexp);
-            ErrorLog.Write("RAWPATCH", new Exception("No new name entries needed — wrote patched files directly"));
-            return;
-        }
-
-        var newEntryBytes = new List<byte>();
-        foreach (var (entryName, _) in newEntries)
-        {
-            bool isUnicode = false;
-            foreach (char c in entryName)
-                if (c > 127) { isUnicode = true; break; }
-
-            if (isUnicode)
-            {
-                int strLen = -(entryName.Length + 1);
-                newEntryBytes.AddRange(BitConverter.GetBytes(strLen));
-                newEntryBytes.AddRange(Encoding.Unicode.GetBytes(entryName));
-                newEntryBytes.AddRange(new byte[] { 0, 0 });
-            }
-            else
-            {
-                int strLen = entryName.Length + 1;
-                newEntryBytes.AddRange(BitConverter.GetBytes(strLen));
-                newEntryBytes.AddRange(Encoding.ASCII.GetBytes(entryName));
-                newEntryBytes.Add(0);
-            }
-            newEntryBytes.AddRange(BitConverter.GetBytes(0));
-        }
-
-        var patched = new byte[uasset.Length + newEntryBytes.Count];
-        Buffer.BlockCopy(uasset, 0, patched, 0, nameTableEnd);
-        newEntryBytes.CopyTo(patched, nameTableEnd);
-        Buffer.BlockCopy(uasset, nameTableEnd, patched, nameTableEnd + newEntryBytes.Count, uasset.Length - nameTableEnd);
-
-        int shift = newEntryBytes.Count;
-        int newTotalHeaderSize = BitConverter.ToInt32(patched, 24) + shift;
-        BitConverter.GetBytes(newTotalHeaderSize).CopyTo(patched, 24);
-
-        int newExportCount = BitConverter.ToInt32(patched, afterPkgName + 20);
-        int newExportOffset = BitConverter.ToInt32(patched, afterPkgName + 24) + shift;
-        BitConverter.GetBytes(newExportOffset).CopyTo(patched, afterPkgName + 24);
-
-        int newImportCount = BitConverter.ToInt32(patched, afterPkgName + 28);
-        int newImportOffset = BitConverter.ToInt32(patched, afterPkgName + 32) + shift;
-        BitConverter.GetBytes(newImportOffset).CopyTo(patched, afterPkgName + 32);
-
-        int newDependsOffset = BitConverter.ToInt32(patched, afterPkgName + 36) + shift;
-        BitConverter.GetBytes(newDependsOffset).CopyTo(patched, afterPkgName + 36);
-
-        int newNameCount = nameCount + newEntries.Count;
-        BitConverter.GetBytes(newNameCount).CopyTo(patched, afterPkgName + 4);
-        BitConverter.GetBytes(nameOffset).CopyTo(patched, afterPkgName + 8);
-
-        var trailingOffsets = FindTrailingHeaderOffsets(patched, afterPkgName, nameTableEnd);
-        foreach (var (trOff, trSize, trName) in trailingOffsets)
-        {
-            if (trSize == 4)
-            {
-                int val = BitConverter.ToInt32(patched, trOff) + shift;
-                BitConverter.GetBytes(val).CopyTo(patched, trOff);
-                ErrorLog.Write("RAWPATCH", new Exception($"  Patched {trName} at offset {trOff}: {val - shift} -> {val}"));
-            }
-            else if (trSize == 8)
-            {
-                long val = BitConverter.ToInt64(patched, trOff) + shift;
-                BitConverter.GetBytes(val).CopyTo(patched, trOff);
-                ErrorLog.Write("RAWPATCH", new Exception($"  Patched {trName} at offset {trOff}: {val - shift} -> {val}"));
-            }
-        }
-
-        // Patch SerialOffset in each FObjectExport entry (combined stream offsets)
-        // FObjectExport entry size = 104 bytes for UE4.26, SerialOffset at +36 within each entry
-        int exportEntrySize = 104;
-        for (int e = 0; e < newExportCount; e++)
-        {
-            int entryPos = newExportOffset + (e * exportEntrySize) + 36;
-            long oldSerialOff = BitConverter.ToInt64(patched, entryPos);
-            long newSerialOff = oldSerialOff + shift;
-            BitConverter.GetBytes(newSerialOff).CopyTo(patched, entryPos);
-            ErrorLog.Write("RAWPATCH", new Exception($"  Patched SerialOffset export[{e}] at offset {entryPos}: {oldSerialOff} -> {newSerialOff}"));
-        }
-
-        File.WriteAllBytes(uassetPath, patched);
-        File.WriteAllBytes(uexpPath, uexp);
-
-        ErrorLog.Write("RAWPATCH", new Exception($"WRITTEN: .uasset {origUassetLen} -> {patched.Length} bytes (+{shift} for {newEntries.Count} new name entries)"));
-        ErrorLog.Write("RAWPATCH", new Exception($"WRITTEN: .uexp {origUexpLen} -> {uexp.Length} bytes (same size, {patchedUexp} FName patches)"));
-        ErrorLog.Write("RAWPATCH", new Exception($"=== RAW BINARY PATCH COMPLETE: {patchedUexp} .uexp patches, 0 .uasset patches, {newEntries.Count} new names ==="));
-    }
-
-    private static List<(int pos, int size, string name)> FindTrailingHeaderOffsets(byte[] data, int afterPkgName, int nameTableEnd)
-    {
-        var result = new List<(int pos, int size, string name)>();
-
-        int hdrPos = afterPkgName + 40; // start after DependsOffset
-
-        // SoftPackageReferencesCount + Offset
-        hdrPos += 8;
-
-        // SearchableNamesOffset
-        hdrPos += 4;
-
-        // ThumbnailTableOffset (FileVersionUE3 >= 584 → present)
-        hdrPos += 4;
-
-        // ImportTypeHierarchies (UE5 only → NOT present for UE4.26)
-
-        // Guid (16 bytes)
-        hdrPos += 16;
-
-        // PersistentGuid — SKIPPED because PKG_FilterEditorOnly is set
-
-        // Generations array
-        int genCount = BitConverter.ToInt32(data, hdrPos);
-        hdrPos += 4;
-        hdrPos += genCount * 8;
-        ErrorLog.Write("RAWPATCH", new Exception($"  Header trace: GenerationsCount={genCount}, after Generations at offset {hdrPos}"));
-
-        // SavedByEngineVersion (FEngineVersion: Major(2)+Minor(2)+Patch(2)+Changelist(4)+Branch(FString))
-        hdrPos += 10;
-        int branchLen = BitConverter.ToInt32(data, hdrPos);
-        hdrPos += 4;
-        if (branchLen > 0) hdrPos += branchLen;
-        else if (branchLen < 0) hdrPos += (-branchLen) * 2;
-
-        // CompatibleEngineVersion (same format)
-        hdrPos += 10;
-        branchLen = BitConverter.ToInt32(data, hdrPos);
-        hdrPos += 4;
-        if (branchLen > 0) hdrPos += branchLen;
-        else if (branchLen < 0) hdrPos += (-branchLen) * 2;
-        ErrorLog.Write("RAWPATCH", new Exception($"  Header trace: after EngineVersions at offset {hdrPos}"));
-
-        // CompressionFlags
-        hdrPos += 4;
-
-        // CompressedChunks array
-        int ccCount = BitConverter.ToInt32(data, hdrPos);
-        hdrPos += 4;
-        hdrPos += ccCount * 32;
-
-        // PackageSource
-        hdrPos += 4;
-        ErrorLog.Write("RAWPATCH", new Exception($"  Header trace: after PackageSource at offset {hdrPos}"));
-
-        // AdditionalPackagesToCook array
-        int addPkgCount = BitConverter.ToInt32(data, hdrPos);
-        hdrPos += 4;
-        for (int i = 0; i < addPkgCount; i++)
-        {
-            int strLen = BitConverter.ToInt32(data, hdrPos);
-            hdrPos += 4;
-            if (strLen > 0) hdrPos += strLen;
-            else if (strLen < 0) hdrPos += (-strLen) * 2;
-        }
-
-        // TextureAllocations — SKIPPED because legacyFileVersion == -7 (not > -7)
-
-        // AssetRegistryDataOffset (int32)
-        int arPos = hdrPos;
-        int arVal = BitConverter.ToInt32(data, hdrPos);
-        hdrPos += 4;
-        if (arVal > 0 && arVal < data.Length)
-        {
-            result.Add((arPos, 4, "AssetRegistryDataOffset"));
-            ErrorLog.Write("RAWPATCH", new Exception($"  Found AssetRegistryDataOffset at offset {arPos} = {arVal}"));
-        }
-
-        // BulkDataStartOffset (int64) — always patch, it's a combined stream offset (> .uasset size)
-        int bdPos = hdrPos;
-        long bdVal = BitConverter.ToInt64(data, hdrPos);
-        hdrPos += 8;
-        result.Add((bdPos, 8, "BulkDataStartOffset"));
-        ErrorLog.Write("RAWPATCH", new Exception($"  Found BulkDataStartOffset at offset {bdPos} = {bdVal}"));
-
-        // WorldTileInfoDataOffset (int32)
-        hdrPos += 4;
-
-        // ChunkIds array
-        int chunkIdCount = BitConverter.ToInt32(data, hdrPos);
-        hdrPos += 4;
-        hdrPos += chunkIdCount * 4;
-
-        // PreloadDependencyCount + PreloadDependencyOffset
-        hdrPos += 4;
-        int pdPos = hdrPos;
-        int pdVal = BitConverter.ToInt32(data, hdrPos);
-        hdrPos += 4;
-        if (pdVal > 0 && pdVal < data.Length)
-        {
-            result.Add((pdPos, 4, "PreloadDependencyOffset"));
-            ErrorLog.Write("RAWPATCH", new Exception($"  Found PreloadDependencyOffset at offset {pdPos} = {pdVal}"));
-        }
-
-        ErrorLog.Write("RAWPATCH", new Exception($"  Header trace complete: found {result.Count} offset fields to patch"));
-        return result;
-    }
-
-    private void LoadComboGraph()
+    private async Task LoadComboGraphAsync()
     {
         try
         {
-            _comboGraph = _parser.LoadMainCharComboTree();
+            _comboGraph = await Task.Run(() => _parser.LoadMainCharComboTree());
             if (_comboGraph == null)
             {
                 txtComboInfo.Text = "No combo data";
@@ -1359,6 +1098,19 @@ public partial class MainWindow : Window
         }
     }
 
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr SetFocus(IntPtr hWnd);
+
+    private void ComboGraphBorder_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is Border border)
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            SetFocus(hwnd);
+            border.Focus();
+        }
+    }
+
     private void ComboCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         var hit = VisualTreeHelper.HitTest(comboCanvas, e.GetPosition(comboCanvas));
@@ -1375,6 +1127,7 @@ public partial class MainWindow : Window
         _isPanning = true;
         _panStart = e.GetPosition(this);
         comboCanvas.CaptureMouse();
+        PreviewMouseLeftButtonUp += ComboPan_PreviewMouseLeftButtonUp;
         e.Handled = true;
     }
 
@@ -1391,13 +1144,34 @@ public partial class MainWindow : Window
 
     private void ComboCanvas_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (!_isPanning) return;
+        StopPanning();
+    }
+
+    private void ComboCanvas_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        if (_isPanning) StopPanning();
+    }
+
+    private void ComboPan_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_isPanning) StopPanning();
+    }
+
+    private void StopPanning()
+    {
         _isPanning = false;
         comboCanvas.ReleaseMouseCapture();
+        PreviewMouseLeftButtonUp -= ComboPan_PreviewMouseLeftButtonUp;
     }
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (!_initialized) return;
+
+        var focused = FocusManager.GetFocusedElement(this);
+        if (focused is TextBox) return;
+
         switch (e.Key)
         {
             case Key.W: _keyW = true; e.Handled = true; break;
@@ -1409,6 +1183,9 @@ public partial class MainWindow : Window
 
     private void MainWindow_PreviewKeyUp(object sender, KeyEventArgs e)
     {
+        var focused = FocusManager.GetFocusedElement(this);
+        if (focused is TextBox) return;
+
         switch (e.Key)
         {
             case Key.W: _keyW = false; break;
@@ -1420,12 +1197,21 @@ public partial class MainWindow : Window
 
     private void PanTimer_Tick(object? sender, EventArgs e)
     {
-        if (!_keyW && !_keyA && !_keyS && !_keyD) return;
-        double speed = 8;
-        if (_keyW) _comboTranslate.Y += speed;
-        if (_keyS) _comboTranslate.Y -= speed;
-        if (_keyA) _comboTranslate.X += speed;
-        if (_keyD) _comboTranslate.X -= speed;
+        if (!_keyW && !_keyA && !_keyS && !_keyD)
+        {
+            _lastPanTick = DateTime.UtcNow;
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        var dt = (now - _lastPanTick).TotalSeconds;
+        _lastPanTick = now;
+
+        double speed = 500;
+        if (_keyW) _comboTranslate.Y += speed * dt;
+        if (_keyS) _comboTranslate.Y -= speed * dt;
+        if (_keyA) _comboTranslate.X += speed * dt;
+        if (_keyD) _comboTranslate.X -= speed * dt;
     }
 
     private static SolidColorBrush GetInputColor(string input)
