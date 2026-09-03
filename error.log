@@ -1,146 +1,105 @@
-[17:44:30] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
-[17:44:30] [DT] Loaded Game/DB/AI/Archetypes/Grunt/Attacks/Grunt_AttacksDatatable: 19 rows, struct=AttackDataRow
-[17:44:30] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[17:44:30] [DT] Loaded Game/DB/AI/Archetypes/Grunt/Attacks/Grunt_WeaponsDatatable: 15 rows, struct=AttackDataRow
-[17:44:30] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[17:44:30] [DT] Loaded Game/DB/AI/Archetypes/FlashKick/Attacks/FlashKick_AttackData: 30 rows, struct=AttackDataRow
-[17:44:30] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[17:44:30] [DT] Loaded Game/DB/AI/Archetypes/BigGuy/Attacks/BigGuy_AttackData: 28 rows, struct=AttackDataRow
-[17:44:30] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[17:44:30] [DT] Loaded Game/DB/AI/Archetypes/Bodyguard/Attacks/BodyGuard_AttackData: 14 rows, struct=AttackDataRow
-[17:44:30] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[17:44:30] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_AttackData: 22 rows, struct=AttackDataRow
-[17:44:30] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[17:44:30] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_Staff_AttackData: 11 rows, struct=AttackDataRow
-[17:44:30] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[17:44:30] [DT] Loaded Game/DB/AI/Archetypes/Fajar/Attacks/Fajar_AttacksDatatable: 18 rows, struct=AttackDataRow
-[17:44:30] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[17:44:30] [DT] Loaded Game/DB/AI/Archetypes/Sean/Attacks/Sean_AttacksDatatable: 35 rows, struct=AttackDataRow
-[17:44:30] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[17:44:30] [DT] Loaded Game/DB/AI/Archetypes/Kuroki/Kuroki_AttacksDatatable: 48 rows, struct=AttackDataRow
-[17:44:30] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[17:44:30] [DT] Loaded Game/DB/AI/Archetypes/Fengjie/Attacks/Fengjie_AttacksDatatable: 31 rows, struct=AttackDataRow
-[17:44:30] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[17:44:30] [DT] Loaded Game/DB/AI/Archetypes/Yang/Attacks/Yang_Attacks: 29 rows, struct=AttackDataRow
-[17:44:30] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[17:44:30] [DT] Loaded Game/DB/Attacks/WUGUAN_Attacks: 0 rows, struct=AttackDataRow
-[17:44:30] [DT] Total used animation paths found: 298
-[17:44:30] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/_old/Grunt_Attack_Barehands_Sweep_360
-[17:44:30] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/GroundAttack/Grunt_attack_barehands_GroundAttack
-[17:44:30] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/BaseBallHook/Grunt_Attack_barehands_BaseBallHook
-[17:44:30] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Hook/Grunt_Attack_barehands_Hook
-[17:44:30] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/RollUppercut/Grunt_Attack_Barehands_RollUppercut
-[17:44:30] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/KneeStrike/Grunt_Attack_Barehands_KneeStrike
-[17:44:30] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_FastJab
-[17:44:30] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_StraightJab
-[17:44:30] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Rush/Grunt_Attack_Barehands_RushKick
-[17:44:30] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/FalconPunch/Grunt_attack_barehands_FalconPunch
-[17:44:30] [MATCH] System.Exception: Matched 180/518 as vanilla
-Sample scanned: [Game/Animations/BigGuy/Attacks/Barehands/Combo01/BigGuy_attack_barehands_Combo01_DoubleRibs, Game/Animations/BigGuy/Attacks/Barehands/Combo01/BigGuy_attack_barehands_Combo01_Hook, Game/Animations/BigGuy/Attacks/Barehands/Combo01/BigGuy_attack_barehands_Combo01_Uppercut, Game/Animations/BigGuy/Attacks/Barehands/GroundAttack/BigGuy_attack_barehands_GroundAttack_60fps, Game/Animations/BigGuy/Attacks/Barehands/Heavy/BigGuy_attack_barehands_Heavy_DownUppercut]
-Sample used:    [Game/Animations/Grunt/Attacks/Barehands/_old/Grunt_Attack_Barehands_Sweep_360, Game/Animations/Grunt/Attacks/Barehands/GroundAttack/Grunt_attack_barehands_GroundAttack, Game/Animations/Grunt/Attacks/Barehands/BaseBallHook/Grunt_Attack_barehands_BaseBallHook, Game/Animations/Grunt/Attacks/Barehands/Hook/Grunt_Attack_barehands_Hook, Game/Animations/Grunt/Attacks/Barehands/RollUppercut/Grunt_Attack_Barehands_RollUppercut]
-[17:44:35] [MAP] Built anim→DB mapping: 492 entries
-[17:44:35] [COMBO] Loaded MainChar_ComboTree: exportType=Combo
-[17:44:35] [COMBO] Parsed 57 raw nodes
-[17:44:35] [COMBO] Parsed 47 raw edges
-[17:44:35] [COMBO] Final: 36 nodes, 21 edges (removed 21 conduits)
-[17:44:53] [MESH] Loaded 'FireDisciple' from Game/Characters/PNJ/Disicple/M/Meshes/SK_Disciple_M_Hideout02_Fighter_01 (13990 verts, 254 bones)
-[17:44:53] [DEBUG] Anim=Game/Animations/FireDisciple/Attacks/Barehands/MixUpCombo/FireDisicple_Attack_Barehands_Sweep, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
-[17:44:55] [MESH] Loaded 'FireDisciple' from Game/Characters/PNJ/Disicple/M/Meshes/SK_Disciple_M_Hideout02_Fighter_01 (13990 verts, 254 bones)
-[17:44:55] [DEBUG] Anim=Game/Animations/FireDisciple/Attacks/Barehands/MixUpCombo/FireDisicple_Attack_Barehands_Sweep, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
-[17:44:58] [EXPORT] System.Exception: === EXPORT START: 1 modified nodes ===
-[17:44:58] [EXPORT] System.Exception:   SWAP: /Game/DB/_MainChar/Combos/Attacks/BareHands/Knockdown/MainChar_KD_LowKick_FL -> /Game/DB/AI/Archetypes/FireDisciple/Attacks/Barehands/MixUpCombo/FireDisciple_barehands_Sweep
-[17:44:58] [RAWPATCH] System.Exception: Loaded .uasset=49993 bytes, .uexp=101941 bytes
-[17:44:58] [RAWPATCH] System.Exception: Header: NameCount=604, NameOffset=193
-[17:44:58] [RAWPATCH] System.Exception: Name table ends at 39905 (read 604 entries)
-[17:44:58] [RAWPATCH] System.Exception:   New long path '/Game/DB/AI/Archetypes/FireDisciple/Attacks/Barehands/MixUpCombo/FireDisciple_barehands_Sweep' -> name[604]
-[17:44:58] [RAWPATCH] System.Exception:   New short name 'FireDisciple_barehands_Sweep' -> name[605]
-[17:44:58] [RAWPATCH] System.Exception:   New qualified path '/Game/DB/AI/Archetypes/FireDisciple/Attacks/Barehands/MixUpCombo/FireDisciple_barehands_Sweep.FireDisciple_barehands_Sweep' -> name[606]
-[17:44:58] [RAWPATCH] System.Exception: Old->New index mappings: 3
-[17:44:58] [RAWPATCH] System.Exception:   name[162]='/Game/DB/_MainChar/Combos/Attacks/BareHands/Knockdown/MainChar_KD_LowKick_FL' -> name[604]
-[17:44:58] [RAWPATCH] System.Exception:   name[469]='MainChar_KD_LowKick_FL' -> name[605]
-[17:44:58] [RAWPATCH] System.Exception:   name[163]='/Game/DB/_MainChar/Combos/Attacks/BareHands/Knockdown/MainChar_KD_LowKick_FL.MainChar_KD_LowKick_FL' -> name[606]
-[17:44:58] [RAWPATCH] System.Exception: Skipping .uasset blind scan — old FName indices preserved in expanded name table
-[17:44:58] [RAWPATCH] System.Exception: Export[0]: SerialOffset=49993, SerialSize=201
-[17:44:58] [RAWPATCH] System.Exception: Export[1]: SerialOffset=50194, SerialSize=227
-[17:44:58] [RAWPATCH] System.Exception: Export[2]: SerialOffset=50421, SerialSize=201
-[17:44:58] [RAWPATCH] System.Exception: Export[3]: SerialOffset=50622, SerialSize=201
-[17:44:58] [RAWPATCH] System.Exception: Export[4]: SerialOffset=50823, SerialSize=201
-[17:44:58] [RAWPATCH] System.Exception: Export[5]: SerialOffset=51024, SerialSize=227
-[17:44:58] [RAWPATCH] System.Exception: Export[6]: SerialOffset=51251, SerialSize=201
-[17:44:58] [RAWPATCH] System.Exception: Export[7]: SerialOffset=51452, SerialSize=201
-[17:44:58] [RAWPATCH] System.Exception: Export[8]: SerialOffset=51653, SerialSize=201
-[17:44:58] [RAWPATCH] System.Exception: Export[9]: SerialOffset=51854, SerialSize=201
-[17:44:58] [RAWPATCH] System.Exception: Export[10]: SerialOffset=52055, SerialSize=201
-[17:44:58] [RAWPATCH] System.Exception: Export[11]: SerialOffset=52256, SerialSize=373
-[17:44:58] [RAWPATCH] System.Exception: Export[12]: SerialOffset=52629, SerialSize=373
-[17:44:58] [RAWPATCH] System.Exception: Export[13]: SerialOffset=53002, SerialSize=97190
-[17:44:58] [RAWPATCH] System.Exception: Found Combo export: index=13, uexp range=[3009, 100199)
-[17:44:58] [RAWPATCH] System.Exception:   .uexp patched FName at offset 98204: 469 -> 605 (prev idx=596)
-[17:44:58] [RAWPATCH] System.Exception:   .uexp patched FName at offset 49700: 163 -> 606 (prev idx=0)
-[17:44:58] [RAWPATCH] System.Exception: Total .uexp FName patches: 2
-[17:44:58] [RAWPATCH] System.Exception:   Header trace: GenerationsCount=1, after Generations at offset 121
-[17:44:58] [RAWPATCH] System.Exception:   Header trace: after EngineVersions at offset 149
-[17:44:58] [RAWPATCH] System.Exception:   Header trace: after PackageSource at offset 161
-[17:44:58] [RAWPATCH] System.Exception:   Found AssetRegistryDataOffset at offset 165 = 49209
-[17:44:58] [RAWPATCH] System.Exception:   Found BulkDataStartOffset at offset 169 = 151930
-[17:44:58] [RAWPATCH] System.Exception:   Found PreloadDependencyOffset at offset 189 = 49213
-[17:44:58] [RAWPATCH] System.Exception:   Header trace complete: found 3 offset fields to patch
-[17:44:58] [RAWPATCH] System.Exception:   Patched AssetRegistryDataOffset at offset 165: 49209 -> 49479
-[17:44:58] [RAWPATCH] System.Exception:   Patched BulkDataStartOffset at offset 169: 151930 -> 152200
-[17:44:58] [RAWPATCH] System.Exception:   Patched PreloadDependencyOffset at offset 189: 49213 -> 49483
-[17:44:58] [RAWPATCH] System.Exception:   Patched SerialOffset export[0] at offset 47463: 49993 -> 50263
-[17:44:58] [RAWPATCH] System.Exception:   Patched SerialOffset export[1] at offset 47567: 50194 -> 50464
-[17:44:58] [RAWPATCH] System.Exception:   Patched SerialOffset export[2] at offset 47671: 50421 -> 50691
-[17:44:58] [RAWPATCH] System.Exception:   Patched SerialOffset export[3] at offset 47775: 50622 -> 50892
-[17:44:58] [RAWPATCH] System.Exception:   Patched SerialOffset export[4] at offset 47879: 50823 -> 51093
-[17:44:58] [RAWPATCH] System.Exception:   Patched SerialOffset export[5] at offset 47983: 51024 -> 51294
-[17:44:58] [RAWPATCH] System.Exception:   Patched SerialOffset export[6] at offset 48087: 51251 -> 51521
-[17:44:58] [RAWPATCH] System.Exception:   Patched SerialOffset export[7] at offset 48191: 51452 -> 51722
-[17:44:58] [RAWPATCH] System.Exception:   Patched SerialOffset export[8] at offset 48295: 51653 -> 51923
-[17:44:58] [RAWPATCH] System.Exception:   Patched SerialOffset export[9] at offset 48399: 51854 -> 52124
-[17:44:58] [RAWPATCH] System.Exception:   Patched SerialOffset export[10] at offset 48503: 52055 -> 52325
-[17:44:58] [RAWPATCH] System.Exception:   Patched SerialOffset export[11] at offset 48607: 52256 -> 52526
-[17:44:58] [RAWPATCH] System.Exception:   Patched SerialOffset export[12] at offset 48711: 52629 -> 52899
-[17:44:58] [RAWPATCH] System.Exception:   Patched SerialOffset export[13] at offset 48815: 53002 -> 53272
-[17:44:58] [RAWPATCH] System.Exception:   Patched SerialOffset export[14] at offset 48919: 150192 -> 150462
-[17:44:58] [RAWPATCH] System.Exception:   Patched SerialOffset export[15] at offset 49023: 150510 -> 150780
-[17:44:58] [RAWPATCH] System.Exception:   Patched SerialOffset export[16] at offset 49127: 151120 -> 151390
-[17:44:58] [RAWPATCH] System.Exception:   Patched SerialOffset export[17] at offset 49231: 151730 -> 152000
-[17:44:58] [RAWPATCH] System.Exception:   Patched SerialOffset export[18] at offset 49335: 151803 -> 152073
-[17:44:58] [RAWPATCH] System.Exception: WRITTEN: .uasset 49993 -> 50263 bytes (+270 for 3 new name entries)
-[17:44:58] [RAWPATCH] System.Exception: WRITTEN: .uexp 101941 -> 101941 bytes (same size, 2 FName patches)
-[17:44:58] [RAWPATCH] System.Exception: === RAW BINARY PATCH COMPLETE: 2 .uexp patches, 0 .uasset patches, 3 new names ===
-[17:44:58] [EXPORT] System.Exception: Filelist content:
-"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\temp_mod\Sifu\Content\DB\_MainChar\Combos\MainChar_ComboTree.uasset" "../../../Sifu/Content/DB/_MainChar/Combos/MainChar_ComboTree.uasset"
-"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\temp_mod\Sifu\Content\DB\_MainChar\Combos\MainChar_ComboTree.uexp" "../../../Sifu/Content/DB/_MainChar/Combos/MainChar_ComboTree.uexp"
-[17:44:58] [EXPORT] System.Exception: Source check: exists=True, size=50263 bytes - C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\temp_mod\Sifu\Content\DB\_MainChar\Combos\MainChar_ComboTree.uasset -> ../../../Sifu/Content/DB/_MainChar/Combos/MainChar_ComboTree.uasset
-[17:44:58] [EXPORT] System.Exception: Source check: exists=True, size=101941 bytes - C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\temp_mod\Sifu\Content\DB\_MainChar\Combos\MainChar_ComboTree.uexp -> ../../../Sifu/Content/DB/_MainChar/Combos/MainChar_ComboTree.uexp
-[17:44:59] [EXPORT] System.Exception: UnrealPak stdout:
-LogPakFile: Display: Using command line for crypto configuration
-LogPakFile: Display: Loading response file C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\temp_mod\filelist.txt
-LogPakFile: Display: Added 2 entries to add to pak file.
-LogPakFile: Display: Collecting files to add to pak file...
-LogPakFile: Display: Collected 2 files in 0.00s.
-LogPakFile: Display: Creating pak C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\MainCharComboMod.pak.
-LogDerivedDataCache: Display: Performance to ../../../Engine/DerivedDataCache: Latency=0.00ms. RandomReadSpeed=999.00MBs, RandomWriteSpeed=999.00MBs. Assigned SpeedClass 'Local'
-LogPakFile: Display: Added 2 files, 152814 bytes total, time 0.01s.
-LogPakFile: Display: PrimaryIndex size: 171 bytes
-LogPakFile: Display: PathHashIndex size: 32 bytes
-LogPakFile: Display: FullDirectoryIndex size: 80 bytes
-LogPakFile: Display: Encryption - DISABLED
-LogPakFile: Display: Unreal pak executed in 0.009209 seconds
-
-[17:44:59] [EXPORT] System.Exception: UnrealPak stderr:
-
-[17:44:59] [EXPORT] System.Exception: UnrealPak exit code: 0
-[17:44:59] [EXPORT] System.Exception: Created pak size: 152814 bytes
-[17:44:59] [EXPORT] System.Exception: Pak list stdout:
-LogPakFile: Display: Using command line for crypto configuration
-LogPakFile: Display: Mount point ../../../Sifu/Content/DB/_MainChar/Combos/
-LogPakFile: Display: "MainChar_ComboTree.uasset" offset: 0, size: 50263 bytes, sha1: 3F24AAC742C00C08A2ABDCB44268D08A64EC1402, compression: None.
-LogPakFile: Display: "MainChar_ComboTree.uexp" offset: 50316, size: 101941 bytes, sha1: B1D0C47D4654849BD6ACC97FF2347CA9E9801E91, compression: None.
-LogPakFile: Display: 2 files (152204 bytes), (0 filtered bytes).
-LogPakFile: Display: Unreal pak executed in 0.000597 seconds
-
-[17:44:59] [EXPORT] System.Exception: Pak list stderr:
-
+[00:25:31] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
+[00:25:32] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
+[00:25:32] [DT] Loaded Game/DB/AI/Archetypes/Grunt/Attacks/Grunt_AttacksDatatable: 19 rows, struct=AttackDataRow
+[00:25:32] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:25:32] [DT] Loaded Game/DB/AI/Archetypes/Grunt/Attacks/Grunt_WeaponsDatatable: 15 rows, struct=AttackDataRow
+[00:25:32] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:25:32] [DT] Loaded Game/DB/AI/Archetypes/FlashKick/Attacks/FlashKick_AttackData: 30 rows, struct=AttackDataRow
+[00:25:32] [DT] Loaded Game/DB/AI/Archetypes/FlashKick/Attacks/FlashKick_AttackData: 30 rows, struct=AttackDataRow
+[00:25:32] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:25:32] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:25:32] [DT] Loaded Game/DB/AI/Archetypes/BigGuy/Attacks/BigGuy_AttackData: 28 rows, struct=AttackDataRow
+[00:25:32] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:25:32] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:25:32] [DT] Loaded Game/DB/AI/Archetypes/Bodyguard/Attacks/BodyGuard_AttackData: 14 rows, struct=AttackDataRow
+[00:25:32] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:25:32] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:25:32] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_AttackData: 22 rows, struct=AttackDataRow
+[00:25:32] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_AttackData: 22 rows, struct=AttackDataRow
+[00:25:32] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:25:32] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:25:32] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_Staff_AttackData: 11 rows, struct=AttackDataRow
+[00:25:32] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:25:32] [DT] Loaded Game/DB/AI/Archetypes/Fajar/Attacks/Fajar_AttacksDatatable: 18 rows, struct=AttackDataRow
+[00:25:32] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:25:32] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:25:32] [DT] Loaded Game/DB/AI/Archetypes/Sean/Attacks/Sean_AttacksDatatable: 35 rows, struct=AttackDataRow
+[00:25:32] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:25:32] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:25:32] [DT] Loaded Game/DB/AI/Archetypes/Kuroki/Kuroki_AttacksDatatable: 48 rows, struct=AttackDataRow
+[00:25:32] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:25:32] [DT] Loaded Game/DB/AI/Archetypes/Fengjie/Attacks/Fengjie_AttacksDatatable: 31 rows, struct=AttackDataRow
+[00:25:32] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:25:32] [DT] Loaded Game/DB/AI/Archetypes/Yang/Attacks/Yang_Attacks: 29 rows, struct=AttackDataRow
+[00:25:32] [DT] Loaded Game/DB/AI/Archetypes/Yang/Attacks/Yang_Attacks: 29 rows, struct=AttackDataRow
+[00:25:32] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:25:32] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[00:25:32] [DT] Loaded Game/DB/Attacks/WUGUAN_Attacks: 0 rows, struct=AttackDataRow
+[00:25:32] [DT] Total used animation paths found: 298
+[00:25:32] [DT] Total used animation paths found: 298
+[00:25:32] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/_old/Grunt_Attack_Barehands_Sweep_360
+[00:25:32] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/_old/Grunt_Attack_Barehands_Sweep_360
+[00:25:32] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/GroundAttack/Grunt_attack_barehands_GroundAttack
+[00:25:32] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/GroundAttack/Grunt_attack_barehands_GroundAttack
+[00:25:32] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/BaseBallHook/Grunt_Attack_barehands_BaseBallHook
+[00:25:32] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/BaseBallHook/Grunt_Attack_barehands_BaseBallHook
+[00:25:32] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Hook/Grunt_Attack_barehands_Hook
+[00:25:32] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Hook/Grunt_Attack_barehands_Hook
+[00:25:32] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/RollUppercut/Grunt_Attack_Barehands_RollUppercut
+[00:25:32] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/RollUppercut/Grunt_Attack_Barehands_RollUppercut
+[00:25:32] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/KneeStrike/Grunt_Attack_Barehands_KneeStrike
+[00:25:32] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/KneeStrike/Grunt_Attack_Barehands_KneeStrike
+[00:25:32] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_FastJab
+[00:25:32] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_FastJab
+[00:25:32] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_StraightJab
+[00:25:32] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_StraightJab
+[00:25:32] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Rush/Grunt_Attack_Barehands_RushKick
+[00:25:32] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/FalconPunch/Grunt_attack_barehands_FalconPunch
+[00:25:32] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/FalconPunch/Grunt_attack_barehands_FalconPunch
+[00:25:46] [MAP] Built anim→DB mapping: 503 entries
+[00:25:46] [MAP] Built anim→DB mapping: 503 entries
+[00:25:46] [COMBO] Loaded MainChar_ComboTree: exportType=Combo
+[00:25:46] [COMBO] Split tree node 0 into 2 direction variants: GetUp Attack [], GetUp Attack []
+[00:25:46] [COMBO] Split tree node 4 into 2 direction variants: ShinKick [FR], ShinKick [BL]
+[00:25:46] [COMBO] Split tree node 4 into 2 direction variants: ShinKick [FR], ShinKick [BL]
+[00:25:46] [COMBO] Split tree node 5 into 2 direction variants: ThroatPunch [FL], ThroatPunch [BL]
+[00:25:46] [COMBO] Split tree node 5 into 2 direction variants: ThroatPunch [FL], ThroatPunch [BL]
+[00:25:46] [COMBO] Split tree node 7 into 2 direction variants: Palm02 [FL], Palm02 [BR]
+[00:25:46] [COMBO] Split tree node 7 into 2 direction variants: Palm02 [FL], Palm02 [BR]
+[00:25:46] [COMBO] Split tree node 8 into 2 direction variants: TripleHit [FL], TripleHit [BR]
+[00:25:46] [COMBO] Split tree node 9 into 2 direction variants: MultiHitClaws [FL], MultiHitClaws [BR]
+[00:25:46] [COMBO] Split tree node 10 into 2 direction variants: DoubleElbow [FL], DoubleElbow [BR]
+[00:25:46] [COMBO] Split tree node 10 into 2 direction variants: DoubleElbow [FL], DoubleElbow [BR]
+[00:25:46] [COMBO] Split tree node 11 into 2 direction variants: ClawsElbow [FL], ClawsElbow [BR]
+[00:25:46] [COMBO] Split tree node 11 into 2 direction variants: ClawsElbow [FL], ClawsElbow [BR]
+[00:25:46] [COMBO] Split tree node 12 into 2 direction variants: ElbowSync [FL], ElbowSync [BR]
+[00:25:46] [COMBO] Split tree node 14 into 2 direction variants: Ext02 [FR], Ext02 [BL]
+[00:25:46] [COMBO] Split tree node 15 into 2 direction variants: AoeKnockdown [FL], AoeKnockdown [BR]
+[00:25:46] [COMBO] Split tree node 16 into 2 direction variants: DelaySpinHighKick [FL], DelaySpinHighKick [BL]
+[00:25:46] [COMBO] Split tree node 16 into 2 direction variants: DelaySpinHighKick [FL], DelaySpinHighKick [BL]
+[00:25:46] [COMBO] Split tree node 30 into 2 direction variants: FrontKick [FR], FrontKick [BL]
+[00:25:46] [COMBO] Split tree node 31 into 2 direction variants: LowKick [FL], LowKick [BR]
+[00:25:46] [COMBO] Split tree node 31 into 2 direction variants: LowKick [FL], LowKick [BR]
+[00:25:46] [COMBO] Split tree node 32 into 2 direction variants: Palm Strike [FR], Palm Strike [BL]
+[00:25:46] [COMBO] Split tree node 32 into 2 direction variants: Palm Strike [FR], Palm Strike [BL]
+[00:25:46] [COMBO] Split tree node 33 into 2 direction variants: GuardBreak [FL], GuardBreak [BL]
+[00:25:46] [COMBO] Split tree node 36 into 2 direction variants: Thrust Kick [FL], Thrust Kick [BL]
+[00:25:46] [COMBO] Split tree node 36 into 2 direction variants: Thrust Kick [FL], Thrust Kick [BL]
+[00:25:46] [COMBO] Split tree node 39 into 2 direction variants: GroundPunch [FL], GroundPunch [BL]
+[00:25:46] [COMBO] Split tree node 44 into 2 direction variants: Jab(new) [FR], Jab(new) [BL]
+[00:25:46] [COMBO] Split tree node 44 into 2 direction variants: Jab(new) [FR], Jab(new) [BL]
+[00:25:46] [COMBO] Split tree node 45 into 2 direction variants: ThroatPlexus [FR], ThroatPlexus [BL]
+[00:25:46] [COMBO] Split tree node 45 into 2 direction variants: ThroatPlexus [FR], ThroatPlexus [BL]
+[00:25:46] [COMBO] Split tree node 48 into 2 direction variants: BellyPalm [FR], BellyPalm [BR]
+[00:25:46] [COMBO] Split tree node 48 into 2 direction variants: BellyPalm [FR], BellyPalm [BR]
+[00:25:46] [COMBO] Split tree node 50 into 2 direction variants: MultiHit [FL], MultiHit [BR]
+[00:25:46] [COMBO] Split tree node 50 into 2 direction variants: MultiHit [FL], MultiHit [BR]
+[00:25:46] [COMBO] Split tree node 51 into 2 direction variants: ResilientAttack [FL], ResilientAttack [BL]
+[00:25:46] [COMBO] Split tree node 51 into 2 direction variants: ResilientAttack [FL], ResilientAttack [BL]
+[00:25:47] [COMBO] Split tree node 54 into 2 direction variants: SpinHighKickFollowUp [FL], SpinHighKickFollowUp [BL]
+[00:25:47] [COMBO] Split tree node 54 into 2 direction variants: SpinHighKickFollowUp [FL], SpinHighKickFollowUp [BL]
+[00:25:47] [COMBO] Parsed 81 raw nodes from 57 tree nodes
+[00:25:47] [COMBO] Parsed 110 raw edges
+[00:25:47] [COMBO] Parsed 81 raw nodes from 57 tree nodes
+[00:25:47] [COMBO] Parsed 110 raw edges
+[00:25:47] [COMBO] Final: 60 nodes, 64 edges (removed 21 conduits)

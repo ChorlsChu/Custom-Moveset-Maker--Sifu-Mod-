@@ -8,6 +8,26 @@ let isPlaying = false;
 let playbackSpeed = 1.0;
 let bones = [];
 let boneMap = {};
+
+let showSkeletonLines = true;
+
+window.setSkeletonVisible = function(visible) {
+    showSkeletonLines = visible;
+    if (skeletonHelper) skeletonHelper.visible = visible;
+};
+
+window.getCameraState = function() {
+    return JSON.stringify({
+        px: camera.position.x, py: camera.position.y, pz: camera.position.z,
+        tx: orbitTarget.x, ty: orbitTarget.y, tz: orbitTarget.z
+    });
+};
+
+window.setCameraState = function(px, py, pz, tx, ty, tz) {
+    camera.position.set(px, py, pz);
+    orbitTarget.set(tx, ty, tz);
+    if (updateOrbitCamera) updateOrbitCamera();
+};
 let rootBone = null;
 let currentMesh = null;
 let currentSkeleton = null;
@@ -150,7 +170,6 @@ function clearMesh() {
 function loadMesh(data, characterName) {
     clearMesh();
     if (characterName && characterName !== lastLoadedCharacter) {
-        cameraInitialized = false;
         lastLoadedCharacter = characterName;
     }
 
@@ -215,6 +234,7 @@ function loadMesh(data, characterName) {
     skeletonHelper = new THREE.SkeletonHelper(threeBones[0]);
     skeletonHelper.material.color.set(0x89b4fa);
     skeletonHelper.material.linewidth = 2;
+    skeletonHelper.visible = showSkeletonLines;
     scene.add(skeletonHelper);
 }
 
@@ -276,6 +296,7 @@ function buildSkeleton(data) {
     skeletonHelper = new THREE.SkeletonHelper(rootBone);
     skeletonHelper.material.color.set(0x89b4fa);
     skeletonHelper.material.linewidth = 2;
+    skeletonHelper.visible = showSkeletonLines;
     scene.add(skeletonHelper);
 
     document.getElementById('info').textContent = `${bones.length} bones`;

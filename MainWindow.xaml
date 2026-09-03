@@ -7,8 +7,10 @@
         WindowStartupLocation="CenterScreen"
         Background="#1e1e2e" Foreground="#cdd6f4"
         Loaded="MainWindow_Loaded"
+        Closing="MainWindow_Closing"
         PreviewKeyDown="MainWindow_PreviewKeyDown"
-        PreviewKeyUp="MainWindow_PreviewKeyUp">
+        PreviewKeyUp="MainWindow_PreviewKeyUp"
+        PreviewMouseDown="Window_PreviewMouseDown">
 
     <Window.Resources>
         <Style x:Key="DarkButton" TargetType="Button">
@@ -186,7 +188,19 @@
                     Tag="{Binding}"
                     Margin="32,1,4,1">
                 <DockPanel>
-                    <Border Background="#a6e3a1" Width="3" CornerRadius="2" DockPanel.Dock="Left" Margin="0,0,10,0"/>
+                    <Border Width="3" CornerRadius="2" DockPanel.Dock="Left" Margin="0,0,10,0"
+                            Background="#a6e3a1">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="#a6e3a1"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsValid}" Value="False">
+                                        <Setter Property="Background" Value="#f38ba8"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                    </Border>
                     <TextBlock Text="&#x2630;" DockPanel.Dock="Left"
                                Foreground="#585b70" FontSize="13"
                                VerticalAlignment="Center" Margin="0,0,10,0"
@@ -229,6 +243,7 @@
                 <TextBlock Text="Sifu Moveset Editor" FontSize="16" FontWeight="Bold"
                            Foreground="#89b4fa" VerticalAlignment="Center"/>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                    <Button Content="Import Mod" Style="{StaticResource DarkButton}" Click="ImportMod_Click"/>
                     <Button Content="Save" Style="{StaticResource DarkButton}" Click="SaveProject_Click"/>
                     <Button Content="Load" Style="{StaticResource DarkButton}" Click="LoadProject_Click"/>
                     <Button Content="Settings" Style="{StaticResource DarkButton}" Click="Settings_Click"/>
@@ -254,13 +269,13 @@
             <!-- Left panel: Combo Graph + Preview -->
             <Grid Grid.Column="0">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="*" MinHeight="200"/>
+                    <RowDefinition Height="*" MinHeight="100"/>
                     <RowDefinition Height="3"/>
-                    <RowDefinition Height="200" MinHeight="100"/>
+                    <RowDefinition Height="*" MinHeight="100"/>
                 </Grid.RowDefinitions>
 
                 <!-- Combo Graph -->
-                <Border Grid.Row="0" Background="#181825" CornerRadius="0" Margin="0" ClipToBounds="True"
+                <Border x:Name="comboBorder" Grid.Row="0" Background="#181825" CornerRadius="0" Margin="0" ClipToBounds="True"
                         Focusable="True" PreviewMouseDown="ComboGraphBorder_PreviewMouseDown">
                     <Grid>
                         <Canvas Name="comboCanvas"
@@ -275,10 +290,17 @@
                             </Canvas.RenderTransform>
                         </Canvas>
                         <Border Background="#11111b" Padding="10,6"
-                                VerticalAlignment="Top" IsHitTestVisible="False">
+                                VerticalAlignment="Top">
                             <DockPanel>
                                 <TextBlock Text="Combo Graph" FontWeight="Bold"
                                            Foreground="#89b4fa" FontSize="13" VerticalAlignment="Center"/>
+                                <ComboBox Name="cmbStance" Width="130" FontSize="11" Margin="8,0,0,0"
+                                          VerticalAlignment="Center" SelectionChanged="CmbStance_SelectionChanged"
+                                          Visibility="Collapsed" Background="#313244" Foreground="#cdd6f4"
+                                          BorderBrush="#45475a"/>
+                                <Button Name="btnResetMode" Content="Reset Node Mode" Style="{StaticResource DarkButton}"
+                                        Click="ToggleResetMode_Click" FontSize="11" Padding="8,3" Margin="0,0,8,0"
+                                        Visibility="Collapsed"/>
                                 <TextBlock Name="txtComboInfo" Text="" Foreground="#6c7086" FontSize="11"
                                            HorizontalAlignment="Right" VerticalAlignment="Center"/>
                             </DockPanel>
@@ -337,8 +359,10 @@
                             <StackPanel>
                                 <TextBlock Text="Animation Info" FontWeight="Bold"
                                            Foreground="#a6e3a1" FontSize="12" Margin="0,0,0,6"/>
+                                <TextBlock Name="txtDisplayName" Text="Display: -" Foreground="#89b4fa"
+                                           FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap"/>
                                 <TextBlock Name="txtAnimName" Text="Name: -" Foreground="#cdd6f4"
-                                           FontSize="11" TextWrapping="Wrap"/>
+                                           FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
                                 <TextBlock Name="txtAnimFrames" Text="Frames: -" Foreground="#cdd6f4"
                                            FontSize="11" Margin="0,4,0,0"/>
                                 <TextBlock Name="txtAnimDuration" Text="Duration: -" Foreground="#cdd6f4"
@@ -369,10 +393,12 @@
                                                VerticalAlignment="Center" Margin="0,0,6,0"/>
                                     <ComboBox Name="cmbCharacter" Style="{StaticResource DarkComboBox}"
                                               Width="160" SelectionChanged="Character_Changed" FontSize="11"/>
-                                    <CheckBox Name="chkShowMesh" Content="Show Mesh"
-                                              Foreground="#6c7086" FontSize="11"
-                                              VerticalAlignment="Center" Margin="12,0,0,0"
-                                              IsChecked="True"/>
+                                    <CheckBox Name="chkShowLines" Content="Show Lines"
+                                               Foreground="#6c7086" FontSize="11"
+                                               VerticalAlignment="Center" Margin="12,0,0,0"
+                                               IsChecked="True"
+                                               Checked="ChkShowLines_Changed"
+                                               Unchecked="ChkShowLines_Changed"/>
                                 </DockPanel>
                             </Border>
                             <wv2:WebView2 x:Name="webView" Grid.Row="1"/>
@@ -397,9 +423,17 @@
                         </DockPanel>
                     </Border>
                     <Border DockPanel.Dock="Top" Padding="6,4" Background="#11111b">
-                        <TextBox Name="txtSearch" Style="{StaticResource DarkTextBox}"
-                                 TextChanged="Search_Changed"
-                                 Width="280" HorizontalAlignment="Left"/>
+                        <DockPanel>
+                            <CheckBox Name="chkShowFailed" Content="Show Failed"
+                                      Foreground="#6c7086" FontSize="11"
+                                      VerticalAlignment="Center" Margin="0,0,8,0"
+                                      IsChecked="False"
+                                      Checked="ShowFailed_Changed"
+                                      Unchecked="ShowFailed_Changed"/>
+                            <TextBox Name="txtSearch" Style="{StaticResource DarkTextBox}"
+                                     TextChanged="Search_Changed"
+                                     Width="240" HorizontalAlignment="Left"/>
+                        </DockPanel>
                     </Border>
                     <Border DockPanel.Dock="Top" Padding="6,4" Background="#11111b">
                         <ComboBox Name="cmbFilter" Style="{StaticResource DarkComboBox}"
@@ -473,10 +507,10 @@
                                                                VerticalAlignment="Center" Margin="0,0,10,0"
                                                                IsHitTestVisible="False"/>
                                                     <StackPanel>
-                        <TextBlock Text="{Binding DisplayNameClean}"
-                                                                   Foreground="#cdd6f4" FontSize="12"
-                                                                   FontWeight="SemiBold"
-                                                                   TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding DisplayName}"
+                                                                    Foreground="#cdd6f4" FontSize="12"
+                                                                    FontWeight="SemiBold"
+                                                                    TextTrimming="CharacterEllipsis"/>
                                                         <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
                                                             <Border Style="{StaticResource TagBadge}">
                                                                 <TextBlock Text="{Binding Character}"

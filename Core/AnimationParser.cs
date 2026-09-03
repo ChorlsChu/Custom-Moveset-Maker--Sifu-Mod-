@@ -27,19 +27,78 @@ public class MoveInfo
     public string WeaponType { get; set; } = "";
     public string Category { get; set; } = "";
     public bool IsUsed { get; set; } = false;
+    public bool IsValid { get; set; } = true;
     public string EnemyType { get; set; } = "";
 
     public string DisplayNameClean
     {
         get
         {
+            var result = DisplayName;
+
             if (!string.IsNullOrEmpty(Character) && !string.IsNullOrEmpty(WeaponType))
             {
                 var prefix = $"{Character}_attack_{WeaponType}_";
-                if (DisplayName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                    return DisplayName[prefix.Length..];
+                if (result.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    result = result[prefix.Length..];
             }
-            return DisplayName;
+
+            if (result == DisplayName && !string.IsNullOrEmpty(WeaponType))
+            {
+                var idx = result.IndexOf(WeaponType, StringComparison.OrdinalIgnoreCase);
+                if (idx > 0)
+                {
+                    var afterWeapon = idx + WeaponType.Length;
+                    if (afterWeapon < result.Length && result[afterWeapon] == '_')
+                        afterWeapon++;
+                    if (afterWeapon < result.Length)
+                        result = result[afterWeapon..];
+                }
+            }
+
+            if (result == DisplayName && !string.IsNullOrEmpty(Character))
+            {
+                var charAttackPrefix = $"{Character}_attack_";
+                if (result.StartsWith(charAttackPrefix, StringComparison.OrdinalIgnoreCase))
+                    result = result[charAttackPrefix.Length..];
+
+                if (result == DisplayName)
+                {
+                    var charPrefix = $"{Character}_";
+                    if (result.StartsWith(charPrefix, StringComparison.OrdinalIgnoreCase))
+                        result = result[charPrefix.Length..];
+                }
+            }
+
+            if (result == DisplayName)
+            {
+                var lastUnderscore = result.LastIndexOf('_');
+                if (lastUnderscore > 0 && lastUnderscore < result.Length - 1)
+                {
+                    var candidate = result[(lastUnderscore + 1)..];
+                    if (candidate.Length > 2)
+                        result = candidate;
+                }
+            }
+
+            if (string.Equals(Character, "MainChar", StringComparison.OrdinalIgnoreCase))
+            {
+                var mainCharPrefixes = new[] {
+                    "Barehands_", "PunishRepulse_", "PunishKD_", "FollowUp_",
+                    "LightCombo_", "Engage_", "Pressure_", "Punish_", "Skill_", "KD_"
+                };
+                foreach (var pfx in mainCharPrefixes)
+                {
+                    if (result.StartsWith(pfx, StringComparison.OrdinalIgnoreCase)
+                        && result.Length > pfx.Length)
+                    {
+                        result = result[pfx.Length..];
+                        break;
+                    }
+                }
+            }
+
+            return result;
         }
     }
 }
@@ -57,6 +116,7 @@ public class GroupHeader
 public class ComboNode
 {
     public int Id { get; set; }
+    public int TreeIndex { get; set; } = -1;
     public string Name { get; set; } = "";
     public string AnimPath { get; set; } = "";
     public string DefaultAnimPath { get; set; } = "";
@@ -65,6 +125,8 @@ public class ComboNode
     public bool IsRoot { get; set; }
     public int Depth { get; set; }
     public string InputLabel { get; set; } = "";
+    public string DirectionLabel { get; set; } = "";
+    public string VanillaAnimPath { get; set; } = "";
 }
 
 public class ComboEdge
@@ -323,7 +385,7 @@ public class AnimationParser : IDisposable
 
         return new MoveInfo
         {
-            DisplayName = best.name,
+            DisplayName = $"{character}_stance",
             FullPath = gamePath,
             Character = character,
             WeaponType = weapon,
@@ -607,6 +669,89 @@ public class AnimationParser : IDisposable
                 return null;
             }
 
+            return ParseComboTreeFromObject(obj);
+        }
+        catch (Exception ex)
+        {
+            LogDebug($"[COMBO] Error loading MainChar combo tree: {ex.Message}");
+            return null;
+        }
+    }
+
+    public ComboGraph? LoadModdedComboTree(string moddedComboTreeDir)
+    {
+        if (_provider == null || string.IsNullOrEmpty(_contentPath))
+        {
+            LogDebug("[IMPORT] Vanilla parser not initialized");
+            return null;
+        }
+
+        var moddedUasset = Path.Combine(moddedComboTreeDir, "MainChar_ComboTree.uasset");
+        var moddedUexp = Path.Combine(moddedComboTreeDir, "MainChar_ComboTree.uexp");
+
+        if (!File.Exists(moddedUasset))
+        {
+            LogDebug($"[IMPORT] Modded combo tree not found: {moddedUasset}");
+            return null;
+        }
+
+        var vanillaDir = Path.Combine(_contentPath, "DB", "_MainChar", "Combos");
+        var vanillaUasset = Path.Combine(vanillaDir, "MainChar_ComboTree.uasset");
+        var vanillaUexp = Path.Combine(vanillaDir, "MainChar_ComboTree.uexp");
+
+        if (!File.Exists(vanillaUasset))
+        {
+            LogDebug($"[IMPORT] Vanilla combo tree not found: {vanillaUasset}");
+            return null;
+        }
+
+        var backupDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "VanillaBackup");
+        Directory.CreateDirectory(backupDir);
+
+        try
+        {
+            File.Copy(vanillaUasset, Path.Combine(backupDir, "MainChar_ComboTree.uasset"), true);
+            if (File.Exists(vanillaUexp))
+                File.Copy(vanillaUexp, Path.Combine(backupDir, "MainChar_ComboTree.uexp"), true);
+
+            LogDebug($"[IMPORT] Backed up vanilla combo tree to {backupDir}");
+
+            File.Copy(moddedUasset, vanillaUasset, true);
+            if (File.Exists(moddedUexp))
+                File.Copy(moddedUexp, vanillaUexp, true);
+
+            LogDebug("[IMPORT] Swapped in modded combo tree, creating fresh parser (no cache)...");
+
+            using var freshParser = new AnimationParser();
+            freshParser.Initialize(_gameRootPath, _contentPath);
+            return freshParser.LoadMainCharComboTree();
+        }
+        finally
+        {
+            try
+            {
+                var backupUasset = Path.Combine(backupDir, "MainChar_ComboTree.uasset");
+                var backupUexp = Path.Combine(backupDir, "MainChar_ComboTree.uexp");
+
+                if (File.Exists(backupUasset))
+                    File.Copy(backupUasset, vanillaUasset, true);
+                if (File.Exists(backupUexp) && File.Exists(vanillaUexp))
+                    File.Copy(backupUexp, vanillaUexp, true);
+
+                LogDebug("[IMPORT] Restored vanilla combo tree from backup");
+            }
+            catch (Exception ex)
+            {
+                LogDebug($"[IMPORT] WARNING: Failed to restore vanilla combo tree: {ex.Message}");
+                LogDebug($"[IMPORT] Manual restore available at: {backupDir}");
+            }
+        }
+    }
+
+    private ComboGraph? ParseComboTreeFromObject(UObject obj)
+    {
+        try
+        {
             LogDebug($"[COMBO] Loaded MainChar_ComboTree: exportType={obj.ExportType}");
 
             var allNodeStructs = new List<FStructFallback>();
@@ -622,15 +767,28 @@ public class AnimationParser : IDisposable
             }
 
             var rawNodes = new List<ComboNode>();
+            var treeIndexToNodeIds = new Dictionary<int, List<int>>();
+            int nextId = 0;
             for (int i = 0; i < allNodeStructs.Count; i++)
-                rawNodes.Add(ParseComboNodeForGraph(allNodeStructs[i], i));
+            {
+                var variants = ParseComboNodeVariants(allNodeStructs[i], nextId, i);
+                treeIndexToNodeIds[i] = new List<int>();
+                foreach (var variant in variants)
+                {
+                    treeIndexToNodeIds[i].Add(variant.Id);
+                    rawNodes.Add(variant);
+                    nextId++;
+                }
+                if (variants.Count > 1)
+                    LogDebug($"[COMBO] Split tree node {i} into {variants.Count} direction variants: {string.Join(", ", variants.Select(v => $"{v.Name} [{v.DirectionLabel}]"))}");
+            }
 
-            LogDebug($"[COMBO] Parsed {rawNodes.Count} raw nodes");
+            LogDebug($"[COMBO] Parsed {rawNodes.Count} raw nodes from {allNodeStructs.Count} tree nodes");
 
             var rawEdges = new List<ComboEdge>();
-            foreach (var node in rawNodes)
+            for (int ti = 0; ti < allNodeStructs.Count; ti++)
             {
-                var nodeData = allNodeStructs[node.Id];
+                var nodeData = allNodeStructs[ti];
                 var transitionsProp = nodeData.Properties.FirstOrDefault(p => p.Name.Text == "m_Transitions");
                 if (transitionsProp?.Tag is not StructProperty transStruct ||
                     transStruct.Value.StructType is not FStructFallback transData)
@@ -640,6 +798,7 @@ public class AnimationParser : IDisposable
                 if (transArr?.Tag is not ArrayProperty tArr)
                     continue;
 
+                var sourceIds = treeIndexToNodeIds[ti];
                 foreach (var elem in tArr.Value.Properties)
                 {
                     if (elem is not StructProperty elemStruct ||
@@ -655,15 +814,23 @@ public class AnimationParser : IDisposable
                     {
                         if (kv.Value is IntProperty intProp)
                         {
-                            var targetIndex = intProp.Value;
-                            if (targetIndex >= 0 && targetIndex < rawNodes.Count)
+                            var targetTreeIndex = intProp.Value;
+                            if (targetTreeIndex >= 0 && targetTreeIndex < allNodeStructs.Count &&
+                                treeIndexToNodeIds.ContainsKey(targetTreeIndex))
                             {
-                                rawEdges.Add(new ComboEdge
+                                var targetIds = treeIndexToNodeIds[targetTreeIndex];
+                                foreach (var srcId in sourceIds)
                                 {
-                                    FromNodeId = node.Id,
-                                    ToNodeId = targetIndex,
-                                    InputName = inputName
-                                });
+                                    foreach (var tgtId in targetIds)
+                                    {
+                                        rawEdges.Add(new ComboEdge
+                                        {
+                                            FromNodeId = srcId,
+                                            ToNodeId = tgtId,
+                                            InputName = inputName
+                                        });
+                                    }
+                                }
                             }
                         }
                     }
@@ -675,36 +842,56 @@ public class AnimationParser : IDisposable
             var conduitIds = new HashSet<int>(
                 rawNodes.Where(n => string.IsNullOrEmpty(n.AnimPath) && !n.IsRoot).Select(n => n.Id));
 
-            var remap = new Dictionary<int, int>();
+            var remap = new Dictionary<int, List<int>>();
             foreach (var cid in conduitIds)
             {
+                var targets = new List<int>();
                 var visited = new HashSet<int>();
-                var current = cid;
-                while (conduitIds.Contains(current) && visited.Add(current))
+                var queue = new Queue<int>();
+                queue.Enqueue(cid);
+                while (queue.Count > 0)
                 {
-                    var next = rawEdges.FirstOrDefault(e => e.FromNodeId == current)?.ToNodeId;
-                    if (next == null) break;
-                    current = next.Value;
+                    var current = queue.Dequeue();
+                    if (!visited.Add(current)) continue;
+                    foreach (var e in rawEdges.Where(e => e.FromNodeId == current))
+                    {
+                        if (conduitIds.Contains(e.ToNodeId))
+                            queue.Enqueue(e.ToNodeId);
+                        else
+                            targets.Add(e.ToNodeId);
+                    }
                 }
-                remap[cid] = current;
+                remap[cid] = targets.Distinct().ToList();
             }
 
             var finalEdges = new List<ComboEdge>();
             foreach (var edge in rawEdges)
             {
-                if (conduitIds.Contains(edge.FromNodeId) && conduitIds.Contains(edge.ToNodeId))
-                    continue;
+                var fromIsConduit = conduitIds.Contains(edge.FromNodeId);
+                var toIsConduit = conduitIds.Contains(edge.ToNodeId);
+                if (fromIsConduit) continue;
 
-                var fromId = conduitIds.Contains(edge.FromNodeId) ? remap[edge.FromNodeId] : edge.FromNodeId;
-                var toId = conduitIds.Contains(edge.ToNodeId) ? remap[edge.ToNodeId] : edge.ToNodeId;
-                if (fromId == toId) continue;
-
-                finalEdges.Add(new ComboEdge
+                if (toIsConduit && remap.TryGetValue(edge.ToNodeId, out var targets))
                 {
-                    FromNodeId = fromId,
-                    ToNodeId = toId,
-                    InputName = edge.InputName
-                });
+                    foreach (var targetId in targets)
+                    {
+                        finalEdges.Add(new ComboEdge
+                        {
+                            FromNodeId = edge.FromNodeId,
+                            ToNodeId = targetId,
+                            InputName = edge.InputName
+                        });
+                    }
+                }
+                else if (!toIsConduit)
+                {
+                    finalEdges.Add(new ComboEdge
+                    {
+                        FromNodeId = edge.FromNodeId,
+                        ToNodeId = edge.ToNodeId,
+                        InputName = edge.InputName
+                    });
+                }
             }
 
             var keptNodes = rawNodes.Where(n => !conduitIds.Contains(n.Id)).ToList();
@@ -771,7 +958,28 @@ public class AnimationParser : IDisposable
                 ["Thrust Kick"] = "W W + RMB",
                 ["3Hits 02"] = "LMB after parry",
                 ["3Hits 03"] = "LMB after parry",
-                ["MultiHit"] = "RMB delay"
+                ["MultiHit"] = "RMB delay",
+                ["Hook"] = "",
+                ["PalmPunch02"] = "",
+                ["HeadExtPunch02"] = "",
+                ["GroinHead_DoubleHit"] = "",
+                ["ElbowPlexus"] = "",
+                ["BellySlice"] = "",
+                ["TripleHit"] = "",
+                ["ThroatPlexus_DoubleHit"] = "",
+                ["PushKick"] = "",
+                ["DoubleElbowStrike"] = "",
+                ["MonoElbowStrike"] = "",
+                ["DoubleHit_Finisher"] = "",
+                ["ShinKick"] = "",
+                ["ThroatPunch"] = "",
+                ["SpinHighKick"] = "",
+                ["HighCrush"] = "",
+                ["AoeKnockdown"] = "",
+                ["PostGroundPunch"] = "",
+                ["PostPushback"] = "",
+                ["DizzyPunch"] = "",
+                ["GRAB"] = ""
             };
             foreach (var node in graph.Nodes)
             {
@@ -812,21 +1020,71 @@ public class AnimationParser : IDisposable
         }
         catch (Exception ex)
         {
-            LogDebug($"[COMBO] Error loading MainChar combo tree: {ex.Message}");
+            LogDebug($"[COMBO] Error parsing combo tree: {ex.Message}");
             return null;
         }
     }
 
-    private ComboNode ParseComboNodeForGraph(FStructFallback nodeStruct, int id)
+    private static readonly HashSet<string> DirectionSuffixes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "FL", "FR", "BL", "BR", "F", "B", "L", "R"
+    };
+
+    private static string ExtractDirectionLabel(string dbPath)
+    {
+        var fileName = Path.GetFileNameWithoutExtension(dbPath);
+        var lastUnderscore = fileName.LastIndexOf('_');
+        if (lastUnderscore < 0) return "";
+        var suffix = fileName[(lastUnderscore + 1)..];
+        return DirectionSuffixes.Contains(suffix) ? suffix.ToUpperInvariant() : "";
+    }
+
+    private string? ResolveAnimationFromDB(string dbPath)
+    {
+        try
+        {
+            var dbObj = _provider?.SafeLoadPackageObject<UObject>(dbPath);
+            if (dbObj == null) return null;
+
+            var mAttack = dbObj.Properties.FirstOrDefault(p => p.Name.Text == "m_Attack");
+            if (mAttack?.Tag is StructProperty attackStruct &&
+                attackStruct.Value.StructType is FStructFallback attackData)
+            {
+                var mAnimation = attackData.Properties.FirstOrDefault(p => p.Name.Text == "m_Animation");
+                if (mAnimation?.Tag is ObjectProperty animObj && animObj.Value != null)
+                {
+                    var resolved = animObj.Value.ResolvedObject;
+                    if (resolved != null)
+                    {
+                        var fullPath = resolved.GetPathName();
+                        if (!string.IsNullOrEmpty(fullPath) && fullPath != "None")
+                            return NormalizeAnimPath(fullPath);
+                    }
+                }
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    private List<ComboNode> ParseComboNodeVariants(FStructFallback nodeStruct, int nextId, int treeIndex)
     {
         var nameProp = nodeStruct.Properties.FirstOrDefault(p => p.Name.Text == "m_Name");
         var nodeName = nameProp?.Tag is NameProperty np ? np.Value.Text : "";
-
-        var animPath = "";
-        var dbPath = "";
         var isRoot = nodeName.Contains("Conduit", StringComparison.OrdinalIgnoreCase) ||
                      nodeName.Contains("Root", StringComparison.OrdinalIgnoreCase);
 
+        var baseDisplayName = nodeName;
+        if (string.IsNullOrEmpty(nodeName) || nodeName == "None")
+            baseDisplayName = $"Node_{treeIndex}";
+        else
+            baseDisplayName = nodeName
+                .Replace("MainChar_", "")
+                .Replace("_", " ")
+                .Replace("Attack barehands ", "")
+                .Replace("attack barehands ", "");
+
+        var attacks = new List<(string dbPath, string animPath)>();
         var attackInfosProp = nodeStruct.Properties.FirstOrDefault(p => p.Name.Text == "m_AttackInfos");
         if (attackInfosProp?.Tag is StructProperty attackInfosStruct &&
             attackInfosStruct.Value.StructType is FStructFallback attackInfosData)
@@ -836,60 +1094,65 @@ public class AnimationParser : IDisposable
                 if (ap.Name.Text == "m_Attacks" && ap.Tag is NameProperty apName &&
                     apName.Value.Text != "None" && apName.Value.Text.Contains("/"))
                 {
-                    dbPath = NormalizeAnimPath(apName.Value.Text);
-                    try
-                    {
-                        var dbObj = _provider?.SafeLoadPackageObject<UObject>(dbPath);
-                        if (dbObj != null)
-                        {
-                            var mAttack = dbObj.Properties.FirstOrDefault(p => p.Name.Text == "m_Attack");
-                            if (mAttack?.Tag is StructProperty attackStruct &&
-                                attackStruct.Value.StructType is FStructFallback attackData)
-                            {
-                                var mAnimation = attackData.Properties.FirstOrDefault(p => p.Name.Text == "m_Animation");
-                                if (mAnimation?.Tag is ObjectProperty animObj && animObj.Value != null)
-                                {
-                                    var resolved = animObj.Value.ResolvedObject;
-                                    if (resolved != null)
-                                    {
-                                        var fullPath = resolved.GetPathName();
-                                        if (!string.IsNullOrEmpty(fullPath) && fullPath != "None")
-                                            animPath = NormalizeAnimPath(fullPath);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    catch { }
-                    break;
+                    var db = NormalizeAnimPath(apName.Value.Text);
+                    var anim = ResolveAnimationFromDB(db) ?? "";
+                    attacks.Add((db, anim));
                 }
             }
         }
 
-        var displayName = nodeName;
-        if (string.IsNullOrEmpty(nodeName) || nodeName == "None")
+        attacks = attacks.GroupBy(a => a.dbPath).Select(g => g.First()).ToList();
+
+        var distinctDirs = attacks
+            .Select(a => ExtractDirectionLabel(a.dbPath))
+            .Where(d => !string.IsNullOrEmpty(d))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        bool showDirLabels = distinctDirs.Count > 1;
+
+        if (attacks.Count == 0)
         {
-            displayName = $"Node_{id}";
-        }
-        else
-        {
-            displayName = nodeName
-                .Replace("MainChar_", "")
-                .Replace("_", " ")
-                .Replace("Attack barehands ", "")
-                .Replace("attack barehands ", "");
+            return new List<ComboNode>
+            {
+                new ComboNode
+                {
+                    Id = nextId,
+                    TreeIndex = treeIndex,
+                    Name = nodeName == "None" ? "" : nodeName,
+                    AnimPath = "",
+                    DefaultAnimPath = "",
+                    DefaultDBPath = "",
+                    DisplayName = baseDisplayName,
+                    IsRoot = isRoot,
+                    DirectionLabel = ""
+                }
+            };
         }
 
-        return new ComboNode
+        var variants = new List<ComboNode>();
+        int id = nextId;
+        foreach (var (db, anim) in attacks)
         {
-            Id = id,
-            Name = nodeName == "None" ? "" : nodeName,
-            AnimPath = animPath,
-            DefaultAnimPath = animPath,
-            DefaultDBPath = dbPath,
-            DisplayName = displayName,
-            IsRoot = isRoot
-        };
+            var dir = ExtractDirectionLabel(db);
+            var displayName = baseDisplayName;
+            if (showDirLabels && !string.IsNullOrEmpty(dir) && !displayName.EndsWith(dir, StringComparison.OrdinalIgnoreCase))
+                displayName = $"{baseDisplayName} {dir}";
+
+            variants.Add(new ComboNode
+            {
+                Id = id++,
+                TreeIndex = treeIndex,
+                Name = nodeName == "None" ? "" : nodeName,
+                AnimPath = anim,
+                DefaultAnimPath = anim,
+                DefaultDBPath = db,
+                DisplayName = displayName,
+                IsRoot = isRoot,
+                DirectionLabel = dir
+            });
+        }
+
+        return variants;
     }
 
     private string ExtractInputName(FStructFallback transitionData)
@@ -919,25 +1182,80 @@ public class AnimationParser : IDisposable
 
     private static readonly Dictionary<string, string> AnimFallbacks = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["Game/Animations/MainChar/Attacks/Man/Barehands/PostParry/PostParry_Knockdown/MainChar_Attack_Man_Barehands_PunishKD_CrookedFoot_Thrust"] =
-            "Game/Animations/MainChar/Attacks/Man/Barehands/PostParry/PostParry_Knockdown/MainChar_Attack_Man_Barehands_PunishKD_CrookedFoot_Grab_attacker",
         ["Game/Animations/MainChar/Attacks/Man/Barehands/Skills/LightCombo/MultiHit/MainChar_Attack_Man_Barehands_Skill_LightCombo_MultiHit_FL"] =
-            "Game/Animations/MainChar/Attacks/SpecialCombos/AltPakMei/MainChar_Attack_SpecialCombo_AltPakMei_MultiHitClaws"
+            "Game/Animations/MainChar/Attacks/SpecialCombos/AltPakMei/MainChar_Attack_SpecialCombo_AltPakMei_MultiHitClaws",
+        ["Game/Animations/MainChar/Attacks/Man/Barehands/Skills/LightCombo/MultiHit/MainChar_Attack_Man_Barehands_Skill_LightCombo_MultiHit_BR"] =
+            "Game/Animations/MainChar/Attacks/Man/Barehands/LightCombo/MainChar_Attack_Man_Barehands_Pressure_TripleHit_BR"
     };
+
+    public bool ValidateAnimation(string gamePath)
+    {
+        if (_provider == null) return false;
+        try
+        {
+            if (gamePath.Contains("DB/AI/Archetypes", StringComparison.OrdinalIgnoreCase))
+            {
+                var resolved = ResolveAnimationFromDB(gamePath);
+                if (string.IsNullOrEmpty(resolved)) return false;
+                var obj = _provider.SafeLoadPackageObject<UAnimSequence>(resolved);
+                if (obj == null) return false;
+                var skeletonObj = obj.Skeleton?.Load<USkeleton>();
+                return skeletonObj != null;
+            }
+
+            var animObj = _provider.SafeLoadPackageObject<UAnimSequence>(gamePath);
+            if (animObj == null && AnimFallbacks.TryGetValue(gamePath, out var fallback))
+                animObj = _provider.SafeLoadPackageObject<UAnimSequence>(fallback);
+            if (animObj == null) return false;
+
+            var skeleton = animObj.Skeleton?.Load<USkeleton>();
+            return skeleton != null;
+        }
+        catch { return false; }
+    }
 
     public AnimationJsonData? LoadAnimation(string gamePath)
     {
         if (_provider == null) return null;
 
+        if (gamePath.Contains("DB/AI/Archetypes", StringComparison.OrdinalIgnoreCase))
+        {
+            var resolved = ResolveAnimationFromDB(gamePath);
+            if (string.IsNullOrEmpty(resolved)) return null;
+            gamePath = resolved;
+        }
+
         try
         {
+            LogDebug($"[ANIM] Loading: {gamePath}");
             var obj = _provider.SafeLoadPackageObject<UAnimSequence>(gamePath);
+            LogDebug($"[ANIM] Direct load: {(obj != null ? "OK" : "null")}");
+
             if (obj == null && AnimFallbacks.TryGetValue(gamePath, out var fallback))
                 obj = _provider.SafeLoadPackageObject<UAnimSequence>(fallback);
+
             if (obj == null) return null;
 
             var skeletonObj = obj.Skeleton?.Load<USkeleton>();
-            if (skeletonObj == null) return null;
+            if (skeletonObj == null)
+            {
+                if (gamePath.Contains("CrookedFoot", StringComparison.OrdinalIgnoreCase))
+                {
+                    var grabPath = "Game/Animations/MainChar/Attacks/Man/Barehands/PostParry/PostParry_Knockdown/MainChar_Attack_Man_Barehands_PunishKD_CrookedFoot_Grab_attacker";
+                    var grabObj = _provider.SafeLoadPackageObject<UAnimSequence>(grabPath);
+                    if (grabObj != null)
+                    {
+                        var grabSkeleton = grabObj.Skeleton?.Load<USkeleton>();
+                        if (grabSkeleton != null)
+                        {
+                            var grabAnimSet = grabSkeleton.ConvertAnims(grabObj);
+                            if (grabAnimSet.Sequences.Count > 0)
+                                return BuildAnimationJson(grabAnimSet.Sequences[0], grabSkeleton);
+                        }
+                    }
+                }
+                return null;
+            }
 
             var csType = obj.CompressedDataStructure?.GetType().Name ?? "null";
             var hasRaw = obj.RawAnimationData is { Length: > 0 };

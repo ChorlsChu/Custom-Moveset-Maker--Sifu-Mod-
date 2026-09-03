@@ -92,3 +92,9 @@ C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMo
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\obj\Debug\net10.0-windows\Export\ExportDialog.g.cs
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\obj\Debug\net10.0-windows\GeneratedInternalTypeHelper.g.cs
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\obj\Debug\net10.0-windows\SifuMovesetEditor_MarkupCompile.lref
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\obj\Debug\net10.0-windows\Import\ImportDialog.baml
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\obj\Debug\net10.0-windows\Import\ImportDialog.g.cs
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\ReferenceMods\FireDisciple\BaseMovementDB.uasset
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\ReferenceMods\FireDisciple\BaseMovementDB.uexp
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\ReferenceMods\FireDisciple\BP_TransitionAnimRequest.uasset
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\ReferenceMods\FireDisciple\BP_TransitionAnimRequest.uexp

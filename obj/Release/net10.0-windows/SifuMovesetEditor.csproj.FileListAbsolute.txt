@@ -16,7 +16,6 @@ C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMo
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Release\net10.0-windows\viewer\index.html
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Release\net10.0-windows\viewer\viewer.js
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Release\net10.0-windows\settings.json
-C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Release\net10.0-windows\CUE4Parse-Natives.dll
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Release\net10.0-windows\SifuMovesetEditor.exe
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Release\net10.0-windows\SifuMovesetEditor.deps.json
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Release\net10.0-windows\SifuMovesetEditor.runtimeconfig.json
@@ -91,3 +90,7 @@ C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMo
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\obj\Release\net10.0-windows\Setup\SetupWizard.baml
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\obj\Release\net10.0-windows\Export\ExportDialog.g.cs
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\obj\Release\net10.0-windows\Setup\SetupWizard.g.cs
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\obj\Release\net10.0-windows\Import\ImportDialog.baml
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\obj\Release\net10.0-windows\Import\ImportDialog.g.cs
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\obj\Release\net10.0-windows\GeneratedInternalTypeHelper.g.cs
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\obj\Release\net10.0-windows\SifuMovesetEditor_MarkupCompile.lref

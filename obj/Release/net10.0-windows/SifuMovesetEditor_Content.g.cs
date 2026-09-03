@@ -10,7 +10,6 @@
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("viewer/index.html")]
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("viewer/viewer.js")]
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("settings.json")]
-[assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("cue4parse-natives.dll")]
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("webview2loader.dll")]
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("webview2loader.dll")]
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("webview2loader.dll")]

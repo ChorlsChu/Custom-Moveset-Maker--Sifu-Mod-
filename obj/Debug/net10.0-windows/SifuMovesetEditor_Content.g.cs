@@ -9,6 +9,10 @@
 
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("viewer/index.html")]
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("viewer/viewer.js")]
+[assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("referencemods/firedisciple/basemovementdb.uasset")]
+[assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("referencemods/firedisciple/basemovementdb.uexp")]
+[assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("referencemods/firedisciple/bp_transitionanimrequest.uasset")]
+[assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("referencemods/firedisciple/bp_transitionanimrequest.uexp")]
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("settings.json")]
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("webview2loader.dll")]
 [assembly: System.Windows.Resources.AssemblyAssociatedContentFileAttribute("webview2loader.dll")]

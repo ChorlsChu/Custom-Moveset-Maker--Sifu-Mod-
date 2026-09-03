@@ -133,7 +133,7 @@ public static class ContentExtractor
         File.Copy(source, target, overwrite: true);
     }
 
-    private static string? FindUnrealPak()
+    internal static string? FindUnrealPak()
     {
         var candidates = new[]
         {

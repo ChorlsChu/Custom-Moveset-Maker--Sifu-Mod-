@@ -33,7 +33,7 @@ public static class EnemyAttackScanner
             string attacksDir = Path.Combine(enemyDir, "Attacks");
             if (!Directory.Exists(attacksDir)) continue;
 
-            ScanAttackDBDir(attacksDir, enemyType, "", moves);
+            ScanAttackDBDir(attacksDir, enemyType, "", moves, contentPath);
         }
 
         return moves.OrderBy(m => m.Character)
@@ -43,7 +43,7 @@ public static class EnemyAttackScanner
                      .ToList();
     }
 
-    private static void ScanAttackDBDir(string dir, string enemyType, string subCategory, List<MoveInfo> moves)
+    private static void ScanAttackDBDir(string dir, string enemyType, string subCategory, List<MoveInfo> moves, string contentPath)
     {
         foreach (var file in Directory.GetFiles(dir, "*.uasset"))
         {
@@ -61,9 +61,9 @@ public static class EnemyAttackScanner
 
             string category = DetermineCategory(relDir, fileName);
 
-            string gamePath = "Game/" + Path.GetRelativePath(
-                Directory.GetParent(Path.GetDirectoryName(Path.GetDirectoryName(dir)!)!)!.FullName,
-                file).Replace('\\', '/').Replace(".uasset", "");
+            if (fileName.Contains("HitBoxData", StringComparison.OrdinalIgnoreCase)) continue;
+
+            string gamePath = "Game/" + Path.GetRelativePath(contentPath, file).Replace('\\', '/').Replace(".uasset", "");
 
             moves.Add(new MoveInfo
             {
@@ -80,7 +80,7 @@ public static class EnemyAttackScanner
         {
             string dirName = Path.GetFileName(subDir);
             if (SkipDirs.Contains(dirName)) continue;
-            ScanAttackDBDir(subDir, enemyType, subCategory + "/" + dirName, moves);
+            ScanAttackDBDir(subDir, enemyType, subCategory + "/" + dirName, moves, contentPath);
         }
     }
 
