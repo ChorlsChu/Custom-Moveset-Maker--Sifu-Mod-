@@ -33,6 +33,7 @@ public partial class ImportDialog : Window
             3 => step3,
             4 => step4,
             5 => step5,
+            6 => step6,
             _ => step1
         };
 
@@ -54,13 +55,15 @@ public partial class ImportDialog : Window
         txtCurrentAction.Text = text;
     }
 
-    public void ShowSuccess(int changedCount, string weaponName)
+    public void ShowSuccess(int changedCount, string weaponName, string? extraInfo = null)
     {
         panelLoading.Visibility = Visibility.Collapsed;
         panelComplete.Visibility = Visibility.Visible;
 
         txtResult.Text = $"{changedCount} node(s) changed from vanilla";
-        txtDetails.Text = $"Weapon: {weaponName}";
+        txtDetails.Text = extraInfo != null
+            ? $"Weapon: {weaponName}\n{extraInfo}"
+            : $"Weapon: {weaponName}";
         txtStatus.Text = "Import completed successfully.";
         txtStatus.Foreground = MakeBrush("#a6e3a1");
     }

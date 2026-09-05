@@ -26,7 +26,7 @@
     <Content Include="viewer\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ReferenceMods\**\*">
+    <Content Include="Template\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="settings.json">

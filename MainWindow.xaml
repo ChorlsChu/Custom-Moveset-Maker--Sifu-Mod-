@@ -289,6 +289,17 @@
                                 <TranslateTransform x:Name="_comboTranslate" X="0" Y="0"/>
                             </Canvas.RenderTransform>
                         </Canvas>
+                        <Border Name="toastBorder" VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                                Background="#313244" BorderBrush="#f38ba8" BorderThickness="1"
+                                CornerRadius="6" Padding="12,6" Margin="0,0,0,8"
+                                Visibility="Collapsed" IsHitTestVisible="False">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#x26A0;" Foreground="#f38ba8" FontSize="12"
+                                           VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock Name="toastText" Foreground="#cdd6f4" FontSize="11"
+                                           TextTrimming="CharacterEllipsis" MaxWidth="400"/>
+                            </StackPanel>
+                        </Border>
                         <Border Background="#11111b" Padding="10,6"
                                 VerticalAlignment="Top">
                             <DockPanel>

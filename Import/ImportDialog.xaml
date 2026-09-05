@@ -118,11 +118,13 @@
                            Foreground="#6c7086" FontSize="12" Margin="0,2"/>
                 <TextBlock x:Name="step2" Text="&#x25CB; Checking for combo tree"
                            Foreground="#6c7086" FontSize="12" Margin="0,2"/>
-                <TextBlock x:Name="step3" Text="&#x25CB; Parsing modded animations"
+                <TextBlock x:Name="step3" Text="&#x25CB; Detecting stance"
                            Foreground="#6c7086" FontSize="12" Margin="0,2"/>
-                <TextBlock x:Name="step4" Text="&#x25CB; Comparing with vanilla"
+                <TextBlock x:Name="step4" Text="&#x25CB; Parsing modded animations"
                            Foreground="#6c7086" FontSize="12" Margin="0,2"/>
-                <TextBlock x:Name="step5" Text="&#x25CB; Finalizing"
+                <TextBlock x:Name="step5" Text="&#x25CB; Comparing with vanilla"
+                           Foreground="#6c7086" FontSize="12" Margin="0,2"/>
+                <TextBlock x:Name="step6" Text="&#x25CB; Finalizing"
                            Foreground="#6c7086" FontSize="12" Margin="0,2"/>
             </StackPanel>
 

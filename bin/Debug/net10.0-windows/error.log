@@ -1,93 +1,147 @@
-[18:36:23] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
-[18:36:24] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
-[18:36:24] [DT] Loaded Game/DB/AI/Archetypes/Grunt/Attacks/Grunt_AttacksDatatable: 19 rows, struct=AttackDataRow
-[18:36:24] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[18:36:24] [DT] Loaded Game/DB/AI/Archetypes/Grunt/Attacks/Grunt_WeaponsDatatable: 15 rows, struct=AttackDataRow
-[18:36:24] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[18:36:24] [DT] Loaded Game/DB/AI/Archetypes/FlashKick/Attacks/FlashKick_AttackData: 30 rows, struct=AttackDataRow
-[18:36:24] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[18:36:24] [DT] Loaded Game/DB/AI/Archetypes/BigGuy/Attacks/BigGuy_AttackData: 28 rows, struct=AttackDataRow
-[18:36:24] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[18:36:24] [DT] Loaded Game/DB/AI/Archetypes/Bodyguard/Attacks/BodyGuard_AttackData: 14 rows, struct=AttackDataRow
-[18:36:24] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[18:36:24] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_AttackData: 22 rows, struct=AttackDataRow
-[18:36:24] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[18:36:24] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_Staff_AttackData: 11 rows, struct=AttackDataRow
-[18:36:24] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[18:36:24] [DT] Loaded Game/DB/AI/Archetypes/Fajar/Attacks/Fajar_AttacksDatatable: 18 rows, struct=AttackDataRow
-[18:36:24] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[18:36:24] [DT] Loaded Game/DB/AI/Archetypes/Sean/Attacks/Sean_AttacksDatatable: 35 rows, struct=AttackDataRow
-[18:36:24] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[18:36:25] [DT] Loaded Game/DB/AI/Archetypes/Kuroki/Kuroki_AttacksDatatable: 48 rows, struct=AttackDataRow
-[18:36:25] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[18:36:25] [DT] Loaded Game/DB/AI/Archetypes/Fengjie/Attacks/Fengjie_AttacksDatatable: 31 rows, struct=AttackDataRow
-[18:36:25] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[18:36:25] [DT] Loaded Game/DB/AI/Archetypes/Yang/Attacks/Yang_Attacks: 29 rows, struct=AttackDataRow
-[18:36:25] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[18:36:25] [DT] Loaded Game/DB/Attacks/WUGUAN_Attacks: 0 rows, struct=AttackDataRow
-[18:36:25] [DT] Total used animation paths found: 298
-[18:36:25] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/_old/Grunt_Attack_Barehands_Sweep_360
-[18:36:25] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/GroundAttack/Grunt_attack_barehands_GroundAttack
-[18:36:25] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/BaseBallHook/Grunt_Attack_barehands_BaseBallHook
-[18:36:25] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Hook/Grunt_Attack_barehands_Hook
-[18:36:25] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/RollUppercut/Grunt_Attack_Barehands_RollUppercut
-[18:36:25] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/KneeStrike/Grunt_Attack_Barehands_KneeStrike
-[18:36:25] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_FastJab
-[18:36:25] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_StraightJab
-[18:36:25] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Rush/Grunt_Attack_Barehands_RushKick
-[18:36:25] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/FalconPunch/Grunt_attack_barehands_FalconPunch
-[18:36:53] [MAP] Built anim→DB mapping: 493 entries
-[18:36:53] [MAP] Built anim→DB mapping: 493 entries
-[18:36:53] [COMBO] Loaded MainChar_ComboTree: exportType=Combo
-[18:36:53] [COMBO] Split tree node 0 into 2 direction variants: GetUp Attack [], GetUp Attack []
-[18:36:53] [COMBO] Split tree node 4 into 2 direction variants: ShinKick [FR], ShinKick [BL]
-[18:36:53] [COMBO] Split tree node 4 into 2 direction variants: ShinKick [FR], ShinKick [BL]
-[18:36:53] [COMBO] Split tree node 5 into 2 direction variants: ThroatPunch [FL], ThroatPunch [BL]
-[18:36:53] [COMBO] Split tree node 5 into 2 direction variants: ThroatPunch [FL], ThroatPunch [BL]
-[18:36:53] [COMBO] Split tree node 7 into 2 direction variants: Palm02 [FL], Palm02 [BR]
-[18:36:53] [COMBO] Split tree node 7 into 2 direction variants: Palm02 [FL], Palm02 [BR]
-[18:36:53] [COMBO] Split tree node 8 into 2 direction variants: TripleHit [FL], TripleHit [BR]
-[18:36:53] [COMBO] Split tree node 9 into 2 direction variants: MultiHitClaws [FL], MultiHitClaws [BR]
-[18:36:53] [COMBO] Split tree node 8 into 2 direction variants: TripleHit [FL], TripleHit [BR]
-[18:36:53] [COMBO] Split tree node 9 into 2 direction variants: MultiHitClaws [FL], MultiHitClaws [BR]
-[18:36:53] [COMBO] Split tree node 10 into 2 direction variants: DoubleElbow [FL], DoubleElbow [BR]
-[18:36:53] [COMBO] Split tree node 10 into 2 direction variants: DoubleElbow [FL], DoubleElbow [BR]
-[18:36:53] [COMBO] Split tree node 11 into 2 direction variants: ClawsElbow [FL], ClawsElbow [BR]
-[18:36:53] [COMBO] Split tree node 11 into 2 direction variants: ClawsElbow [FL], ClawsElbow [BR]
-[18:36:53] [COMBO] Split tree node 12 into 2 direction variants: ElbowSync [FL], ElbowSync [BR]
-[18:36:53] [COMBO] Split tree node 12 into 2 direction variants: ElbowSync [FL], ElbowSync [BR]
-[18:36:53] [COMBO] Split tree node 14 into 2 direction variants: Ext02 [FR], Ext02 [BL]
-[18:36:53] [COMBO] Split tree node 14 into 2 direction variants: Ext02 [FR], Ext02 [BL]
-[18:36:53] [COMBO] Split tree node 15 into 2 direction variants: AoeKnockdown [FL], AoeKnockdown [BR]
-[18:36:53] [COMBO] Split tree node 16 into 2 direction variants: DelaySpinHighKick [FL], DelaySpinHighKick [BL]
-[18:36:53] [COMBO] Split tree node 16 into 2 direction variants: DelaySpinHighKick [FL], DelaySpinHighKick [BL]
-[18:36:53] [COMBO] Split tree node 30 into 2 direction variants: FrontKick [FR], FrontKick [BL]
-[18:36:53] [COMBO] Split tree node 31 into 2 direction variants: LowKick [FL], LowKick [BR]
-[18:36:53] [COMBO] Split tree node 30 into 2 direction variants: FrontKick [FR], FrontKick [BL]
-[18:36:53] [COMBO] Split tree node 32 into 2 direction variants: Palm Strike [FR], Palm Strike [BL]
-[18:36:53] [COMBO] Split tree node 31 into 2 direction variants: LowKick [FL], LowKick [BR]
-[18:36:53] [COMBO] Split tree node 33 into 2 direction variants: GuardBreak [FL], GuardBreak [BL]
-[18:36:53] [COMBO] Split tree node 32 into 2 direction variants: Palm Strike [FR], Palm Strike [BL]
-[18:36:53] [COMBO] Split tree node 36 into 2 direction variants: Thrust Kick [FL], Thrust Kick [BL]
-[18:36:53] [COMBO] Split tree node 33 into 2 direction variants: GuardBreak [FL], GuardBreak [BL]
-[18:36:53] [COMBO] Split tree node 39 into 2 direction variants: GroundPunch [FL], GroundPunch [BL]
-[18:36:53] [COMBO] Split tree node 36 into 2 direction variants: Thrust Kick [FL], Thrust Kick [BL]
-[18:36:53] [COMBO] Split tree node 39 into 2 direction variants: GroundPunch [FL], GroundPunch [BL]
-[18:36:53] [COMBO] Split tree node 44 into 2 direction variants: Jab(new) [FR], Jab(new) [BL]
-[18:36:53] [COMBO] Split tree node 45 into 2 direction variants: ThroatPlexus [FR], ThroatPlexus [BL]
-[18:36:53] [COMBO] Split tree node 44 into 2 direction variants: Jab(new) [FR], Jab(new) [BL]
-[18:36:53] [COMBO] Split tree node 48 into 2 direction variants: BellyPalm [FR], BellyPalm [BR]
-[18:36:53] [COMBO] Split tree node 45 into 2 direction variants: ThroatPlexus [FR], ThroatPlexus [BL]
-[18:36:53] [COMBO] Split tree node 48 into 2 direction variants: BellyPalm [FR], BellyPalm [BR]
-[18:36:53] [COMBO] Split tree node 50 into 2 direction variants: MultiHit [FL], MultiHit [BR]
-[18:36:53] [COMBO] Split tree node 51 into 2 direction variants: ResilientAttack [FL], ResilientAttack [BL]
-[18:36:53] [COMBO] Split tree node 50 into 2 direction variants: MultiHit [FL], MultiHit [BR]
-[18:36:53] [COMBO] Split tree node 51 into 2 direction variants: ResilientAttack [FL], ResilientAttack [BL]
-[18:36:53] [COMBO] Split tree node 54 into 2 direction variants: SpinHighKickFollowUp [FL], SpinHighKickFollowUp [BL]
-[18:36:53] [COMBO] Parsed 81 raw nodes from 57 tree nodes
-[18:36:53] [COMBO] Parsed 110 raw edges
-[18:36:53] [COMBO] Final: 60 nodes, 64 edges (removed 21 conduits)
-[18:36:53] [COMBO] Split tree node 54 into 2 direction variants: SpinHighKickFollowUp [FL], SpinHighKickFollowUp [BL]
-[18:36:53] [COMBO] Parsed 81 raw nodes from 57 tree nodes
-[18:36:53] [COMBO] Parsed 110 raw edges
-[18:36:53] [COMBO] Final: 60 nodes, 64 edges (removed 21 conduits)
+[15:55:38] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
+[15:55:39] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
+[15:55:39] [DT] Loaded Game/DB/AI/Archetypes/Grunt/Attacks/Grunt_AttacksDatatable: 19 rows, struct=AttackDataRow
+[15:55:39] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[15:55:39] [DT] Loaded Game/DB/AI/Archetypes/Grunt/Attacks/Grunt_WeaponsDatatable: 15 rows, struct=AttackDataRow
+[15:55:39] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[15:55:39] [DT] Loaded Game/DB/AI/Archetypes/FlashKick/Attacks/FlashKick_AttackData: 30 rows, struct=AttackDataRow
+[15:55:39] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[15:55:39] [DT] Loaded Game/DB/AI/Archetypes/BigGuy/Attacks/BigGuy_AttackData: 28 rows, struct=AttackDataRow
+[15:55:39] [DT] Loaded Game/DB/AI/Archetypes/BigGuy/Attacks/BigGuy_AttackData: 28 rows, struct=AttackDataRow
+[15:55:39] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[15:55:39] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[15:55:39] [DT] Loaded Game/DB/AI/Archetypes/Bodyguard/Attacks/BodyGuard_AttackData: 14 rows, struct=AttackDataRow
+[15:55:39] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[15:55:39] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_AttackData: 22 rows, struct=AttackDataRow
+[15:55:39] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[15:55:39] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[15:55:39] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_Staff_AttackData: 11 rows, struct=AttackDataRow
+[15:55:39] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[15:55:39] [DT] Loaded Game/DB/AI/Archetypes/Fajar/Attacks/Fajar_AttacksDatatable: 18 rows, struct=AttackDataRow
+[15:55:39] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[15:55:39] [DT] Loaded Game/DB/AI/Archetypes/Sean/Attacks/Sean_AttacksDatatable: 35 rows, struct=AttackDataRow
+[15:55:39] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[15:55:39] [DT] Loaded Game/DB/AI/Archetypes/Kuroki/Kuroki_AttacksDatatable: 48 rows, struct=AttackDataRow
+[15:55:39] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[15:55:39] [DT] Loaded Game/DB/AI/Archetypes/Fengjie/Attacks/Fengjie_AttacksDatatable: 31 rows, struct=AttackDataRow
+[15:55:39] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[15:55:40] [DT] Loaded Game/DB/AI/Archetypes/Yang/Attacks/Yang_Attacks: 29 rows, struct=AttackDataRow
+[15:55:40] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[15:55:40] [DT] Loaded Game/DB/Attacks/WUGUAN_Attacks: 0 rows, struct=AttackDataRow
+[15:55:40] [DT] Total used animation paths found: 298
+[15:55:40] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/_old/Grunt_Attack_Barehands_Sweep_360
+[15:55:40] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/GroundAttack/Grunt_attack_barehands_GroundAttack
+[15:55:40] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/BaseBallHook/Grunt_Attack_barehands_BaseBallHook
+[15:55:40] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Hook/Grunt_Attack_barehands_Hook
+[15:55:40] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/RollUppercut/Grunt_Attack_Barehands_RollUppercut
+[15:55:40] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/RollUppercut/Grunt_Attack_Barehands_RollUppercut
+[15:55:40] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/KneeStrike/Grunt_Attack_Barehands_KneeStrike
+[15:55:40] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/KneeStrike/Grunt_Attack_Barehands_KneeStrike
+[15:55:40] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_FastJab
+[15:55:40] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_StraightJab
+[15:55:40] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Rush/Grunt_Attack_Barehands_RushKick
+[15:55:40] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/FalconPunch/Grunt_attack_barehands_FalconPunch
+[15:56:12] [MAP] Built anim→DB mapping: 509 entries
+[15:56:12] [MAP] Built anim→DB mapping: 509 entries
+[15:56:12] [COMBO] Loaded MainChar_ComboTree: exportType=Combo
+[15:56:12] [COMBO] Split tree node 0 into 2 direction variants: GetUp Attack [], GetUp Attack []
+[15:56:12] [COMBO] Split tree node 4 into 2 direction variants: ShinKick [FR], ShinKick [BL]
+[15:56:12] [COMBO] Split tree node 4 into 2 direction variants: ShinKick [FR], ShinKick [BL]
+[15:56:12] [COMBO] Split tree node 5 into 2 direction variants: ThroatPunch [FL], ThroatPunch [BL]
+[15:56:12] [COMBO] Split tree node 5 into 2 direction variants: ThroatPunch [FL], ThroatPunch [BL]
+[15:56:12] [COMBO] Split tree node 7 into 2 direction variants: Palm02 [FL], Palm02 [BR]
+[15:56:12] [COMBO] Split tree node 7 into 2 direction variants: Palm02 [FL], Palm02 [BR]
+[15:56:12] [COMBO] Split tree node 8 into 2 direction variants: TripleHit [FL], TripleHit [BR]
+[15:56:12] [COMBO] Split tree node 8 into 2 direction variants: TripleHit [FL], TripleHit [BR]
+[15:56:12] [COMBO] Split tree node 9 into 2 direction variants: MultiHitClaws [FL], MultiHitClaws [BR]
+[15:56:12] [COMBO] Split tree node 9 into 2 direction variants: MultiHitClaws [FL], MultiHitClaws [BR]
+[15:56:12] [COMBO] Split tree node 10 into 2 direction variants: DoubleElbow [FL], DoubleElbow [BR]
+[15:56:12] [COMBO] Split tree node 10 into 2 direction variants: DoubleElbow [FL], DoubleElbow [BR]
+[15:56:12] [COMBO] Split tree node 11 into 2 direction variants: ClawsElbow [FL], ClawsElbow [BR]
+[15:56:12] [COMBO] Split tree node 11 into 2 direction variants: ClawsElbow [FL], ClawsElbow [BR]
+[15:56:12] [COMBO] Split tree node 12 into 2 direction variants: ElbowSync [FL], ElbowSync [BR]
+[15:56:12] [COMBO] Split tree node 12 into 2 direction variants: ElbowSync [FL], ElbowSync [BR]
+[15:56:12] [COMBO] Split tree node 14 into 2 direction variants: Ext02 [FR], Ext02 [BL]
+[15:56:12] [COMBO] Split tree node 14 into 2 direction variants: Ext02 [FR], Ext02 [BL]
+[15:56:12] [COMBO] Split tree node 15 into 2 direction variants: AoeKnockdown [FL], AoeKnockdown [BR]
+[15:56:12] [COMBO] Split tree node 15 into 2 direction variants: AoeKnockdown [FL], AoeKnockdown [BR]
+[15:56:12] [COMBO] Split tree node 16 into 2 direction variants: DelaySpinHighKick [FL], DelaySpinHighKick [BL]
+[15:56:12] [COMBO] Split tree node 16 into 2 direction variants: DelaySpinHighKick [FL], DelaySpinHighKick [BL]
+[15:56:12] [COMBO] Split tree node 30 into 2 direction variants: FrontKick [FR], FrontKick [BL]
+[15:56:12] [COMBO] Split tree node 30 into 2 direction variants: FrontKick [FR], FrontKick [BL]
+[15:56:12] [COMBO] Split tree node 31 into 2 direction variants: LowKick [FL], LowKick [BR]
+[15:56:12] [COMBO] Split tree node 31 into 2 direction variants: LowKick [FL], LowKick [BR]
+[15:56:12] [COMBO] Split tree node 32 into 2 direction variants: Palm Strike [FR], Palm Strike [BL]
+[15:56:12] [COMBO] Split tree node 33 into 2 direction variants: GuardBreak [FL], GuardBreak [BL]
+[15:56:12] [COMBO] Split tree node 33 into 2 direction variants: GuardBreak [FL], GuardBreak [BL]
+[15:56:12] [COMBO] Split tree node 36 into 2 direction variants: Thrust Kick [FL], Thrust Kick [BL]
+[15:56:12] [COMBO] Split tree node 36 into 2 direction variants: Thrust Kick [FL], Thrust Kick [BL]
+[15:56:12] [COMBO] Split tree node 39 into 2 direction variants: GroundPunch [FL], GroundPunch [BL]
+[15:56:12] [COMBO] Split tree node 39 into 2 direction variants: GroundPunch [FL], GroundPunch [BL]
+[15:56:12] [COMBO] Split tree node 44 into 2 direction variants: Jab(new) [FR], Jab(new) [BL]
+[15:56:12] [COMBO] Split tree node 44 into 2 direction variants: Jab(new) [FR], Jab(new) [BL]
+[15:56:12] [COMBO] Split tree node 45 into 2 direction variants: ThroatPlexus [FR], ThroatPlexus [BL]
+[15:56:12] [COMBO] Split tree node 45 into 2 direction variants: ThroatPlexus [FR], ThroatPlexus [BL]
+[15:56:12] [COMBO] Split tree node 48 into 2 direction variants: BellyPalm [FR], BellyPalm [BR]
+[15:56:12] [COMBO] Split tree node 48 into 2 direction variants: BellyPalm [FR], BellyPalm [BR]
+[15:56:12] [COMBO] Split tree node 50 into 2 direction variants: MultiHit [FL], MultiHit [BR]
+[15:56:12] [COMBO] Split tree node 50 into 2 direction variants: MultiHit [FL], MultiHit [BR]
+[15:56:12] [COMBO] Split tree node 51 into 2 direction variants: ResilientAttack [FL], ResilientAttack [BL]
+[15:56:12] [COMBO] Split tree node 51 into 2 direction variants: ResilientAttack [FL], ResilientAttack [BL]
+[15:56:12] [COMBO] Split tree node 54 into 2 direction variants: SpinHighKickFollowUp [FL], SpinHighKickFollowUp [BL]
+[15:56:12] [COMBO] Split tree node 54 into 2 direction variants: SpinHighKickFollowUp [FL], SpinHighKickFollowUp [BL]
+[15:56:12] [COMBO] Parsed 81 raw nodes from 57 tree nodes
+[15:56:12] [COMBO] Parsed 81 raw nodes from 57 tree nodes
+[15:56:12] [COMBO] Parsed 110 raw edges
+[15:56:12] [COMBO] Final: 60 nodes, 64 edges (removed 21 conduits)
+[15:56:21] [MESH] Loaded 'FireDisciple' from Game/Characters/PNJ/Disicple/M/Meshes/SK_Disciple_M_Hideout02_Fighter_01 (13990 verts, 254 bones)
+[15:56:21] [ANIM] Loading: Game/Animations/FireDisciple/KnockDownState/Barehands/GetUp/FireDisciple_barehands_getUp_front
+[15:56:21] [ANIM] Direct load: OK
+[15:56:21] [DEBUG] Anim=Game/Animations/FireDisciple/KnockDownState/Barehands/GetUp/FireDisciple_barehands_getUp_front, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=43, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[15:56:22] [MESH] Loaded 'FireDisciple' from Game/Characters/PNJ/Disicple/M/Meshes/SK_Disciple_M_Hideout02_Fighter_01 (13990 verts, 254 bones)
+[15:56:23] [ANIM] Loading: Game/Animations/FireDisciple/KnockDownState/Barehands/GetUp/FireDisciple_barehands_getUp_front
+[15:56:23] [ANIM] Direct load: OK
+[15:56:23] [DEBUG] Anim=Game/Animations/FireDisciple/KnockDownState/Barehands/GetUp/FireDisciple_barehands_getUp_front, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=43, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[15:56:24] [MESH] Loaded 'FireDisciple' from Game/Characters/PNJ/Disicple/M/Meshes/SK_Disciple_M_Hideout02_Fighter_01 (13990 verts, 254 bones)
+[15:56:24] [ANIM] Loading: Game/Animations/FireDisciple/KnockDownState/Barehands/GetUp/FireDisciple_barehands_getUp_front
+[15:56:24] [ANIM] Direct load: OK
+[15:56:24] [DEBUG] Anim=Game/Animations/FireDisciple/KnockDownState/Barehands/GetUp/FireDisciple_barehands_getUp_front, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=43, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[15:56:26] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[15:56:27] [ANIM] Loading: Game/Animations/FireDisciple/KnockDownState/Barehands/GetUp/FireDisciple_barehands_getUp_front
+[15:56:27] [ANIM] Direct load: OK
+[15:56:27] [DEBUG] Anim=Game/Animations/FireDisciple/KnockDownState/Barehands/GetUp/FireDisciple_barehands_getUp_front, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=43, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[15:56:27] [MESH] Loaded 'MainChar' from Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01 (44158 verts, 273 bones)
+[15:56:28] [ANIM] Loading: Game/Animations/FireDisciple/KnockDownState/Barehands/GetUp/FireDisciple_barehands_getUp_front
+[15:56:28] [ANIM] Direct load: OK
+[15:56:28] [DEBUG] Anim=Game/Animations/FireDisciple/KnockDownState/Barehands/GetUp/FireDisciple_barehands_getUp_front, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=43, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[15:56:32] [EXPORT] System.Exception: [_contentPath] C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Sifu
+[15:56:32] [EXPORT] System.Exception: [contentDir] C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Sifu\Content
+[15:56:32] [EXPORT] System.Exception: [detectedStance] MainChar (node AnimPath=Game/Animations/MainChar/Locomotion/Man/Barehands/Moving/V1/Lockmove/North/MC_man_barehands_V1_north_tense)
+[15:56:32] [EXPORT] System.Exception: === EXPORT START: 2 modified nodes, stance=MainChar ===
+[15:56:33] [EXPORT] System.Exception: Found 1 m_Attacks maps
+[15:56:33] [EXPORT] System.Exception:   SKIP(no anim->db): GetUp Attack AnimPath='Game/Animations/FireDisciple/KnockDownState/Barehands/GetUp/FireDisciple_barehands_getUp_front' DefaultDBPath='Game/DB/_MainChar/Combos/Attacks/BareHands/OTG_GetUp/MC_GetUpAttack_North'
+[15:56:33] [EXPORT] System.Exception:   SKIP(no anim->db): GetUp Attack AnimPath='Game/Animations/FireDisciple/KnockDownState/Barehands/GetUp/FireDisciple_barehands_getUp_front' DefaultDBPath='Game/DB/_MainChar/Combos/Attacks/BareHands/OTG_GetUp/MC_GetUpAttack_South'
+[15:56:33] [EXPORT] System.Exception: Patched 0/2 nodes (direct: 0, fallback DB: 0, skipped empty DB: 0, skipped no anim->db: 2)
+[15:56:33] [EXPORT] System.Exception: Total files for pak: 2
+[15:56:33] [EXPORT] System.Exception: Filelist content:
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB\_MainChar\Combos\MainChar_ComboTree.uasset" "../../../Sifu/Content/DB/_MainChar/Combos/MainChar_ComboTree.uasset"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB\_MainChar\Combos\MainChar_ComboTree.uexp" "../../../Sifu/Content/DB/_MainChar/Combos/MainChar_ComboTree.uexp"
+[15:56:33] [EXPORT] System.Exception: UnrealPak stdout:
+LogPakFile: Display: Using command line for crypto configuration
+LogPakFile: Display: Loading response file C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\temp_mod\filelist.txt
+LogPakFile: Display: Added 2 entries to add to pak file.
+LogPakFile: Display: Collecting files to add to pak file...
+LogPakFile: Display: Collected 2 files in 0.00s.
+LogPakFile: Display: Creating pak C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\MainCharComboMod.pak.
+LogDerivedDataCache: Display: Performance to ../../../Engine/DerivedDataCache: Latency=0.00ms. RandomReadSpeed=999.00MBs, RandomWriteSpeed=999.00MBs. Assigned SpeedClass 'Local'
+LogPakFile: Display: Added 2 files, 152544 bytes total, time 0.01s.
+LogPakFile: Display: PrimaryIndex size: 171 bytes
+LogPakFile: Display: PathHashIndex size: 32 bytes
+LogPakFile: Display: FullDirectoryIndex size: 80 bytes
+LogPakFile: Display: Encryption - DISABLED
+LogPakFile: Display: Unreal pak executed in 0.012304 seconds
+
+[15:56:33] [EXPORT] System.Exception: UnrealPak stderr:
+
+[15:56:33] [EXPORT] System.Exception: UnrealPak exit code: 0
+[15:56:33] [EXPORT] System.Exception: Created pak size: 152544 bytes

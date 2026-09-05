@@ -345,6 +345,38 @@ public class AnimationParser : IDisposable
                       .ToList();
     }
 
+    public List<MoveInfo> ScanGetUpAnims()
+    {
+        var moves = new List<MoveInfo>();
+        var animsPath = Path.Combine(_contentPath, "Animations");
+        if (!Directory.Exists(animsPath)) return moves;
+
+        var getUpFiles = new (string character, string relDir, string fileName)[]
+        {
+            ("FireDisciple", "KnockDownState/Barehands/GetUp", "FireDisciple_barehands_getUp_front"),
+            ("FlashKick", "KnockDownState/GetUp", "Flashkick_barehands_KnockDown_getUp_front"),
+        };
+
+        foreach (var (character, relDir, fileName) in getUpFiles)
+        {
+            var filePath = Path.Combine(animsPath, character, relDir, fileName + ".uasset");
+            if (!File.Exists(filePath)) continue;
+
+            var gamePath = "Game/Animations/" + character + "/" + relDir + "/" + fileName;
+            moves.Add(new MoveInfo
+            {
+                DisplayName = fileName,
+                FullPath = gamePath,
+                Character = character,
+                WeaponType = "BareHands",
+                Category = "GetUp",
+                IsUsed = false
+            });
+        }
+
+        return moves;
+    }
+
     public List<MoveInfo> ScanStanceAnims()
     {
         var moves = new List<MoveInfo>();

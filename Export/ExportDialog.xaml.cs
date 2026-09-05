@@ -157,10 +157,50 @@ public partial class ExportDialog : Window
                     ErrorLog.Write("EXPORT", new Exception($"Found {allMaps.Count} m_Attacks maps"));
 
                     int patched = 0;
+                    int skippedEmpty = 0;
+                    int skippedNoDb = 0;
+                    int patchedFallback = 0;
+                    var patchedDbFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                     foreach (var node in _modifiedNodes)
                     {
-                        if (string.IsNullOrEmpty(node.DefaultDBPath)) continue;
-                        if (!_animToDbPath.TryGetValue(node.AnimPath, out var newDbPath)) continue;
+                        if (string.IsNullOrEmpty(node.DefaultDBPath))
+                        {
+                            skippedEmpty++;
+                            if (skippedEmpty <= 3)
+                                ErrorLog.Write("EXPORT", new Exception($"  SKIP(empty DB): {node.DisplayName} AnimPath='{node.AnimPath}' DefaultDBPath='{node.DefaultDBPath}' DefaultAnimPath='{node.DefaultAnimPath}'"));
+                            continue;
+                        }
+                        if (!_animToDbPath.TryGetValue(node.AnimPath, out var newDbPath))
+                        {
+                            var vanillaDbFile = Path.Combine(gameRoot, node.DefaultDBPath.TrimStart('/') + ".uasset");
+                            if (!patchedDbFiles.Contains(node.DefaultDBPath) && File.Exists(vanillaDbFile))
+                            {
+                                var relDbPath = node.DefaultDBPath.TrimStart('/') + ".uasset";
+                                var outDbPath = Path.Combine(outputPath, "Sifu", "Content", relDbPath);
+
+                                if (PatchDbAnimation(vanillaDbFile, node.AnimPath, outDbPath, EngineVersion.VER_UE4_26))
+                                {
+                                    patchedDbFiles.Add(node.DefaultDBPath);
+                                    var outDbUexp = Path.ChangeExtension(outDbPath, ".uexp");
+                                    var vanillaDbUexp = Path.ChangeExtension(vanillaDbFile, ".uexp");
+                                    if (File.Exists(vanillaDbUexp) && !File.Exists(outDbUexp))
+                                        File.Copy(vanillaDbUexp, outDbUexp, true);
+
+                                    fileEntries.Add((outDbPath, "../../../Sifu/Content/" + relDbPath));
+                                    fileEntries.Add((outDbUexp, "../../../Sifu/Content/" + relDbPath.Replace(".uasset", ".uexp")));
+
+                                    patchedFallback++;
+                                    patched++;
+                                    ErrorLog.Write("EXPORT", new Exception($"  PATCHED (fallback): {node.DisplayName} -> {node.AnimPath} (modified {Path.GetFileName(node.DefaultDBPath)})"));
+                                    continue;
+                                }
+                            }
+
+                            skippedNoDb++;
+                            if (skippedNoDb <= 3)
+                                ErrorLog.Write("EXPORT", new Exception($"  SKIP(no anim->db): {node.DisplayName} AnimPath='{node.AnimPath}' DefaultDBPath='{node.DefaultDBPath}'"));
+                            continue;
+                        }
 
                         var normalizedSlotKey = NormalizeSlotKey(node.DefaultDBPath);
                         var attackName = Path.GetFileNameWithoutExtension(newDbPath);
@@ -197,7 +237,7 @@ public partial class ExportDialog : Window
                             ErrorLog.Write("EXPORT", new Exception($"  NOT FOUND: {node.DisplayName} slot key '{normalizedSlotKey}'"));
                     }
 
-                    ErrorLog.Write("EXPORT", new Exception($"Patched {patched}/{_modifiedNodes.Count} nodes"));
+                    ErrorLog.Write("EXPORT", new Exception($"Patched {patched}/{_modifiedNodes.Count} nodes (direct: {patched - patchedFallback}, fallback DB: {patchedFallback}, skipped empty DB: {skippedEmpty}, skipped no anim->db: {skippedNoDb})"));
 
                     asset.Write(outUasset);
                 });
@@ -276,11 +316,6 @@ public partial class ExportDialog : Window
                         await System.Threading.Tasks.Task.Run(() =>
                             PatchStanceAsset(vanillaTransPath, charTransPath, outTransAsset, eng, _referenceModDir, _activeStance ?? "", "BP_TransitionAnimRequest"));
 
-                        var outTransUexp = Path.ChangeExtension(outTransAsset, ".uexp");
-                        var refTransUexp = _referenceModDir != null ? Path.Combine(_referenceModDir, _activeStance ?? "", "BP_TransitionAnimRequest.uexp") : null;
-                        if (refTransUexp != null && File.Exists(refTransUexp))
-                            File.Copy(refTransUexp, outTransUexp, overwrite: true);
-
                         fileEntries.Add((outTransAsset,
                             "../../../Sifu/Content/DB/Movement/Transition/BP_TransitionAnimRequest.uasset"));
                         fileEntries.Add((Path.ChangeExtension(outTransAsset, ".uexp"),
@@ -311,11 +346,6 @@ public partial class ExportDialog : Window
                         var eng = EngineVersion.VER_UE4_26;
                         await System.Threading.Tasks.Task.Run(() =>
                             PatchStanceAsset(vanillaDbPath, charDbPath, outDbAsset, eng, _referenceModDir, _activeStance ?? "", "BaseMovementDB"));
-
-                        var outDbUexp = Path.ChangeExtension(outDbAsset, ".uexp");
-                        var refDbUexp = _referenceModDir != null ? Path.Combine(_referenceModDir, _activeStance ?? "", "BaseMovementDB.uexp") : null;
-                        if (refDbUexp != null && File.Exists(refDbUexp))
-                            File.Copy(refDbUexp, outDbUexp, overwrite: true);
 
                         fileEntries.Add((outDbAsset,
                             "../../../Sifu/Content/DB/Movement/BaseMovementDB.uasset"));
@@ -582,30 +612,124 @@ public partial class ExportDialog : Window
         var vanillaSize = new FileInfo(vanillaPath).Length;
         ErrorLog.Write("EXPORT", new Exception($"[STANCE] Vanilla: {vanillaSize}B"));
 
+        if (fileName == "BP_TransitionAnimRequest" && StanceGenerator.HasStance(stanceName))
+        {
+            try
+            {
+                string templatePath = Path.Combine(referenceDir ?? "", "StanceTemplateBase", fileName + ".uasset");
+                if (!File.Exists(templatePath))
+                    templatePath = vanillaPath;
+                StanceGenerator.GenerateTransitionAnimRequest(templatePath, outputPath, stanceName, eng);
+                var genUexp = Path.ChangeExtension(outputPath, ".uexp");
+                if (!File.Exists(genUexp))
+                {
+                    var srcUexp = Path.Combine(referenceDir ?? "", "StanceTemplateBase", fileName + ".uexp");
+                    if (File.Exists(srcUexp))
+                        File.Copy(srcUexp, genUexp, overwrite: true);
+                }
+                return;
+            }
+            catch (Exception ex)
+            {
+                ErrorLog.Write("EXPORT", new Exception($"[STANCE] StanceGenerator failed for '{stanceName}' transition: {ex.Message}"));
+            }
+        }
+
+        if (fileName == "BaseMovementDB" && StanceGenerator.HasStance(stanceName))
+        {
+            try
+            {
+                string templatePath = Path.Combine(referenceDir ?? "", "StanceTemplateBase", fileName + ".uasset");
+                if (!File.Exists(templatePath))
+                    templatePath = vanillaPath;
+                StanceGenerator.GenerateBaseMovementDB(templatePath, outputPath, stanceName, eng);
+                var genUexp = Path.ChangeExtension(outputPath, ".uexp");
+                if (!File.Exists(genUexp))
+                {
+                    var srcUexp = Path.Combine(referenceDir ?? "", "StanceTemplateBase", fileName + ".uexp");
+                    if (File.Exists(srcUexp))
+                        File.Copy(srcUexp, genUexp, overwrite: true);
+                }
+                return;
+            }
+            catch (Exception ex)
+            {
+                ErrorLog.Write("EXPORT", new Exception($"[STANCE] StanceGenerator failed for '{stanceName}' BaseMovementDB: {ex.Message}"));
+            }
+        }
+
         if (!string.IsNullOrEmpty(referenceDir))
         {
-            var refFile = Path.Combine(referenceDir, stanceName, fileName + ".uasset");
+            var refDir = Path.Combine(referenceDir, stanceName);
+            var refFile = Path.Combine(refDir, fileName + ".uasset");
             if (File.Exists(refFile))
             {
                 File.Copy(refFile, outputPath, overwrite: true);
+                var refUexp = Path.Combine(refDir, fileName + ".uexp");
+                if (File.Exists(refUexp))
+                    File.Copy(refUexp, Path.ChangeExtension(outputPath, ".uexp"), overwrite: true);
                 ErrorLog.Write("EXPORT", new Exception($"[STANCE] Used pre-made reference: {refFile} ({new FileInfo(refFile).Length}B)"));
                 return;
             }
         }
 
-        var charSize = new FileInfo(charSpecificPath).Length;
-        ErrorLog.Write("EXPORT", new Exception($"[STANCE] Char: {charSize}B"));
+        ErrorLog.Write("EXPORT", new Exception($"[STANCE] No reference for '{stanceName}', copying vanilla as-is"));
+        File.Copy(vanillaPath, outputPath, overwrite: true);
+        var vanillaUexp = Path.ChangeExtension(vanillaPath, ".uexp");
+        if (File.Exists(vanillaUexp))
+            File.Copy(vanillaUexp, Path.ChangeExtension(outputPath, ".uexp"), overwrite: true);
+    }
 
-        if (charSize < vanillaSize * 0.5)
+    private static bool PatchDbAnimation(string vanillaDbPath, string newAnimPath, string outputDbPath, EngineVersion eng)
+    {
+        try
         {
-            ErrorLog.Write("EXPORT", new Exception($"[STANCE] Char file is child Blueprint (< 50% of vanilla), copying vanilla as-is"));
-            File.Copy(vanillaPath, outputPath, overwrite: true);
-            return;
-        }
+            var asset = new UAsset(vanillaDbPath, eng, null, CustomSerializationFlags.None);
 
-        var charAsset = new UAsset(charSpecificPath, eng, null, CustomSerializationFlags.None);
-        charAsset.Write(outputPath);
-        ErrorLog.Write("EXPORT", new Exception($"[STANCE] Wrote char-specific UAsset ({charSize}B) to {outputPath}"));
+            NormalExport? dbExport = null;
+            foreach (var exp in asset.Exports)
+            {
+                if (exp is NormalExport ne)
+                {
+                    dbExport = ne;
+                    break;
+                }
+            }
+            if (dbExport == null) return false;
+
+            var mAttack = dbExport.Data.FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Attack");
+            if (mAttack is not StructPropertyData attackStruct || attackStruct.Value == null) return false;
+
+            var mAnim = attackStruct.Value.FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Animation");
+            if (mAnim is not ObjectPropertyData animProp || animProp.Value == null) return false;
+
+            if (animProp.Value.Index >= 0) return false;
+
+            int importIndex = -(animProp.Value.Index + 1);
+            if (importIndex < 0 || importIndex >= asset.Imports.Count) return false;
+
+            string animName = newAnimPath.Contains('/') ? newAnimPath.Substring(newAnimPath.LastIndexOf('/') + 1) : newAnimPath;
+            string pkgPath = "/" + newAnimPath;
+
+            var currentImport = asset.Imports[importIndex];
+            currentImport.ObjectName = FName.FromString(asset, animName);
+
+            int outerIdx = -(currentImport.OuterIndex.Index + 1);
+            if (outerIdx >= 0 && outerIdx < asset.Imports.Count)
+            {
+                asset.Imports[outerIdx].ObjectName = FName.FromString(asset, pkgPath);
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(outputDbPath)!);
+            asset.Write(outputDbPath);
+            ErrorLog.Write("EXPORT", new Exception($"[DB PATCH] Modified {Path.GetFileName(vanillaDbPath)}: anim -> {animName} ({new FileInfo(outputDbPath).Length}B)"));
+            return true;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("EXPORT", new Exception($"[DB PATCH] Failed to patch {Path.GetFileName(vanillaDbPath)}: {ex.Message}"));
+            return false;
+        }
     }
 
     private static void CopyDirectory(string srcDir, string destDir)

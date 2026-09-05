@@ -13,6 +13,8 @@ using SifuMovesetEditor;
 using SifuMovesetEditor.Setup;
 using SifuMovesetEditor.Export;
 using SifuMovesetEditor.Import;
+using UAssetAPI;
+using UAssetAPI.UnrealTypes;
 
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -70,6 +72,8 @@ public partial class MainWindow : Window
 
     private Border? _selectedMoveBorder;
     private int _selectedNodeId = -1;
+    private int _lastClickedNodeId = -1;
+    private DateTime _lastClickTime = DateTime.MinValue;
     private Popup? _dragPopup;
 
     private ComboGraph? _vanillaGraph;
@@ -82,7 +86,7 @@ public partial class MainWindow : Window
     private List<MoveInfo> _comboTreeMoves = new();
 
     private readonly record struct StanceEntry(string MovementDb, string? Transition, string DisplayAnim);
-    private readonly Dictionary<string, StanceEntry> _stanceMap = new()
+    private readonly Dictionary<string, StanceEntry> _stanceMap = new(StringComparer.OrdinalIgnoreCase)
     {
         ["MainChar"] = new(
             "DB/Movement/BaseMovementDB",
@@ -132,6 +136,10 @@ public partial class MainWindow : Window
             "DB/Movement/Archetypes/Yang_BaseMovementDB",
             "DB/Movement/Transition/BP_TransitionAnimRequest_Yang",
             "Game/Animations/Yang/Locomotion/Moving/V1/Lockmove/North/Yang_barehands_V1_north_tense"),
+        ["Juggernaut"] = new(
+            "DB/AI/Archetypes/BigGuy/BigGuy_BaseMovementDB",
+            "DB/Movement/Transition/BP_TransitionAnimRequest_BigGuy",
+            "Game/Animations/BigGuy/Locomotion/Barehands/Moving/V1/Lockmove/South/BigGuy_barehands_V1_south_tense"),
     };
 
     public MainWindow()
@@ -297,11 +305,10 @@ public partial class MainWindow : Window
             foreach (var move in _allMoves)
                 move.IsUsed = usedPaths.Contains(move.FullPath);
 
-            UpdateLoading("Scanning enemy attack DBs...", "Walking DB/AI/Archetypes/...");
-            var enemyMoves = await Task.Run(() => EnemyAttackScanner.ScanEnemyAttacks(contentPath));
-            foreach (var move in enemyMoves)
-                move.IsUsed = true;
-            _allMoves.AddRange(enemyMoves);
+            UpdateLoading("Scanning get-up animations...", "Finding enemy get-up moves...");
+            var getUpMoves = await Task.Run(() => _parser.ScanGetUpAnims());
+            _allMoves.AddRange(getUpMoves);
+            _allMoves = _allMoves.GroupBy(m => m.FullPath).Select(g => g.First()).ToList();
 
             UpdateLoading($"Validating animations (0/{_allMoves.Count})...", "");
             var totalMoves = _allMoves.Count;
@@ -624,6 +631,10 @@ public partial class MainWindow : Window
 
     private static readonly SolidColorBrush SelectedNodeBorderBrush = new(Color.FromRgb(0x89, 0xb4, 0xfa));
     private static readonly SolidColorBrush SelectedNodeBg = new(Color.FromArgb(0x80, 0x89, 0xb4, 0xfa));
+    private static readonly SolidColorBrush SelectedGreenBorder = new(Color.FromRgb(0xa6, 0xe3, 0xa1));
+    private static readonly SolidColorBrush SelectedGreenBg = new(Color.FromArgb(0x80, 0xa6, 0xe3, 0xa1));
+    private static readonly SolidColorBrush SelectedOrangeBorder = new(Color.FromRgb(0xfa, 0xb3, 0x87));
+    private static readonly SolidColorBrush SelectedOrangeBg = new(Color.FromArgb(0x80, 0xfa, 0xb3, 0x87));
 
     private void SelectMoveCard(Border border)
     {
@@ -671,8 +682,23 @@ public partial class MainWindow : Window
     {
         ClearNodeSelection();
         _selectedNodeId = node.Id;
-        border.BorderBrush = SelectedNodeBorderBrush;
-        border.Background = SelectedNodeBg;
+        var nodeColor = GetNodeColor(node);
+        var color = nodeColor.Color;
+        if (color.R == 0xa6 && color.G == 0xe3 && color.B == 0xa1)
+        {
+            border.BorderBrush = SelectedGreenBorder;
+            border.Background = SelectedGreenBg;
+        }
+        else if (color.R == 0xfa && color.G == 0xb3 && color.B == 0x87)
+        {
+            border.BorderBrush = SelectedOrangeBorder;
+            border.Background = SelectedOrangeBg;
+        }
+        else
+        {
+            border.BorderBrush = SelectedNodeBorderBrush;
+            border.Background = SelectedNodeBg;
+        }
     }
 
     private async void MoveCard_Click(object sender, MouseButtonEventArgs e)
@@ -684,6 +710,7 @@ public partial class MainWindow : Window
 
             txtStatus.Text = $"Loading: {move.DisplayName}...";
             txtDisplayName.Text = "Display: -";
+            ShowPreviewOverlay();
 
             if (!string.IsNullOrEmpty(move.Character))
                 await LoadMeshAsync(move.Character);
@@ -809,6 +836,7 @@ public partial class MainWindow : Window
                     FilterMoves();
                 }
 
+                HidePreviewOverlay();
                 var escapedNull = nullMsg.Replace("'", "\\'");
                 await webView.CoreWebView2.ExecuteScriptAsync($"window.showError('{escapedNull}')");
                 return;
@@ -830,12 +858,14 @@ public partial class MainWindow : Window
             await webView.CoreWebView2.ExecuteScriptAsync(
                 $"window.loadAnimation({json})");
 
+            HidePreviewOverlay();
             txtStatus.Text = $"Loaded: {data.animation.name} ({data.animation.numFrames} frames, {data.animation.tracks.Length} tracks)";
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"[ANIMATION ERROR] {ex}");
             ErrorLog.Write("ANIMATION", ex);
+            HidePreviewOverlay();
             txtStatus.Text = $"Error: {ex.Message}";
             var escaped = ex.Message.Replace("'", "\\'").Replace("\\", "\\\\").Replace("\n", " ").Replace("\r", "");
             await webView.CoreWebView2.ExecuteScriptAsync($"window.showError('{escaped}')");
@@ -1101,7 +1131,7 @@ public partial class MainWindow : Window
             ErrorLog.Write("EXPORT", new Exception($"[stance] charTransitionPath={charTransitionPath}, charBaseMovementDBPath={charBaseMovementDBPath}"));
         }
 
-        var referenceModDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ReferenceMods");
+        var referenceModDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Template");
 
         var dialog = new ExportDialog(
             modified,
@@ -1213,92 +1243,166 @@ public partial class MainWindow : Window
                 UI(() => importDialog.SetProgress(30));
                 UI(() => { importDialog.UpdateStep(1, "done"); });
 
-                // Step 4: Find MainChar combo tree — search recursively from ImportTemp root
-                // Pak internal paths use ../../../ so files may end up above the deep staging dir
-                UI(() => { importDialog.UpdateStep(2, "active"); importDialog.SetCurrentAction("Searching for combo tree..."); importDialog.SetProgress(35); });
+                // Step 2: Search for combo tree and stance files
+                UI(() => { importDialog.UpdateStep(2, "active"); importDialog.SetCurrentAction("Searching for files..."); importDialog.SetProgress(35); });
 
-                // Log all extracted files for debugging
                 var allExtracted = Directory.GetFiles(importTempRoot, "*", SearchOption.AllDirectories);
                 ErrorLog.Write("IMPORT", new Exception($"Extracted {allExtracted.Length} files to {importTempRoot}"));
                 foreach (var f in allExtracted)
                     ErrorLog.Write("IMPORT", new Exception($"  {Path.GetRelativePath(importTempRoot, f)}"));
 
                 var comboTreeFiles = Directory.GetFiles(importTempRoot, "MainChar_ComboTree.uasset", SearchOption.AllDirectories);
-                if (comboTreeFiles.Length == 0)
-                    throw new Exception("This pak does not contain a MainChar combo tree.");
-
-                var comboTreePath = comboTreeFiles[0];
-                var comboTreeDir = Path.GetDirectoryName(comboTreePath)!;
-                ErrorLog.Write("IMPORT", new Exception($"Found combo tree at: {comboTreePath}"));
-                ErrorLog.Write("IMPORT", new Exception($"Combo tree dir: {comboTreeDir}"));
+                bool hasComboTree = comboTreeFiles.Length > 0;
+                string? comboTreeDir = null;
+                if (hasComboTree)
+                {
+                    comboTreeDir = Path.GetDirectoryName(comboTreeFiles[0])!;
+                    ErrorLog.Write("IMPORT", new Exception($"Found combo tree at: {comboTreeFiles[0]}"));
+                }
                 UI(() => { importDialog.UpdateStep(2, "done"); importDialog.SetProgress(40); });
 
-                // Step 3: Parse modded tree (backs up vanilla, loads modded, restores vanilla)
-                UI(() => { importDialog.UpdateStep(3, "active"); importDialog.SetCurrentAction("Parsing modded animations..."); importDialog.SetProgress(45); });
-                var moddedGraph = _parser.LoadModdedComboTree(comboTreeDir);
-                if (moddedGraph == null)
-                    throw new Exception("Failed to parse modded combo tree.");
-                UI(() => { importDialog.UpdateStep(3, "done"); importDialog.SetProgress(70); });
-
-                // Step 4: Compare with vanilla
-                UI(() => { importDialog.UpdateStep(4, "active"); importDialog.SetCurrentAction("Comparing with vanilla..."); importDialog.SetProgress(75); });
-
-                UI(() =>
+                // Step 3: Detect stance from BP_TransitionAnimRequest
+                UI(() => { importDialog.UpdateStep(3, "active"); importDialog.SetCurrentAction("Detecting stance..."); importDialog.SetProgress(42); });
+                string? detectedStance = null;
+                var transitionFiles = Directory.GetFiles(importTempRoot, "BP_TransitionAnimRequest.uasset", SearchOption.AllDirectories);
+                if (transitionFiles.Length > 0)
                 {
-                    _moddedGraph = moddedGraph;
-                    _vanillaGraph = _originalVanillaComboGraph ?? _comboGraph;
-
-                    _nodeDiffs.Clear();
-                    var vanillaByName = _vanillaGraph?.Nodes
-                        .Where(n => n.TreeIndex >= 0)
-                        .GroupBy(n => n.Name)
-                        .ToDictionary(g => g.Key, g => g.ToList()) ?? new();
-
-                    var moddedNameIdx = new Dictionary<string, int>();
-                    foreach (var modNode in moddedGraph.Nodes.Where(n => n.TreeIndex >= 0))
+                    detectedStance = DetectStanceFromAsset(transitionFiles[0]);
+                    ErrorLog.Write("IMPORT", new Exception($"Stance detection result: {detectedStance ?? "(none)"}"));
+                }
+                else
+                {
+                    var dbFiles = Directory.GetFiles(importTempRoot, "*_BaseMovementDB.uasset", SearchOption.AllDirectories);
+                    foreach (var dbFile in dbFiles)
                     {
-                        if (!moddedNameIdx.ContainsKey(modNode.Name))
-                            moddedNameIdx[modNode.Name] = 0;
-                        int idx = moddedNameIdx[modNode.Name]++;
-
-                        if (vanillaByName.TryGetValue(modNode.Name, out var vanillaNodes)
-                            && idx < vanillaNodes.Count)
+                        var fileName = Path.GetFileNameWithoutExtension(dbFile);
+                        var stanceName = fileName.Replace("_BaseMovementDB", "");
+                        if (_stanceMap.ContainsKey(stanceName))
                         {
-                            var vanillaNode = vanillaNodes[idx];
-                            modNode.VanillaAnimPath = vanillaNode.AnimPath;
-                            modNode.DisplayName = vanillaNode.DisplayName;
-                            modNode.DirectionLabel = vanillaNode.DirectionLabel;
-                            if (vanillaNode.AnimPath != modNode.AnimPath)
-                                _nodeDiffs[modNode.Id] = (vanillaNode.AnimPath, modNode.AnimPath);
-                        }
-                        else
-                        {
-                            modNode.VanillaAnimPath = modNode.AnimPath;
-                            _nodeDiffs[modNode.Id] = ("", modNode.AnimPath);
+                            detectedStance = stanceName;
+                            ErrorLog.Write("IMPORT", new Exception($"Stance detected from filename: {detectedStance}"));
+                            break;
                         }
                     }
-                });
+                }
+                var detectedStanceLocal = detectedStance;
+                UI(() => { importDialog.UpdateStep(3, "done"); importDialog.SetProgress(44); });
 
-                UI(() => { importDialog.UpdateStep(4, "done"); importDialog.SetProgress(90); });
+                if (!hasComboTree && detectedStance == null)
+                    throw new Exception("This pak does not contain a combo tree or stance files.");
 
-                // Step 5: Finalize
-                UI(() => { importDialog.UpdateStep(5, "active"); importDialog.SetCurrentAction("Finalizing..."); importDialog.SetProgress(95); });
+                ComboGraph? moddedGraph = null;
+                Dictionary<int, (string vanilla, string modded)>? nodeDiffs = null;
+
+                if (hasComboTree && comboTreeDir != null)
+                {
+                    // Step 4: Parse modded tree
+                    UI(() => { importDialog.UpdateStep(4, "active"); importDialog.SetCurrentAction("Parsing modded animations..."); importDialog.SetProgress(45); });
+                    moddedGraph = _parser.LoadModdedComboTree(comboTreeDir);
+                    if (moddedGraph == null)
+                        throw new Exception("Failed to parse modded combo tree.");
+                    UI(() => { importDialog.UpdateStep(4, "done"); importDialog.SetProgress(70); });
+
+                    // Step 5: Compare with vanilla
+                    UI(() => { importDialog.UpdateStep(5, "active"); importDialog.SetCurrentAction("Comparing with vanilla..."); importDialog.SetProgress(75); });
+
+                    var localModded = moddedGraph;
+                    nodeDiffs = new Dictionary<int, (string, string)>();
+
+                    UI(() =>
+                    {
+                        _moddedGraph = localModded;
+                        _vanillaGraph = _originalVanillaComboGraph ?? _comboGraph;
+
+                        var vanillaByName = _vanillaGraph?.Nodes
+                            .Where(n => n.TreeIndex >= 0)
+                            .GroupBy(n => n.Name)
+                            .ToDictionary(g => g.Key, g => g.ToList()) ?? new();
+
+                        var moddedNameIdx = new Dictionary<string, int>();
+                        foreach (var modNode in localModded.Nodes.Where(n => n.TreeIndex >= 0))
+                        {
+                            if (!moddedNameIdx.ContainsKey(modNode.Name))
+                                moddedNameIdx[modNode.Name] = 0;
+                            int idx = moddedNameIdx[modNode.Name]++;
+
+                            if (vanillaByName.TryGetValue(modNode.Name, out var vanillaNodes)
+                                && idx < vanillaNodes.Count)
+                            {
+                                var vanillaNode = vanillaNodes[idx];
+                                modNode.VanillaAnimPath = vanillaNode.AnimPath;
+                                modNode.DisplayName = vanillaNode.DisplayName;
+                                modNode.DirectionLabel = vanillaNode.DirectionLabel;
+                                if (vanillaNode.AnimPath != modNode.AnimPath)
+                                    nodeDiffs[modNode.Id] = (vanillaNode.AnimPath, modNode.AnimPath);
+                            }
+                            else
+                            {
+                                modNode.VanillaAnimPath = modNode.AnimPath;
+                                nodeDiffs[modNode.Id] = ("", modNode.AnimPath);
+                            }
+                        }
+                    });
+
+                    UI(() => { importDialog.UpdateStep(5, "done"); importDialog.SetProgress(90); });
+                }
+                else
+                {
+                    UI(() => { importDialog.UpdateStep(4, "done"); importDialog.SetProgress(70); });
+                    UI(() => { importDialog.UpdateStep(5, "done"); importDialog.SetProgress(90); });
+                }
+
+                // Step 6: Finalize
+                UI(() => { importDialog.UpdateStep(6, "active"); importDialog.SetCurrentAction("Finalizing..."); importDialog.SetProgress(95); });
+
+                var finalModdedGraph = moddedGraph;
+                var finalNodeDiffs = nodeDiffs;
+                bool isStanceOnly = !hasComboTree && detectedStanceLocal != null;
 
                 UI(() =>
                 {
-                    _comboGraph = _moddedGraph;
-                    _isModLoaded = true;
+                    if (finalModdedGraph != null)
+                    {
+                        _comboGraph = finalModdedGraph;
+                        _isModLoaded = true;
+                    }
 
-                    txtComboInfo.Text = $"MOD ({_activeStance}): {moddedGraph.WeaponName} ({moddedGraph.Nodes.Count} nodes, {_nodeDiffs.Count} changed)";
+                    if (detectedStanceLocal != null && _stanceMap.TryGetValue(detectedStanceLocal, out var stanceEntry))
+                    {
+                        var stanceNode = _comboGraph?.Nodes.FirstOrDefault(n => n.Name == "MainChar_Stance");
+                        if (stanceNode != null)
+                        {
+                            stanceNode.AnimPath = stanceEntry.DisplayAnim;
+                        }
+                        _activeStance = detectedStanceLocal;
+                        cmbStance.SelectedItem = detectedStanceLocal;
+                    }
+
+                    int changedCount = finalNodeDiffs?.Count ?? 0;
+                    if (finalModdedGraph != null)
+                    {
+                        txtComboInfo.Text = $"MOD ({_activeStance}): {finalModdedGraph.WeaponName} ({finalModdedGraph.Nodes.Count} nodes, {changedCount} changed)";
+                    }
+                    else
+                    {
+                        txtComboInfo.Text = $"MOD ({_activeStance}): Stance only ({changedCount} nodes changed)";
+                    }
                     LayoutComboGraph();
                     RenderComboGraph();
                 });
 
-                UI(() => { importDialog.UpdateStep(5, "done"); importDialog.SetProgress(100); });
+                UI(() => { importDialog.UpdateStep(6, "done"); importDialog.SetProgress(100); });
 
                 Thread.Sleep(200);
 
-                UI(() => importDialog.ShowSuccess(_nodeDiffs.Count, moddedGraph.WeaponName));
+                int diffCount = finalNodeDiffs?.Count ?? 0;
+                string weaponInfo = finalModdedGraph?.WeaponName ?? "N/A";
+                var successMsg = isStanceOnly
+                    ? $"Stance: {detectedStanceLocal}"
+                    : detectedStanceLocal != null
+                        ? $"Stance: {detectedStanceLocal}\n{diffCount} nodes changed"
+                        : $"{diffCount} nodes changed";
+                UI(() => importDialog.ShowSuccess(diffCount, weaponInfo, successMsg));
             });
         }
         catch (Exception ex)
@@ -1309,6 +1413,67 @@ public partial class MainWindow : Window
         finally
         {
             try { if (Directory.Exists(importTempRoot)) Directory.Delete(importTempRoot, true); } catch { }
+        }
+    }
+
+    private string? DetectStanceFromAsset(string uassetPath)
+    {
+        try
+        {
+            var asset = new UAsset(uassetPath, EngineVersion.VER_UE4_26);
+            var importNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var imp in asset.Imports)
+            {
+                var name = imp.ObjectName.Value?.ToString();
+                if (!string.IsNullOrEmpty(name))
+                    importNames.Add(name);
+            }
+
+            string? bestStance = null;
+            int bestScore = 0;
+
+                foreach (var kvp in StanceGenerator.Stances)
+            {
+                int score = 0;
+                var data = kvp.Value;
+                var animNames = new[] { data.StartE, data.StartN, data.StartS, data.StopE, data.StopEFR, data.StopN, data.StopS };
+                foreach (var anim in animNames)
+                {
+                    if (!string.IsNullOrEmpty(anim) && importNames.Contains(anim))
+                        score++;
+                }
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestStance = kvp.Key;
+                }
+            }
+
+            if (bestStance != null && bestScore >= 2)
+            {
+                ErrorLog.Write("IMPORT", new Exception($"Stance detected: {bestStance} ({bestScore} matching imports)"));
+                return bestStance;
+            }
+
+            foreach (var impName in importNames)
+            {
+                foreach (var kvp in _stanceMap)
+                {
+                    if (kvp.Key == "MainChar") continue;
+                    if (kvp.Value.DisplayAnim != null && impName.Contains(kvp.Key, StringComparison.OrdinalIgnoreCase))
+                    {
+                        ErrorLog.Write("IMPORT", new Exception($"Stance detected from import name: {kvp.Key}"));
+                        return kvp.Key;
+                    }
+                }
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("IMPORT", new Exception($"Failed to detect stance from {uassetPath}: {ex.Message}"));
+            return null;
         }
     }
 
@@ -1661,8 +1826,23 @@ public partial class MainWindow : Window
 
             if (node.Id == _selectedNodeId)
             {
-                border.BorderBrush = SelectedNodeBorderBrush;
-                border.Background = SelectedNodeBg;
+                var selColor = GetNodeColor(node);
+                var sc = selColor.Color;
+                if (sc.R == 0xa6 && sc.G == 0xe3 && sc.B == 0xa1)
+                {
+                    border.BorderBrush = SelectedGreenBorder;
+                    border.Background = SelectedGreenBg;
+                }
+                else if (sc.R == 0xfa && sc.G == 0xb3 && sc.B == 0x87)
+                {
+                    border.BorderBrush = SelectedOrangeBorder;
+                    border.Background = SelectedOrangeBg;
+                }
+                else
+                {
+                    border.BorderBrush = SelectedNodeBorderBrush;
+                    border.Background = SelectedNodeBg;
+                }
             }
         }
     }
@@ -1853,12 +2033,12 @@ public partial class MainWindow : Window
 
     private static SolidColorBrush GetNodeColor(ComboNode node)
     {
-        if (node.IsRoot)
-            return new SolidColorBrush(Color.FromRgb(0xf9, 0xe2, 0xaf));
         if (!string.IsNullOrEmpty(node.VanillaAnimPath) && node.AnimPath != node.VanillaAnimPath)
             return new SolidColorBrush(Color.FromRgb(0xfa, 0xb3, 0x87));
         if (node.AnimPath != node.DefaultAnimPath)
             return new SolidColorBrush(Color.FromRgb(0xa6, 0xe3, 0xa1));
+        if (node.IsRoot)
+            return new SolidColorBrush(Color.FromRgb(0xf9, 0xe2, 0xaf));
         return new SolidColorBrush(Color.FromRgb(0x89, 0xb4, 0xfa));
     }
 
@@ -1868,13 +2048,246 @@ public partial class MainWindow : Window
             return new SolidColorBrush(Color.FromArgb(0x40, 0xfa, 0xb3, 0x87));
         if (node.AnimPath != node.DefaultAnimPath)
             return new SolidColorBrush(Color.FromArgb(0x40, 0xa6, 0xe3, 0xa1));
+        if (node.IsRoot)
+            return new SolidColorBrush(Color.FromArgb(0x40, 0xf9, 0xe2, 0xaf));
         return new SolidColorBrush(Color.FromArgb(0x40, 0x89, 0xb4, 0xfa));
+    }
+
+    private async System.Threading.Tasks.Task FindCardInLibrary(string animPath)
+    {
+        if (string.IsNullOrEmpty(animPath) || (_allMoves.Count == 0 && _allLocomotion.Count == 0)) return;
+
+        await System.Threading.Tasks.Task.Delay(100);
+
+        var match = _allMoves.FirstOrDefault(m =>
+            !string.IsNullOrEmpty(m.FullPath) && m.FullPath.Equals(animPath, StringComparison.OrdinalIgnoreCase) && m.IsUsed)
+            ?? _allMoves.FirstOrDefault(m =>
+            !string.IsNullOrEmpty(m.FullPath) && m.FullPath.Equals(animPath, StringComparison.OrdinalIgnoreCase));
+
+        if (match != null)
+        {
+            if (match.IsUsed)
+            {
+                _expandedEnemies.Add(match.Character);
+                if (!_expandedWeapons.ContainsKey(match.Character))
+                    _expandedWeapons[match.Character] = new HashSet<string>();
+                _expandedWeapons[match.Character].Add(match.WeaponType);
+            }
+            else
+            {
+                _expandedEnemies.Add(match.Character);
+                if (!_expandedWeapons.ContainsKey(match.Character))
+                    _expandedWeapons[match.Character] = new HashSet<string>();
+                _expandedWeapons[match.Character].Add(match.WeaponType);
+            }
+
+            FilterMoves();
+            tabMoves.SelectedIndex = match.IsUsed ? 0 : 1;
+
+            await System.Threading.Tasks.Task.Delay(50);
+
+            var targetList = match.IsUsed ? listVanilla : listUnused;
+            var targetBorder = FindVisualChild<Border>(targetList, b =>
+            {
+                if (b.Tag is MoveInfo mi)
+                    return mi.FullPath != null && mi.FullPath.Equals(animPath, StringComparison.OrdinalIgnoreCase);
+                return false;
+            });
+
+            if (targetBorder != null)
+            {
+                HighlightCard(targetBorder);
+                ScrollToElement(targetBorder);
+                txtStatus.Text = $"Found: {match.DisplayNameClean} ({match.Character}/{match.WeaponType})";
+            }
+            return;
+        }
+
+        var locoMatch = _allLocomotion.FirstOrDefault(m =>
+            !string.IsNullOrEmpty(m.FullPath) && m.FullPath.Equals(animPath, StringComparison.OrdinalIgnoreCase));
+
+        if (locoMatch != null)
+        {
+            tabMoves.SelectedIndex = 2;
+
+            await System.Threading.Tasks.Task.Delay(50);
+
+            var locoBorder = FindVisualChild<Border>(listLoco, b =>
+            {
+                if (b.Tag is MoveInfo mi)
+                    return mi.FullPath != null && mi.FullPath.Equals(animPath, StringComparison.OrdinalIgnoreCase);
+                return false;
+            });
+
+            if (locoBorder != null)
+            {
+                HighlightCard(locoBorder);
+                ScrollToElement(locoBorder);
+                txtStatus.Text = $"Found: {locoMatch.DisplayNameClean} (Locomotion)";
+            }
+            return;
+        }
+
+        ShowToast($"Not found in library: {animPath}");
+    }
+
+    private void HighlightCard(Border border)
+    {
+        var glow = new System.Windows.Media.Effects.DropShadowEffect
+        {
+            Color = Colors.LimeGreen,
+            Direction = 0,
+            ShadowDepth = 0,
+            BlurRadius = 20,
+            Opacity = 0.9
+        };
+        border.Effect = glow;
+
+        var fadeOut = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
+        fadeOut.Tick += (s, e) =>
+        {
+            fadeOut.Stop();
+            var fade = new System.Windows.Media.Animation.Storyboard();
+            var anim = new System.Windows.Media.Animation.DoubleAnimation(0.9, 0, TimeSpan.FromSeconds(0.5));
+            System.Windows.Media.Animation.Storyboard.SetTarget(anim, border);
+            System.Windows.Media.Animation.Storyboard.SetTargetProperty(anim, new System.Windows.PropertyPath("(Border.Effect).(DropShadowEffect.Opacity)"));
+            fade.Children.Add(anim);
+            fade.Completed += (s2, e2) => { border.Effect = null; };
+            fade.Begin();
+        };
+        fadeOut.Start();
+    }
+
+    private System.Windows.Threading.DispatcherTimer? _toastTimer;
+
+    private void ShowToast(string message)
+    {
+        _toastTimer?.Stop();
+        toastText.Text = message;
+        toastBorder.Visibility = Visibility.Visible;
+        toastBorder.Opacity = 0;
+
+        var fadeIn = new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromSeconds(0.2));
+        toastBorder.BeginAnimation(OpacityProperty, fadeIn);
+
+        _toastTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        _toastTimer.Tick += (s, e) =>
+        {
+            _toastTimer.Stop();
+            var fadeOut = new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromSeconds(0.4));
+            fadeOut.Completed += (s2, e2) => { toastBorder.Visibility = Visibility.Collapsed; };
+            toastBorder.BeginAnimation(OpacityProperty, fadeOut);
+        };
+        _toastTimer.Start();
+    }
+
+    private Popup? _previewPopup;
+
+    private void ShowPreviewOverlay()
+    {
+        if (_previewPopup == null)
+        {
+            var overlay = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(0x1e, 0x1e, 0x2e)),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(16, 10, 16, 10),
+                Child = new StackPanel
+                {
+                    Children =
+                    {
+                        new ProgressBar
+                        {
+                            IsIndeterminate = true,
+                            Width = 120,
+                            Height = 3,
+                            Foreground = new SolidColorBrush(Color.FromRgb(0x89, 0xb4, 0xfa)),
+                            Background = new SolidColorBrush(Color.FromRgb(0x31, 0x32, 0x44))
+                        },
+                        new TextBlock
+                        {
+                            Text = "Loading animation...",
+                            Foreground = new SolidColorBrush(Color.FromRgb(0x6c, 0x70, 0x86)),
+                            FontSize = 11,
+                            HorizontalAlignment = HorizontalAlignment.Center,
+                            Margin = new Thickness(0, 6, 0, 0)
+                        }
+                    }
+                }
+            };
+            _previewPopup = new Popup
+            {
+                Child = overlay,
+                AllowsTransparency = true,
+                PlacementTarget = webView,
+                Placement = PlacementMode.Center,
+                StaysOpen = true,
+                IsHitTestVisible = true,
+                IsOpen = true
+            };
+        }
+        else
+        {
+            _previewPopup.IsOpen = true;
+        }
+    }
+
+    private void HidePreviewOverlay()
+    {
+        if (_previewPopup != null)
+            _previewPopup.IsOpen = false;
+    }
+
+    private static T FindVisualChild<T>(DependencyObject parent, Func<T, bool> predicate) where T : DependencyObject
+    {
+        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+            if (child is T typed && predicate(typed))
+                return typed;
+            var result = FindVisualChild<T>(child, predicate);
+            if (result != null) return result;
+        }
+        return null;
+    }
+
+    private void ScrollToElement(FrameworkElement element)
+    {
+        var parent = VisualTreeHelper.GetParent(element);
+        while (parent != null)
+        {
+            if (parent is ScrollViewer sv)
+            {
+                var transform = element.TransformToAncestor(sv);
+                var rect = transform.TransformBounds(new Rect(new Point(0, 0), element.RenderSize));
+                var viewportHeight = sv.ViewportHeight;
+                var offset = sv.VerticalOffset;
+                if (rect.Top < 0)
+                    sv.ScrollToVerticalOffset(offset + rect.Top - 20);
+                else if (rect.Bottom > viewportHeight)
+                    sv.ScrollToVerticalOffset(offset + rect.Bottom - viewportHeight + 20);
+                return;
+            }
+            parent = VisualTreeHelper.GetParent(parent);
+        }
+        element.BringIntoView();
     }
 
     private async void ComboNode_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         if (sender is Border border && border.Tag is ComboNode node)
         {
+            var now = DateTime.UtcNow;
+            bool isDoubleClick = node.Id == _lastClickedNodeId && (now - _lastClickTime).TotalMilliseconds < 400;
+            _lastClickedNodeId = node.Id;
+            _lastClickTime = now;
+
+            if (isDoubleClick)
+            {
+                await FindCardInLibrary(node.AnimPath);
+                return;
+            }
+
             if (_isResetMode)
             {
                 ResetNodeToVanilla(node);
@@ -1889,6 +2302,7 @@ public partial class MainWindow : Window
             if (!string.IsNullOrEmpty(node.AnimPath))
             {
                 txtStatus.Text = $"Loading: {node.DisplayName} ({node.AnimPath})...";
+                ShowPreviewOverlay();
                 try
                 {
                     await LoadMeshAsync("MainChar");
@@ -2019,7 +2433,6 @@ public partial class MainWindow : Window
                 if (stanceNode != null)
                 {
                     stanceNode.AnimPath = _stanceMap[stance].DisplayAnim;
-                    stanceNode.DefaultAnimPath = _stanceMap[stance].DisplayAnim;
                 }
 
                 txtComboInfo.Text = $"{stance} - {_comboGraph.WeaponName} ({_comboGraph.Nodes.Count} nodes, {_comboGraph.Edges.Count} edges)";
