@@ -226,18 +226,15 @@ This tool is provided as-is for educational and modding purposes. You must own a
 
 ## Status
 
-**Prototype / work in progress.** The combo graph viewer, animation library, locomotion viewer, auto-extract feature, import pipeline, and export pipeline are all functional. Ongoing refinements include: additional character support, more robust stance generation, and improved error handling.
+**Prototype / work in progress.** The combo graph viewer, animation library, locomotion viewer, auto-extract feature, import pipeline, and export pipeline are all functional. Ongoing refinements include: fixing getUp animations not working, adding tutorial for first-time users
 
 ---
 
 ## Planned Enhancements (future roadmap)
 
-- Multi-combo-tree support (beyond MainChar BareHands)
-- Custom AttackDB creation/editing within the tool
-- Animation baking/retiming tools
-- Conflict detection between mod paks
-- Batch export for multiple characters
-- Web-based viewer alternative to WebView2
+- Editing enemy type's movesets
+- Custom chain attacks on enemy
+- Custom Arena level creator (Maybe I'll make this as a standalone, unsure)
 
 ---
 
