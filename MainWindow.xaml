@@ -636,5 +636,35 @@
             </StackPanel>
         </Border>
     </Grid>
+
+    <!-- Settings overlay -->
+    <Grid Name="settingsOverlay" Visibility="Collapsed" IsHitTestVisible="True" Background="#99000000" MouseLeftButtonDown="SettingsOverlay_Click" Panel.ZIndex="10">
+        <Border Background="#1e1e2e" CornerRadius="6" BorderBrush="#585b70" BorderThickness="1" Width="520" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="16">
+            <StackPanel>
+                <TextBlock Text="Settings" Foreground="#89b4fa" FontWeight="Bold" FontSize="14" Margin="0,0,0,12"/>
+                <TextBlock Text="Content Path (Sifu/Content - pakchunk0/Sifu):" Foreground="#6c7086" FontSize="11" Margin="0,0,0,4"/>
+                <DockPanel Margin="0,0,0,8">
+                    <Button Content="Reset" DockPanel.Dock="Right" Margin="6,0,0,0" Padding="8,3" Click="ResetSettings_Click" Style="{StaticResource DarkButton}" ToolTip="Delete settings.json and vanilla folder"/>
+                    <Button Content="Browse..." DockPanel.Dock="Right" Margin="6,0,0,0" Padding="8,3" Click="BrowseContent_Click" Style="{StaticResource DarkButton}"/>
+                    <TextBox Name="txtSettingsContentPath" Background="#313244" Foreground="#cdd6f4" Padding="6,3" FontSize="11"/>
+                </DockPanel>
+                <TextBlock Text="Output Path (ExportedMods - app dir):" Foreground="#6c7086" FontSize="11" Margin="0,0,0,4"/>
+                <DockPanel Margin="0,0,0,12">
+                    <Button Content="Browse..." DockPanel.Dock="Right" Margin="6,0,0,0" Padding="8,3" Click="BrowseOutput_Click" Style="{StaticResource DarkButton}"/>
+                    <TextBox Name="txtSettingsOutputPath" Background="#313244" Foreground="#cdd6f4" Padding="6,3" FontSize="11"/>
+                </DockPanel>
+                <CheckBox Name="chkVerboseLog" Content="Verbose ErrorLog" Foreground="#6c7086" FontSize="11" Margin="0,0,0,4" IsChecked="True"/>
+                <CheckBox Name="chkAutoBackup" Content="AutoBackup Vanilla (BaseMovementDB)" Foreground="#6c7086" FontSize="11" Margin="0,0,0,8" IsChecked="True"/>
+                <DockPanel>
+                    <TextBlock Text="Engine:" Foreground="#6c7086" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox Name="cmbEngineVersion" Width="120" FontSize="11" IsEnabled="False" SelectedIndex="0"><ComboBoxItem Content="VER_UE4_26"/></ComboBox>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right">
+                        <Button Content="Cancel" Padding="12,4" Click="CancelSettings_Click" Style="{StaticResource DarkButton}" Margin="0,0,6,0"/>
+                        <Button Content="Save" Padding="12,4" Click="SaveSettings_Click" Style="{StaticResource DarkButton}"/>
+                    </StackPanel>
+                </DockPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
     </Grid>
 </Window>

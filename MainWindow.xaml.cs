@@ -378,7 +378,88 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void Settings_Click(object sender, RoutedEventArgs e)
+    private void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        txtSettingsContentPath.Text = _contentPath;
+        txtSettingsOutputPath.Text = string.IsNullOrEmpty(_outputPath) ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods") : _outputPath;
+        settingsOverlay.Visibility = Visibility.Visible;
+    }
+
+    private void SettingsOverlay_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource == settingsOverlay)
+            settingsOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    private void CancelSettings_Click(object sender, RoutedEventArgs e)
+    {
+        settingsOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    private async void ResetSettings_Click(object sender, RoutedEventArgs e)
+    {
+        var res = MessageBox.Show("Delete settings.json and vanilla game files in app directory to save space?\n\nThis will remove settings.json and folder: " + Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Vanilla") + "\n\nYou will be asked to browse pak file again.", "Confirm Reset", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        if (res != MessageBoxResult.OK) return;
+        try {
+            if (File.Exists(_settingsPath)) File.Delete(_settingsPath);
+            var vanillaDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Vanilla");
+            var vanillaAlt = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "VanillaBackup");
+            var extractedDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "extractedPaks");
+            foreach (var dir in new[]{ vanillaDir, vanillaAlt, extractedDir })
+                if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        } catch (Exception ex) { ErrorLog.Write("RESET", ex); }
+        _contentPath = "";
+        _outputPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods");
+        txtSettingsContentPath.Text = "";
+        txtSettingsOutputPath.Text = _outputPath;
+        SaveSettings();
+        settingsOverlay.Visibility = Visibility.Collapsed;
+        txtStatus.Text = "Settings reset — No vanilla game files found";
+        ShowToast("Settings reset — browse pak file to extract needed files");
+        try { _parser?.Dispose(); } catch {}
+        await InitializeParserAsync();
+    }
+
+    private void BrowseContent_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFolderDialog { Title = "Select Content Path (Sifu/Content - with pakchunk0)", InitialDirectory = _contentPath };
+        if (dlg.ShowDialog() == true)
+        {
+            var sel = dlg.FolderName;
+            txtSettingsContentPath.Text = sel;
+        }
+    }
+
+    private void BrowseOutput_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFolderDialog { Title = "Select Output Path (ExportedMods)", InitialDirectory = _outputPath };
+        if (dlg.ShowDialog() == true) txtSettingsOutputPath.Text = dlg.FolderName;
+    }
+
+    private void SaveSettings_Click(object sender, RoutedEventArgs e)
+    {
+        var newContent = txtSettingsContentPath.Text.Trim();
+        var newOutput = txtSettingsOutputPath.Text.Trim();
+        if (!string.IsNullOrEmpty(newContent) && !Directory.Exists(newContent))
+        {
+            ShowToast("Content Path does not exist");
+            return;
+        }
+        if (!string.IsNullOrEmpty(newContent) && !File.Exists(Path.Combine(newContent.EndsWith("Content", StringComparison.OrdinalIgnoreCase) ? newContent : Path.Combine(newContent, "Content"), "DB/_MainChar/Combos/MainChar_ComboTree.uasset")) && !Directory.Exists(Path.Combine(newContent, "Sifu")))
+        {
+            // validation: try to find pakchunk0 marker
+            if (!Directory.Exists(Path.Combine(newContent, "Engine")) && !File.Exists(Path.Combine(newContent, "DB/_MainChar/Combos/MainChar_ComboTree.uasset")))
+                ShowToast("Content Path validation: MainChar_ComboTree not found");
+        }
+        _contentPath = newContent;
+        _outputPath = newOutput;
+        SaveSettings();
+        try { _parser?.Dispose(); var cDir = _contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase) ? _contentPath : Path.Combine(_contentPath, "Content"); var fresh = new AnimationParser(); fresh.Initialize(_contentPath, cDir); _parser = fresh; } catch (Exception ex) { ErrorLog.Write("SETTINGS", ex); }
+        settingsOverlay.Visibility = Visibility.Collapsed;
+        txtStatus.Text = "Settings saved — provider re-initialized";
+    }
+
+    private async void Settings_Click_OldForReference(object sender, RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.OpenFolderDialog
         {
@@ -3190,7 +3271,7 @@ public partial class MainWindow : Window
             unitPopupBorder.Visibility = Visibility.Collapsed;
             return;
         }
-        if (unitWrapPanel.Children.Count == 0) PopulateUnitCards();
+        PopulateUnitCards();
         unitPopupBorder.Visibility = Visibility.Visible;
     }
 
@@ -3297,6 +3378,15 @@ public partial class MainWindow : Window
             return;
         }
 
+        graphLoadingText.Text = "Loading MainChar...";
+        graphLoadingBorder.Visibility = Visibility.Visible;
+        comboCanvas.IsHitTestVisible = false;
+        btnChangeUnit.IsEnabled = false;
+
+        // Release file handles that may lock BaseMovementDB (CUE4Parse FileProvider holds FileShare.None)
+        try { _parser?.Dispose(); } catch { }
+        GC.Collect(); GC.WaitForPendingFinalizers(); await Task.Delay(100);
+
         var movementDbSrc = Path.Combine(contentDir, _stanceMap[stance].MovementDb + ".uasset");
         var movementDbExp = Path.Combine(contentDir, _stanceMap[stance].MovementDb + ".uexp");
 
@@ -3324,9 +3414,9 @@ public partial class MainWindow : Window
 
             if (!File.Exists(backupDbSrc) && File.Exists(vanillaDbSrc))
             {
-                File.Copy(vanillaDbSrc, backupDbSrc, true);
+                await CopyWithRetryAsync(vanillaDbSrc, backupDbSrc);
                 if (File.Exists(vanillaDbExp))
-                    File.Copy(vanillaDbExp, backupDbExp, true);
+                    await CopyWithRetryAsync(vanillaDbExp, backupDbExp);
             }
 
             if (_activeStance == "MainChar" && File.Exists(vanillaDbSrc))
@@ -3334,14 +3424,14 @@ public partial class MainWindow : Window
             }
             else if (File.Exists(backupDbSrc))
             {
-                File.Copy(backupDbSrc, vanillaDbSrc, true);
+                await CopyWithRetryAsync(backupDbSrc, vanillaDbSrc);
                 if (File.Exists(backupDbExp))
-                    File.Copy(backupDbExp, vanillaDbExp, true);
+                    await CopyWithRetryAsync(backupDbExp, vanillaDbExp);
             }
 
-            File.Copy(movementDbSrc, vanillaDbSrc, true);
+            await CopyWithRetryAsync(movementDbSrc, vanillaDbSrc);
             if (File.Exists(movementDbExp))
-                File.Copy(movementDbExp, vanillaDbExp, true);
+                await CopyWithRetryAsync(movementDbExp, vanillaDbExp);
 
             var transition = _stanceMap[stance].Transition;
             if (transition != null)
@@ -3355,9 +3445,9 @@ public partial class MainWindow : Window
 
                 if (!File.Exists(backupTransSrc) && File.Exists(vanillaTransSrc))
                 {
-                    File.Copy(vanillaTransSrc, backupTransSrc, true);
+                    await CopyWithRetryAsync(vanillaTransSrc, backupTransSrc);
                     if (File.Exists(vanillaTransExp))
-                        File.Copy(vanillaTransExp, backupTransExp, true);
+                        await CopyWithRetryAsync(vanillaTransExp, backupTransExp);
                 }
 
                 if (_activeStance == "MainChar" && File.Exists(vanillaTransSrc))
@@ -3365,16 +3455,16 @@ public partial class MainWindow : Window
                 }
                 else if (File.Exists(backupTransSrc))
                 {
-                    File.Copy(backupTransSrc, vanillaTransSrc, true);
+                    await CopyWithRetryAsync(backupTransSrc, vanillaTransSrc);
                     if (File.Exists(backupTransExp))
-                        File.Copy(backupTransExp, vanillaTransExp, true);
+                        await CopyWithRetryAsync(backupTransExp, vanillaTransExp);
                 }
 
                 if (File.Exists(transSrc))
                 {
-                    File.Copy(transSrc, vanillaTransSrc, true);
+                    await CopyWithRetryAsync(transSrc, vanillaTransSrc);
                     if (File.Exists(transExp))
-                        File.Copy(transExp, vanillaTransExp, true);
+                        await CopyWithRetryAsync(transExp, vanillaTransExp);
                 }
             }
 
@@ -3409,6 +3499,32 @@ public partial class MainWindow : Window
             txtStatus.Text = $"Error switching stance: {ex.Message}";
             SetStanceSelection(_activeStance);
         }
+        finally
+        {
+            // re-initialize provider that was disposed at start
+            try { var fresh = new AnimationParser(); var cDir = _contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase) ? _contentPath : Path.Combine(_contentPath, "Content"); fresh.Initialize(_contentPath, cDir); _parser = fresh; } catch { }
+            graphLoadingBorder.Visibility = Visibility.Collapsed;
+            comboCanvas.IsHitTestVisible = true;
+            btnChangeUnit.IsEnabled = true;
+        }
+    }
+
+    private async Task CopyWithRetryAsync(string src, string dst)
+    {
+        for (int i=0;i<5;i++)
+        {
+            try
+            {
+                using (var srcFs = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var dstFs = new FileStream(dst, FileMode.Create, FileAccess.Write, FileShare.ReadWrite))
+                    await srcFs.CopyToAsync(dstFs);
+                return;
+            }
+            catch (IOException) when (i<4) { await Task.Delay(200); GC.Collect(); GC.WaitForPendingFinalizers(); }
+        }
+        using (var srcFs2 = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        using (var dstFs2 = new FileStream(dst, FileMode.Create, FileAccess.Write, FileShare.ReadWrite))
+            await srcFs2.CopyToAsync(dstFs2);
     }
 
     private async Task LoadArchetypeGraphAsync(string arch)

@@ -202,6 +202,29 @@ public partial class ExportDialog : Window
                     var patchedDbFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                     foreach (var node in _modifiedNodes)
                     {
+                        // Enemy archetype swap: patch AttackDB + DataTable m_Anim for DataTable-driven AI
+                        if (!string.IsNullOrEmpty(node.DefaultDBPath) && node.DefaultDBPath.Contains("/AI/Archetypes/", StringComparison.OrdinalIgnoreCase) && _graph != null && !string.Equals(_graph.WeaponName, "MainChar", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string arch = _graph.WeaponName;
+                            var relDb = node.DefaultDBPath.TrimStart('/'); if (relDb.StartsWith("Game/", StringComparison.OrdinalIgnoreCase)) relDb = relDb.Substring(5);
+                            var vanillaDbFile = Path.Combine(gameRoot, relDb + ".uasset");
+                            var outDb = Path.Combine(outputPath, "Sifu", "Content", relDb + ".uasset");
+                            bool patchedEnemy = false;
+                            if (File.Exists(vanillaDbFile))
+                            {
+                                Directory.CreateDirectory(Path.GetDirectoryName(outDb)!);
+                                if (PatchDbAnimation(vanillaDbFile, node.AnimPath, outDb, EngineVersion.VER_UE4_26))
+                                {
+                                    var outUexp = Path.ChangeExtension(outDb, ".uexp");
+                                    var inUexp = Path.ChangeExtension(vanillaDbFile, ".uexp");
+                                    if (File.Exists(inUexp) && !File.Exists(outUexp)) File.Copy(inUexp, outUexp, true);
+                                    fileEntries.Add((outDb, "../../../Sifu/Content/" + relDb + ".uasset"));
+                                    fileEntries.Add((outUexp, "../../../Sifu/Content/" + relDb + ".uexp"));
+                                    patchedEnemy = true;
+                                }
+                            }
+                            if (patchedEnemy) { patched++; ErrorLog.Write("EXPORT", new Exception($"  PATCHED enemy {node.DisplayName} -> {node.AnimPath} (arch {arch})")); continue; }
+                        }
                         if (string.IsNullOrEmpty(node.DefaultDBPath))
                         {
                             // Option B: clone template AttackDB for custom nodes (e.g. FireDisciple moves without AttackDB)

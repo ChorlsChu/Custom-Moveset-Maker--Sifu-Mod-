@@ -1642,6 +1642,7 @@ public class AnimationParser : IDisposable
 
     public void Dispose()
     {
+        try { (_provider as IDisposable)?.Dispose(); } catch { }
         _provider = null;
     }
 }
