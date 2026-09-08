@@ -953,6 +953,26 @@ public class AnimationParser : IDisposable
 
             LogDebug($"[COMBO] Final: {graph.Nodes.Count} nodes, {graph.Edges.Count} edges (removed {conduitIds.Count} conduits)");
 
+            var delayAnimNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "MainChar_Attack_Man_Barehands_Skill_MultiHit_FL",
+                "MainChar_Attack_Man_Barehands_Pressure_TripleHit_BR"
+            };
+
+            foreach (var edge in graph.Edges)
+            {
+                if (string.IsNullOrEmpty(edge.InputName)) continue;
+                var targetNode = graph.Nodes.FirstOrDefault(n => n.Id == edge.ToNodeId);
+                if (targetNode != null && !string.IsNullOrEmpty(targetNode.AnimPath))
+                {
+                    var animName = Path.GetFileName(targetNode.AnimPath);
+                    bool isDelay = targetNode.AnimPath.Contains("/Delay/", StringComparison.OrdinalIgnoreCase)
+                        || delayAnimNames.Contains(animName);
+                    if (isDelay)
+                        edge.InputName += " Delay";
+                }
+            }
+
             var incomingInputs = new Dictionary<int, HashSet<string>>();
             foreach (var edge in graph.Edges)
             {
@@ -967,65 +987,6 @@ public class AnimationParser : IDisposable
             {
                 if (incomingInputs.TryGetValue(node.Id, out var inputs))
                     node.InputLabel = string.Join(" / ", inputs.OrderBy(x => x));
-            }
-
-            var firstMoveInputs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["Jab"] = "LMB",
-                ["BellyPalm"] = "RMB",
-                ["3Hits"] = "LMB after parry",
-                ["Disengage"] = "RMB + LMB",
-                ["FrontKick"] = "RMB",
-                ["GroundPunch"] = "W W + LMB",
-                ["Palm Strike"] = "S W + LMB",
-                ["2Hits"] = "RMB after parry",
-                ["CrookedFoot"] = "Hold RMB after parry",
-                ["GetUp"] = "LMB/RMB when knocked",
-                ["GuardBreak"] = "Hold LMB",
-                ["Invert"] = "Shift + W/A/S/D",
-                ["LowKick"] = "S W + RMB",
-                ["ResilientAttack"] = "Space + RMB",
-                ["Rush Attack Heavy"] = "RMB while running",
-                ["Rush Attack Light"] = "LMB while running",
-                ["Thrust Kick"] = "W W + RMB",
-                ["3Hits 02"] = "LMB after parry",
-                ["3Hits 03"] = "LMB after parry",
-                ["MultiHit"] = "RMB delay",
-                ["Hook"] = "",
-                ["PalmPunch02"] = "",
-                ["HeadExtPunch02"] = "",
-                ["GroinHead_DoubleHit"] = "",
-                ["ElbowPlexus"] = "",
-                ["BellySlice"] = "",
-                ["TripleHit"] = "",
-                ["ThroatPlexus_DoubleHit"] = "",
-                ["PushKick"] = "",
-                ["DoubleElbowStrike"] = "",
-                ["MonoElbowStrike"] = "",
-                ["DoubleHit_Finisher"] = "",
-                ["ShinKick"] = "",
-                ["ThroatPunch"] = "",
-                ["SpinHighKick"] = "",
-                ["HighCrush"] = "",
-                ["AoeKnockdown"] = "",
-                ["PostGroundPunch"] = "",
-                ["PostPushback"] = "",
-                ["DizzyPunch"] = "",
-                ["GRAB"] = ""
-            };
-            foreach (var node in graph.Nodes)
-            {
-                if (!node.IsRoot)
-                {
-                    foreach (var (key, label) in firstMoveInputs)
-                    {
-                        if (node.DisplayName.Contains(key, StringComparison.OrdinalIgnoreCase))
-                        {
-                            node.InputLabel = label;
-                            break;
-                        }
-                    }
-                }
             }
 
             var stanceNode = new ComboNode
@@ -1097,6 +1058,35 @@ public class AnimationParser : IDisposable
         }
         catch { }
         return null;
+    }
+
+    public string DumpAttackDBProperties(string dbPath)
+    {
+        try
+        {
+            var dbObj = _provider?.SafeLoadPackageObject<UObject>(dbPath);
+            if (dbObj == null) return "(DB entry not found)";
+
+            var mAttack = dbObj.Properties.FirstOrDefault(p => p.Name.Text == "m_Attack");
+            if (mAttack?.Tag is StructProperty attackStruct &&
+                attackStruct.Value.StructType is FStructFallback attackData)
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine($"Properties ({attackData.Properties.Count}):");
+                foreach (var prop in attackData.Properties)
+                {
+                    var typeName = prop.PropertyType.Text;
+                    var val = prop.Tag?.ToString() ?? "?";
+                    sb.AppendLine($"  {prop.Name.Text} [{typeName}]: {val}");
+                }
+                return sb.ToString();
+            }
+            return "(m_Attack struct not found)";
+        }
+        catch (Exception ex)
+        {
+            return $"(error: {ex.Message})";
+        }
     }
 
     private List<ComboNode> ParseComboNodeVariants(FStructFallback nodeStruct, int nextId, int treeIndex)
@@ -1596,6 +1586,58 @@ public class AnimationParser : IDisposable
     public string ToJson(MeshJsonData data)
     {
         return JsonConvert.SerializeObject(data, Formatting.None);
+    }
+
+    public ComboGraph? LoadArchetypeAttackGraph(string arch)
+    {
+        return LoadArchetypeAttackGraph(arch, "Normal");
+    }
+
+    public ComboGraph? LoadArchetypeAttackGraph(string arch, string difficulty)
+    {
+        try
+        {
+            var contentDir = _contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase) ? _contentPath : Path.Combine(_contentPath, "Content");
+            var attacksDir = Path.Combine(contentDir, "DB", "AI", "Archetypes", arch, "Attacks");
+            if (!Directory.Exists(attacksDir)) return null;
+            var files = Directory.GetFiles(attacksDir, "*.uasset", SearchOption.TopDirectoryOnly)
+                .Where(f=>!Path.GetFileName(f).Contains("HitBoxData", StringComparison.OrdinalIgnoreCase)).ToList();
+            files.AddRange(Directory.GetFiles(attacksDir, "*.uasset", SearchOption.AllDirectories)
+                .Where(f=>!Path.GetFileName(f).Contains("HitBoxData", StringComparison.OrdinalIgnoreCase) && !files.Contains(f)));
+            if (difficulty == "Hard")
+                files = files.Where(f=>Path.GetFileName(f).Contains("Hard", StringComparison.OrdinalIgnoreCase)).ToList();
+            else
+                files = files.Where(f=>!Path.GetFileName(f).Contains("Hard", StringComparison.OrdinalIgnoreCase)).ToList();
+            if (files.Count==0) return null;
+            var rows = new List<(string name, string anim)>();
+            foreach (var f in files.Distinct())
+            {
+                var rel = f.Substring(contentDir.Length).TrimStart('\\','/').Replace('\\','/');
+                rel = rel.Replace(".uasset","");
+                var gamePath = "Game/" + rel;
+                var anim = ResolveAnimationFromDB(gamePath);
+                if (!string.IsNullOrEmpty(anim))
+                {
+                    var name = Path.GetFileNameWithoutExtension(f);
+                    rows.Add((name, anim));
+                }
+            }
+            if (rows.Count==0) return null;
+            rows = rows.OrderBy(r=>r.name).ToList();
+            var graph = new ComboGraph{ WeaponName=arch };
+            // Split into multiple linear chains (pools) by AI condition — each 8-row chunk is a pool/chain (Distance <300, <100, Counter)
+            // Example model: Distance <300 chain1 (0-7) + chain2 (8-15), Distance <100 chain (16-23), Counter (24+)
+            string[] poolConds = { "Distance < 300", "Distance < 300", "Distance < 100", "Counter (HasJustParried)" };
+            for (int i=0;i<rows.Count;i++)
+            {
+                var (nm, ap) = rows[i];
+                int poolIdx = Math.Min(i / 8, poolConds.Length-1);
+                string cond = poolConds[poolIdx];
+                graph.Nodes.Add(new ComboNode{ Id=i, TreeIndex=i, Name=nm, AnimPath=ap, DefaultAnimPath=ap, DefaultDBPath=$"Game/DB/AI/Archetypes/{arch}/Attacks/{nm}", DisplayName=nm, IsRoot=false, DirectionLabel=cond });
+                if (i>0 && i % 8 != 0) graph.Edges.Add(new ComboEdge{ FromNodeId=i-1, ToNodeId=i, InputName="Auto"});
+            }
+            return graph;
+        } catch { return null; }
     }
 
     public void Dispose()

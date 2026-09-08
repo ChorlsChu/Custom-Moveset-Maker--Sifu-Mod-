@@ -51,8 +51,8 @@
             <Setter Property="FontSize" Value="12"/>
         </Style>
         <Style x:Key="DarkComboBox" TargetType="ComboBox">
-            <Setter Property="Background" Value="#313244"/>
-            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Foreground" Value="#1e1e2e"/>
             <Setter Property="BorderBrush" Value="#45475a"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="6,4"/>
@@ -276,10 +276,17 @@
 
                 <!-- Combo Graph -->
                 <Border x:Name="comboBorder" Grid.Row="0" Background="#181825" CornerRadius="0" Margin="0" ClipToBounds="True"
-                        Focusable="True" PreviewMouseDown="ComboGraphBorder_PreviewMouseDown">
+                        Focusable="True" PreviewMouseDown="ComboGraphBorder_PreviewMouseDown"
+                        PreviewKeyDown="ComboBorder_PreviewKeyDown"
+                        AllowDrop="True"
+                        DragEnter="ComboBorder_DragEnter"
+                        DragOver="ComboBorder_DragOver"
+                        DragLeave="ComboBorder_DragLeave"
+                        Drop="ComboBorder_Drop">
                     <Grid>
                         <Canvas Name="comboCanvas"
                                 Background="Transparent"
+                                PreviewMouseLeftButtonDown="ComboCanvas_PreviewMouseLeftButtonDown"
                                 MouseLeftButtonDown="ComboCanvas_MouseLeftButtonDown"
                                 MouseMove="ComboCanvas_MouseMove"
                                 MouseLeftButtonUp="ComboCanvas_MouseLeftButtonUp"
@@ -300,17 +307,39 @@
                                            TextTrimming="CharacterEllipsis" MaxWidth="400"/>
                             </StackPanel>
                         </Border>
+                        <Border Name="graphLoadingBorder" Visibility="Collapsed" IsHitTestVisible="False"
+                                VerticalAlignment="Center" HorizontalAlignment="Center"
+                                Background="#313244" BorderBrush="#585b70" BorderThickness="1"
+                                CornerRadius="6" Padding="16,12">
+                            <StackPanel>
+                                <ProgressBar IsIndeterminate="True" Width="140" Height="4" Margin="0,0,0,8"/>
+                                <TextBlock Name="graphLoadingText" Text="Loading..." Foreground="#cdd6f4" FontSize="11" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Name="unitPopupBorder" Visibility="Collapsed" Background="#99000000"
+                                VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Panel.ZIndex="5"
+                                MouseLeftButtonDown="UnitPopupBackground_Click">
+                            <Border Background="#1e1e2e" CornerRadius="6" BorderBrush="#585b70" BorderThickness="1"
+                                    VerticalAlignment="Center" HorizontalAlignment="Center" Padding="12" MaxWidth="560">
+                                <StackPanel>
+                                    <TextBlock Text="Select Unit" Foreground="#89b4fa" FontWeight="Bold" FontSize="13" Margin="0,0,0,8" HorizontalAlignment="Center"/>
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="380">
+                                        <WrapPanel Name="unitWrapPanel" Orientation="Horizontal"/>
+                                    </ScrollViewer>
+                                </StackPanel>
+                            </Border>
+                        </Border>
                         <Border Background="#11111b" Padding="10,6"
                                 VerticalAlignment="Top">
                             <DockPanel>
                                 <TextBlock Text="Combo Graph" FontWeight="Bold"
                                            Foreground="#89b4fa" FontSize="13" VerticalAlignment="Center"/>
-                                <ComboBox Name="cmbStance" Width="130" FontSize="11" Margin="8,0,0,0"
-                                          VerticalAlignment="Center" SelectionChanged="CmbStance_SelectionChanged"
-                                          Visibility="Collapsed" Background="#313244" Foreground="#cdd6f4"
-                                          BorderBrush="#45475a"/>
+                                <Button Name="btnChangeUnit" Content="Change Unit" Style="{StaticResource DarkButton}"
+                                        Click="BtnChangeUnit_Click" FontSize="11" Padding="8,4" Margin="8,0,0,0"
+                                        VerticalAlignment="Center" Width="110"/>
+                                <ComboBox Name="cmbStance" Visibility="Collapsed" Width="0" Height="0"/>
                                 <Button Name="btnResetMode" Content="Reset Node Mode" Style="{StaticResource DarkButton}"
-                                        Click="ToggleResetMode_Click" FontSize="11" Padding="8,3" Margin="0,0,8,0"
+                                        Click="ToggleResetMode_Click" FontSize="11" Padding="8,3" Margin="8,0,0,0"
                                         Visibility="Collapsed"/>
                                 <TextBlock Name="txtComboInfo" Text="" Foreground="#6c7086" FontSize="11"
                                            HorizontalAlignment="Right" VerticalAlignment="Center"/>
@@ -367,7 +396,47 @@
                         </Grid.ColumnDefinitions>
                         <!-- Info Panel -->
                         <Border Grid.Column="0" Background="#181825" Padding="10">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <StackPanel>
+                                <!-- Node Info (shown when a combo node is selected) -->
+                                <Border Name="nodeInfoPanel" Visibility="Collapsed"
+                                        Background="#1e1e2e" CornerRadius="4" Padding="8" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <TextBlock Text="Node Info" FontWeight="Bold"
+                                                   Foreground="#cba6f7" FontSize="12" Margin="0,0,0,6"/>
+                                        <StackPanel Name="mainCharInputPanel">
+                                            <TextBlock Text="Input:" Foreground="#6c7086" FontSize="10"
+                                                       Margin="0,0,0,2"/>
+                                            <ComboBox Name="cmbNodeInput" Width="120" FontSize="11"
+                                                      Style="{StaticResource DarkComboBox}"
+                                                      SelectionChanged="CmbNodeInput_SelectionChanged">
+                                                <ComboBoxItem Content="LMB"/>
+                                                <ComboBoxItem Content="RMB"/>
+                                                <ComboBoxItem Content="RMB Hold"/>
+                                                <ComboBoxItem Content="S"/>
+                                                <ComboBoxItem Content="Shift"/>
+                                                <ComboBoxItem Content="Q"/>
+                                            </ComboBox>
+                                        </StackPanel>
+                                        <StackPanel Name="enemyConditionPanel" Visibility="Collapsed">
+                                            <TextBlock Text="Condition:" Foreground="#6c7086" FontSize="10"
+                                                       Margin="0,8,0,2"/>
+                                            <ComboBox Name="cmbNodeCondition" Width="140" FontSize="10" Style="{StaticResource DarkComboBox}" SelectionChanged="NodeCondition_Changed">
+                                                <ComboBoxItem Content="Starter"/>
+                                                <ComboBoxItem Content="Counter (HasJustParried)"/>
+                                                <ComboBoxItem Content="Distance &lt; 150"/>
+                                                <ComboBoxItem Content="Distance &lt; 200"/>
+                                                <ComboBoxItem Content="Distance &lt; 300"/>
+                                                <ComboBoxItem Content="Distance &lt; 500"/>
+                                                <ComboBoxItem Content="Distance &gt; 700"/>
+                                                <ComboBoxItem Content="Custom..."/>
+                                            </ComboBox>
+                                            <TextBox Name="txtNodeConditionX" Width="60" FontSize="10" Margin="0,4,0,0" IsEnabled="False" Text="3000" ToolTip="Custom distance"/>
+                                            <TextBlock Text="Pool: Counter vs Starter determined by canvas linear chain" Foreground="#6c7086" FontSize="9" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
                                 <TextBlock Text="Animation Info" FontWeight="Bold"
                                            Foreground="#a6e3a1" FontSize="12" Margin="0,0,0,6"/>
                                 <TextBlock Name="txtDisplayName" Text="Display: -" Foreground="#89b4fa"
@@ -389,6 +458,7 @@
                                            FontSize="10" TextTrimming="CharacterEllipsis"
                                            ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
                             </StackPanel>
+                            </ScrollViewer>
                         </Border>
                         <GridSplitter Grid.Column="1" Width="3" Background="#313244"
                                       VerticalAlignment="Stretch"/>

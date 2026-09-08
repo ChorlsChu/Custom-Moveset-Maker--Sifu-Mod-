@@ -61,6 +61,8 @@ public partial class MainWindow : Window
     private const double V_SPACING = 20;
 
     private bool _isPanning;
+    private bool _panMoved;
+    private bool _canvasHitNode;
     private Point _panStart;
     private bool _keyW, _keyA, _keyS, _keyD;
     private DispatcherTimer _panTimer;
@@ -75,6 +77,26 @@ public partial class MainWindow : Window
     private int _lastClickedNodeId = -1;
     private DateTime _lastClickTime = DateTime.MinValue;
     private Popup? _dragPopup;
+    private Border? _draggedCard;
+    private DispatcherTimer? _dragTimer;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out System.Drawing.Point lpPoint);
+
+    private int _connectFromNodeId = -1;
+    private System.Windows.Shapes.Line? _connectLine;
+    private static readonly SolidColorBrush ConnectDotFill = new(Color.FromRgb(0x58, 0x5b, 0x70));
+    private static readonly SolidColorBrush ConnectDotStroke = new(Color.FromRgb(0x6c, 0x70, 0x86));
+    private static readonly SolidColorBrush ConnectLineBrush = new(Color.FromArgb(0x80, 0xcd, 0xd6, 0xf4));
+
+    private bool _isDraggingNode;
+    private bool _dragCandidate;
+    private int _dragNodeId = -1;
+    private Point _dragStartCanvasPos;
+    private Point _dragNodeStartPos;
+    private readonly Dictionary<int, TextBlock> _nodeLabels = new();
+    private readonly Dictionary<int, Border> _nodeInputBgs = new();
+    public readonly Dictionary<int, string> CustomNodeCloneMap = new();
 
     private ComboGraph? _vanillaGraph;
     private ComboGraph? _moddedGraph;
@@ -636,6 +658,50 @@ public partial class MainWindow : Window
     private static readonly SolidColorBrush SelectedOrangeBorder = new(Color.FromRgb(0xfa, 0xb3, 0x87));
     private static readonly SolidColorBrush SelectedOrangeBg = new(Color.FromArgb(0x80, 0xfa, 0xb3, 0x87));
 
+    private static readonly Color EdgeDefaultColor = Color.FromRgb(0x89, 0xb4, 0xfa);
+    private static readonly Color EdgeStanceDim = Color.FromRgb(0x58, 0x5b, 0x70);
+    private static readonly Color EdgeStanceHighlight = Color.FromRgb(0x8a, 0x8d, 0xa0);
+    private static readonly Color EdgeConflictColor = Color.FromRgb(0xff, 0x44, 0x44);
+    private static readonly Dictionary<string, Color> EdgeColorByInput = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["LMB"] = Color.FromRgb(0xa6, 0xe3, 0xa1),
+        ["RMB"] = Color.FromRgb(0xf3, 0x8b, 0xa8),
+        ["RMB Hold"] = Color.FromRgb(0xf5, 0xc2, 0xe7),
+        ["RMB Delay"] = Color.FromRgb(0xf3, 0x8b, 0xa8),
+        ["S"] = Color.FromRgb(0xf9, 0xe2, 0xaf),
+        ["Shift"] = Color.FromRgb(0x89, 0xdc, 0xeb),
+        ["Q"] = Color.FromRgb(0xcb, 0xa6, 0xf7),
+    };
+    private static readonly Dictionary<string, SolidColorBrush> EdgeBrushByInput = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly SolidColorBrush EdgeDefaultBrush;
+    private static readonly SolidColorBrush EdgeStanceDimBrush;
+
+    static MainWindow()
+    {
+        foreach (var kvp in EdgeColorByInput)
+        {
+            var b = new SolidColorBrush(kvp.Value);
+            b.Freeze();
+            EdgeBrushByInput[kvp.Key] = b;
+        }
+        EdgeDefaultBrush = new SolidColorBrush(EdgeDefaultColor);
+        EdgeDefaultBrush.Freeze();
+        EdgeStanceDimBrush = new SolidColorBrush(EdgeStanceDim);
+        EdgeStanceDimBrush.Freeze();
+    }
+
+    private struct EdgeVisuals
+    {
+        public System.Windows.Shapes.Path Path;
+        public System.Windows.Shapes.Polygon Arrow;
+        public bool IsConnected;
+        public bool IsConflict;
+        public int LastZIndex;
+        public System.Windows.Media.Effects.DropShadowEffect? Glow;
+    }
+    private Dictionary<ComboEdge, EdgeVisuals> _edgeVisuals = new();
+    private Dictionary<int, Border> _nodeBorders = new();
+
     private void SelectMoveCard(Border border)
     {
         if (_selectedMoveBorder != null && _selectedMoveBorder != border)
@@ -663,24 +729,81 @@ public partial class MainWindow : Window
         if (_selectedNodeId >= 0 && _comboGraph != null)
         {
             var prev = _comboGraph.Nodes.FirstOrDefault(n => n.Id == _selectedNodeId);
-            if (prev != null)
+            if (prev != null && _nodeBorders.TryGetValue(_selectedNodeId, out var prevBorder))
             {
-                var prevBorder = comboCanvas.Children
-                    .OfType<Border>()
-                    .FirstOrDefault(b => b.Tag is ComboNode cn && cn.Id == _selectedNodeId);
-                if (prevBorder != null)
-                {
-                    prevBorder.BorderBrush = GetNodeColor(prev);
-                    prevBorder.Background = GetNodeBackground(prev);
-                }
+                prevBorder.BorderBrush = GetNodeColor(prev);
+                prevBorder.Background = GetNodeBackground(prev);
             }
             _selectedNodeId = -1;
+        }
+        nodeInfoPanel.Visibility = Visibility.Collapsed;
+        RedrawEdgesOnly();
+    }
+
+    private void UpdateNodeInfoPanel(ComboNode node)
+    {
+        nodeInfoPanel.Visibility = Visibility.Visible;
+        bool isEnemy = !string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase);
+        mainCharInputPanel.Visibility = isEnemy ? Visibility.Collapsed : Visibility.Visible;
+        enemyConditionPanel.Visibility = isEnemy ? Visibility.Visible : Visibility.Collapsed;
+        if (isEnemy)
+        {
+            // show condition stored in DirectionLabel
+            var cond = node.DirectionLabel ?? "";
+            bool found = false;
+            for (int i=0;i<cmbNodeCondition.Items.Count;i++)
+                if ((cmbNodeCondition.Items[i] as ComboBoxItem)?.Content?.ToString()==cond) { cmbNodeCondition.SelectedIndex=i; found=true; break; }
+            if (!found) cmbNodeCondition.SelectedIndex = 0;
+        }
+
+        var incomingEdge = _comboGraph?.Edges.FirstOrDefault(e => e.ToNodeId == node.Id && !string.IsNullOrEmpty(e.InputName));
+        if (incomingEdge != null)
+        {
+            for (int i = 0; i < cmbNodeInput.Items.Count; i++)
+            {
+                if (cmbNodeInput.Items[i] is ComboBoxItem item && item.Content?.ToString() == incomingEdge.InputName)
+                {
+                    cmbNodeInput.SelectedIndex = i;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            cmbNodeInput.SelectedIndex = -1;
+        }
+    }
+
+    private void CmbNodeInput_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_selectedNodeId < 0 || _comboGraph == null) return;
+        if (cmbNodeInput.SelectedItem is not ComboBoxItem item) return;
+
+        var newInput = item.Content?.ToString() ?? "";
+        var incomingEdge = _comboGraph.Edges.FirstOrDefault(e => e.ToNodeId == _selectedNodeId && !string.IsNullOrEmpty(e.InputName));
+        if (incomingEdge != null)
+        {
+            incomingEdge.InputName = newInput;
+            RenderComboGraph();
+            if (_nodeBorders.TryGetValue(_selectedNodeId, out var border) && _comboGraph.Nodes.FirstOrDefault(n => n.Id == _selectedNodeId) is ComboNode node)
+            {
+                SelectNode(border, node);
+            }
+            txtStatus.Text = $"Updated input: {newInput}";
         }
     }
 
     private void SelectNode(Border border, ComboNode node)
     {
-        ClearNodeSelection();
+        if (_selectedNodeId >= 0 && _comboGraph != null)
+        {
+            var prev = _comboGraph.Nodes.FirstOrDefault(n => n.Id == _selectedNodeId);
+            if (prev != null && _nodeBorders.TryGetValue(_selectedNodeId, out var prevBorder))
+            {
+                prevBorder.BorderBrush = GetNodeColor(prev);
+                prevBorder.Background = GetNodeBackground(prev);
+            }
+        }
         _selectedNodeId = node.Id;
         var nodeColor = GetNodeColor(node);
         var color = nodeColor.Color;
@@ -699,6 +822,8 @@ public partial class MainWindow : Window
             border.BorderBrush = SelectedNodeBorderBrush;
             border.Background = SelectedNodeBg;
         }
+        RedrawEdgesOnly();
+        UpdateNodeInfoPanel(node);
     }
 
     private async void MoveCard_Click(object sender, MouseButtonEventArgs e)
@@ -724,58 +849,110 @@ public partial class MainWindow : Window
         if (e.LeftButton == MouseButtonState.Pressed &&
             sender is Border border && border.Tag is MoveInfo move)
         {
+            _draggedCard = border;
+            border.Opacity = 0.15;
             ShowDragVisual(move);
             var data = new DataObject(typeof(MoveInfo), move);
-            border.GiveFeedback += OnGiveFeedback;
             try
             {
                 DragDrop.DoDragDrop(border, data, DragDropEffects.Copy);
             }
             finally
             {
-                border.GiveFeedback -= OnGiveFeedback;
                 HideDragVisual();
+                border.Opacity = 1;
+                _draggedCard = null;
             }
         }
     }
 
     private void ShowDragVisual(MoveInfo move)
     {
-        var visual = new Border
+        var greenBar = new Border
+        {
+            Width = 3,
+            CornerRadius = new CornerRadius(2),
+            Margin = new Thickness(0, 0, 10, 0),
+            Background = new SolidColorBrush(Color.FromRgb(0xa6, 0xe3, 0xa1)),
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+
+        var badges = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 0) };
+        if (!string.IsNullOrEmpty(move.Character))
+            badges.Children.Add(CreateTagBadge(move.Character));
+        if (!string.IsNullOrEmpty(move.WeaponType))
+            badges.Children.Add(CreateTagBadge(move.WeaponType));
+        if (!string.IsNullOrEmpty(move.Category))
+            badges.Children.Add(CreateTagBadge(move.Category));
+
+        var nameBlock = new TextBlock
+        {
+            Text = move.DisplayNameClean,
+            Foreground = Brushes.White,
+            FontSize = 11,
+            FontWeight = FontWeights.SemiBold
+        };
+
+        var stack = new StackPanel();
+        stack.Children.Add(nameBlock);
+        stack.Children.Add(badges);
+
+        var dock = new DockPanel();
+        DockPanel.SetDock(greenBar, Dock.Left);
+        dock.Children.Add(greenBar);
+        dock.Children.Add(stack);
+
+        var card = new Border
         {
             Background = new SolidColorBrush(Color.FromRgb(0x31, 0x32, 0x44)),
             BorderBrush = new SolidColorBrush(Color.FromRgb(0x89, 0xb4, 0xfa)),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(8, 4, 8, 4),
-            Child = new TextBlock
-            {
-                Text = move.DisplayNameClean,
-                Foreground = Brushes.White,
-                FontSize = 11,
-                FontWeight = FontWeights.SemiBold
-            }
+            Padding = new Thickness(8, 6, 8, 6),
+            Width = 280,
+            Child = dock
         };
 
         _dragPopup = new Popup
         {
-            Child = visual,
+            Child = card,
             AllowsTransparency = true,
             Placement = PlacementMode.Absolute,
             IsOpen = true,
             StaysOpen = true
         };
+
+        _dragTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        _dragTimer.Tick += (_, _) =>
+        {
+            if (_dragPopup != null && GetCursorPos(out var pt))
+                _dragPopup.PlacementRectangle = new Rect(pt.X + 16, pt.Y + 16, 0, 0);
+        };
+        _dragTimer.Start();
     }
 
-    private void OnGiveFeedback(object sender, GiveFeedbackEventArgs e)
+    private static Border CreateTagBadge(string text)
     {
-        if (_dragPopup == null) return;
-        var pos = Mouse.GetPosition(null);
-        _dragPopup.PlacementRectangle = new Rect(pos.X + 12, pos.Y + 12, 0, 0);
+        return new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(0x80, 0x58, 0x5b, 0x70)),
+            CornerRadius = new CornerRadius(2),
+            Padding = new Thickness(4, 1, 4, 1),
+            Margin = new Thickness(0, 0, 4, 0),
+            Child = new TextBlock
+            {
+                Text = text,
+                Foreground = new SolidColorBrush(Color.FromRgb(0xcd, 0xcd, 0xd6)),
+                FontSize = 8,
+                FontWeight = FontWeights.Normal
+            }
+        };
     }
 
     private void HideDragVisual()
     {
+        _dragTimer?.Stop();
+        _dragTimer = null;
         if (_dragPopup != null)
         {
             _dragPopup.IsOpen = false;
@@ -1112,7 +1289,7 @@ public partial class MainWindow : Window
         var stanceChanged = detectedStance != "MainChar";
         var modified = _comboGraph.Nodes
             .Where(n => !n.IsRoot && !string.IsNullOrEmpty(n.AnimPath)
-                && (n.AnimPath != n.DefaultAnimPath
+                && (n.TreeIndex == -1 || n.AnimPath != n.DefaultAnimPath
                     || (!string.IsNullOrEmpty(n.VanillaAnimPath) && n.AnimPath != n.VanillaAnimPath)))
             .ToList();
 
@@ -1141,7 +1318,9 @@ public partial class MainWindow : Window
             detectedStance,
             charTransitionPath,
             charBaseMovementDBPath,
-            referenceModDir)
+            referenceModDir,
+            _comboGraph,
+            CustomNodeCloneMap)
         {
             Owner = this,
         };
@@ -1600,57 +1779,69 @@ public partial class MainWindow : Window
     private void LayoutComboGraph()
     {
         if (_comboGraph == null) return;
+
+        var customPositions = _nodePositions
+            .Where(kvp => _comboGraph.Nodes.Any(n => n.Id == kvp.Key && n.TreeIndex == -1))
+            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
         _nodePositions.Clear();
 
         foreach (var node in _comboGraph.Nodes)
             node.Depth = -1;
 
         var incoming = new Dictionary<int, int>();
+        var incomingFrom = new Dictionary<int, List<int>>();
         var outgoing = new Dictionary<int, List<int>>();
         foreach (var node in _comboGraph.Nodes)
         {
             incoming[node.Id] = 0;
+            incomingFrom[node.Id] = new List<int>();
             outgoing[node.Id] = new List<int>();
         }
         foreach (var edge in _comboGraph.Edges)
         {
             if (incoming.ContainsKey(edge.ToNodeId))
+            {
                 incoming[edge.ToNodeId]++;
+                incomingFrom[edge.ToNodeId].Add(edge.FromNodeId);
+            }
             if (outgoing.ContainsKey(edge.FromNodeId))
                 outgoing[edge.FromNodeId].Add(edge.ToNodeId);
         }
 
+        var depth = new Dictionary<int, int>();
+        var inDegree = new Dictionary<int, int>(incoming);
+
         var queue = new Queue<int>();
         foreach (var node in _comboGraph.Nodes)
         {
-            if (node.IsRoot || incoming[node.Id] == 0)
+            if (inDegree[node.Id] == 0)
             {
-                node.Depth = 0;
+                depth[node.Id] = 0;
                 queue.Enqueue(node.Id);
             }
         }
 
+        var processed = new HashSet<int>();
         while (queue.Count > 0)
         {
             var currentId = queue.Dequeue();
-            var current = _comboGraph.Nodes.FirstOrDefault(n => n.Id == currentId);
-            if (current == null) continue;
+            if (!processed.Add(currentId)) continue;
 
+            var currentDepth = depth[currentId];
             foreach (var targetId in outgoing[currentId])
             {
-                var target = _comboGraph.Nodes.FirstOrDefault(n => n.Id == targetId);
-                if (target != null && target.Depth < current.Depth + 1)
-                {
-                    target.Depth = current.Depth + 1;
-                    queue.Enqueue(target.Id);
-                }
+                if (!depth.TryGetValue(targetId, out var existing) || existing < currentDepth + 1)
+                    depth[targetId] = currentDepth + 1;
+
+                inDegree[targetId]--;
+                if (inDegree[targetId] <= 0)
+                    queue.Enqueue(targetId);
             }
         }
 
         foreach (var node in _comboGraph.Nodes)
         {
-            if (node.Depth < 0)
-                node.Depth = 0;
+            node.Depth = depth.TryGetValue(node.Id, out var d) ? d : 0;
         }
 
         var forwardDepth = new Dictionary<int, int>();
@@ -1680,6 +1871,26 @@ public partial class MainWindow : Window
         double colWidth = NODE_WIDTH + H_SPACING;
         double rowHeight = NODE_HEIGHT + V_SPACING;
 
+        // Enemy/boss: wrap into multiple linear rows (8 per row) for readability by pool
+        bool isEnemyGraph = !string.Equals(_comboGraph.WeaponName, "MainChar", StringComparison.OrdinalIgnoreCase) && !_comboGraph.Nodes.Any(n=>n.IsRoot);
+        if (isEnemyGraph)
+        {
+            int perRow = 8;
+            var ordered = _comboGraph.Nodes.OrderBy(n=>n.Id).ToList();
+            for (int i=0;i<ordered.Count;i++)
+            {
+                int col = i % perRow;
+                int row = i / perRow;
+                double x = 30 + col * colWidth;
+                double y = 30 + row * rowHeight * 2.2;
+                _nodePositions[ordered[i].Id] = new Point(x, y);
+                ordered[i].Depth = col;
+            }
+            foreach (var kvp in customPositions)
+                _nodePositions[kvp.Key] = kvp.Value;
+            return;
+        }
+
         for (int d = 0; d < columns.Count; d++)
         {
             var nodesInCol = columns[d];
@@ -1691,63 +1902,178 @@ public partial class MainWindow : Window
                 _nodePositions[nodesInCol[i].Id] = new Point(x, y);
             }
         }
+
+        foreach (var kvp in customPositions)
+            _nodePositions[kvp.Key] = kvp.Value;
     }
 
     private void RenderComboGraph()
     {
         comboCanvas.Children.Clear();
+        _edgeVisuals.Clear();
+        _nodeBorders.Clear();
+        _nodeLabels.Clear();
+        _nodeInputBgs.Clear();
         if (_comboGraph == null) return;
 
-        var edgeColors = new Dictionary<string, SolidColorBrush>
+        // Enemy pools: gray dynamic boxes with black header
+        bool isEnemyGraph = !string.Equals(_comboGraph.WeaponName, "MainChar", StringComparison.OrdinalIgnoreCase) && !_comboGraph.Nodes.Any(n=>n.IsRoot);
+        if (isEnemyGraph)
         {
-            ["LMB"] = new SolidColorBrush(Color.FromRgb(0xa6, 0xe3, 0xa1)),
-            ["RMB"] = new SolidColorBrush(Color.FromRgb(0xf3, 0x8b, 0xa8)),
-            ["RMB Hold"] = new SolidColorBrush(Color.FromRgb(0xf5, 0xc2, 0xe7)),
-            ["S"] = new SolidColorBrush(Color.FromRgb(0xf9, 0xe2, 0xaf)),
-            ["Shift"] = new SolidColorBrush(Color.FromRgb(0x89, 0xdc, 0xeb)),
-            ["Q"] = new SolidColorBrush(Color.FromRgb(0xcb, 0xa6, 0xf7)),
-        };
+            var pools = _comboGraph.Nodes.GroupBy(n=> string.IsNullOrEmpty(n.DirectionLabel) ? "Pool" : n.DirectionLabel).ToList();
+            foreach (var pool in pools)
+            {
+                var ids = pool.Select(n=>n.Id).Where(id=>_nodePositions.ContainsKey(id)).ToList();
+                if (ids.Count==0) continue;
+                double minX = ids.Min(id=>_nodePositions[id].X);
+                double maxX = ids.Max(id=>_nodePositions[id].X);
+                double minY = ids.Min(id=>_nodePositions[id].Y);
+                double maxY = ids.Max(id=>_nodePositions[id].Y);
+                double pad = 12;
+                double headerH = 18;
+                var gray = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x2a,0x2a,0x3a)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0x6c,0x70,0x86)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(6),
+                    Width = (maxX - minX) + NODE_WIDTH + pad*2,
+                    Height = (maxY - minY) + NODE_HEIGHT + pad*2 + headerH,
+                    IsHitTestVisible = false
+                };
+                Canvas.SetLeft(gray, minX - pad);
+                Canvas.SetTop(gray, minY - pad - headerH);
+                Panel.SetZIndex(gray, -1);
+                comboCanvas.Children.Add(gray);
+                var header = new Border
+                {
+                    Background = new SolidColorBrush(Colors.Black),
+                    BorderBrush = new SolidColorBrush(Colors.Black),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(2),
+                    Padding = new Thickness(6,2,6,2),
+                    IsHitTestVisible = false,
+                    Child = new TextBlock{ Text=pool.Key, Foreground=Brushes.White, FontSize=9, FontWeight=FontWeights.Bold}
+                };
+                Canvas.SetLeft(header, minX - pad + 4);
+                Canvas.SetTop(header, minY - pad - headerH + 2);
+                Panel.SetZIndex(header, 1);
+                comboCanvas.Children.Add(header);
+            }
+        }
+
+        var edgesBySource = new Dictionary<int, List<ComboEdge>>();
+        foreach (var edge in _comboGraph.Edges)
+        {
+            if (!edgesBySource.TryGetValue(edge.FromNodeId, out var list))
+            {
+                list = new List<ComboEdge>();
+                edgesBySource[edge.FromNodeId] = list;
+            }
+            list.Add(edge);
+        }
+
+        var conflictEdges = new HashSet<ComboEdge>();
+        int conflictCount = 0;
+        foreach (var kvp in edgesBySource)
+        {
+            var byInput = new Dictionary<string, List<ComboEdge>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var e in kvp.Value)
+            {
+                if (string.IsNullOrEmpty(e.InputName)) continue;
+                if (!byInput.TryGetValue(e.InputName, out var list))
+                {
+                    list = new List<ComboEdge>();
+                    byInput[e.InputName] = list;
+                }
+                list.Add(e);
+            }
+            foreach (var inputKvp in byInput)
+            {
+                if (inputKvp.Value.Count > 2)
+                {
+                    foreach (var e in inputKvp.Value)
+                        conflictEdges.Add(e);
+                    conflictCount += inputKvp.Value.Count;
+                }
+            }
+        }
 
         foreach (var edge in _comboGraph.Edges)
         {
             if (!_nodePositions.TryGetValue(edge.FromNodeId, out var fromPos)) continue;
             if (!_nodePositions.TryGetValue(edge.ToNodeId, out var toPos)) continue;
 
-            var fromRight = new Point(fromPos.X + NODE_WIDTH, fromPos.Y + NODE_HEIGHT / 2);
-            var toLeft = new Point(toPos.X, toPos.Y + NODE_HEIGHT / 2);
+            bool isStanceEdge = edge.FromNodeId == -1;
+            var color = isStanceEdge
+                ? EdgeStanceDimBrush
+                : (EdgeBrushByInput.TryGetValue(edge.InputName, out var c) ? c : EdgeDefaultBrush);
 
-            var color = edgeColors.TryGetValue(edge.InputName, out var c) ? c :
-                new SolidColorBrush(Color.FromRgb(0x89, 0xb4, 0xfa));
+            var siblings = edgesBySource[edge.FromNodeId];
+            int siblingIndex = siblings.IndexOf(edge);
+            int siblingCount = siblings.Count;
 
-            var line = new System.Windows.Shapes.Line
+            double fanY = siblingCount > 1
+                ? fromPos.Y + NODE_HEIGHT * (siblingIndex + 0.5) / siblingCount
+                : fromPos.Y + NODE_HEIGHT / 2;
+
+            var fromPoint = new Point(fromPos.X + NODE_WIDTH, fanY);
+            var toPoint = new Point(toPos.X, toPos.Y + NODE_HEIGHT / 2);
+
+            double dx = toPoint.X - fromPoint.X;
+            double curveOffset = Math.Max(40, dx * 0.5);
+            var cp1 = new Point(fromPoint.X + curveOffset, fromPoint.Y);
+            var cp2 = new Point(toPoint.X - curveOffset, toPoint.Y);
+
+            var pathGeom = new PathGeometry();
+            var figure = new PathFigure { StartPoint = fromPoint, IsClosed = false };
+            figure.Segments.Add(new BezierSegment(cp1, cp2, toPoint, isStroked: true));
+            pathGeom.Figures.Add(figure);
+
+            var path = new System.Windows.Shapes.Path
             {
-                X1 = fromRight.X, Y1 = fromRight.Y,
-                X2 = toLeft.X, Y2 = toLeft.Y,
                 Stroke = color,
-                StrokeThickness = 2
+                StrokeThickness = isStanceEdge ? 1.5 : 2,
+                Data = pathGeom
             };
-            comboCanvas.Children.Add(line);
+            path.Tag = edge;
+            comboCanvas.Children.Add(path);
 
+            System.Windows.Shapes.Polygon? arrow = null;
             var arrowSize = 6;
-            var dx = toLeft.X - fromRight.X;
-            var dy = toLeft.Y - fromRight.Y;
-            var len = Math.Sqrt(dx * dx + dy * dy);
-            if (len > 0)
+            double tanX = toPoint.X - cp2.X;
+            double tanY = toPoint.Y - cp2.Y;
+            double tanLen = Math.Sqrt(tanX * tanX + tanY * tanY);
+            if (tanLen > 0)
             {
-                var ux = dx / len;
-                var uy = dy / len;
-                var arrowTip = toLeft;
+                double ux = tanX / tanLen;
+                double uy = tanY / tanLen;
+                var arrowTip = toPoint;
                 var arrowP1 = new Point(arrowTip.X - ux * arrowSize + uy * arrowSize / 2, arrowTip.Y - uy * arrowSize - ux * arrowSize / 2);
                 var arrowP2 = new Point(arrowTip.X - ux * arrowSize - uy * arrowSize / 2, arrowTip.Y - uy * arrowSize + ux * arrowSize / 2);
 
-                var arrow = new System.Windows.Shapes.Polygon
+                arrow = new System.Windows.Shapes.Polygon
                 {
                     Fill = color,
                     Points = new PointCollection { arrowTip, arrowP1, arrowP2 }
                 };
+                arrow.Tag = edge;
                 comboCanvas.Children.Add(arrow);
             }
+
+            _edgeVisuals[edge] = new EdgeVisuals
+            {
+                Path = path,
+                Arrow = arrow,
+                IsConnected = false,
+                IsConflict = conflictEdges.Contains(edge),
+                LastZIndex = 0,
+                Glow = null
+            };
         }
+
+        if (conflictCount > 0)
+            ShowToast($"⚠ {conflictCount} input conflict{(conflictCount > 1 ? "s" : "")} detected — duplicate input on same node");
 
         foreach (var node in _comboGraph.Nodes)
         {
@@ -1767,9 +2093,11 @@ public partial class MainWindow : Window
                 Tag = node
             };
             border.MouseLeftButtonDown += ComboNode_Click;
+            border.PreviewMouseLeftButtonDown += Node_PreviewMouseLeftButtonDown;
             border.PreviewMouseRightButtonDown += ComboNode_RightClick;
             border.AllowDrop = true;
             border.DragEnter += ComboNode_DragEnter;
+            border.DragOver += ComboNode_DragOver;
             border.DragLeave += ComboNode_DragLeave;
             border.Drop += ComboNode_Drop;
 
@@ -1785,6 +2113,23 @@ public partial class MainWindow : Window
             Canvas.SetLeft(border, pos.X);
             Canvas.SetTop(border, pos.Y);
             comboCanvas.Children.Add(border);
+            _nodeBorders[node.Id] = border;
+
+            var dot = new System.Windows.Shapes.Ellipse
+            {
+                Width = 8,
+                Height = 8,
+                Fill = ConnectDotFill,
+                Stroke = ConnectDotStroke,
+                StrokeThickness = 1,
+                Cursor = Cursors.Cross,
+                Tag = node.Id
+            };
+            dot.PreviewMouseLeftButtonDown += ConnectDot_PreviewMouseLeftButtonDown;
+            Canvas.SetLeft(dot, pos.X + NODE_WIDTH - 4);
+            Canvas.SetTop(dot, pos.Y + NODE_HEIGHT / 2 - 4);
+            Canvas.SetZIndex(dot, 10);
+            comboCanvas.Children.Add(dot);
 
             if (!string.IsNullOrEmpty(node.InputLabel) && !node.IsRoot)
             {
@@ -1794,7 +2139,8 @@ public partial class MainWindow : Window
                     Background = new SolidColorBrush(Color.FromArgb(0xE0, 0x18, 0x18, 0x25)),
                     CornerRadius = new CornerRadius(3),
                     Padding = new Thickness(3, 1, 3, 1),
-                    IsHitTestVisible = false
+                    IsHitTestVisible = false,
+                    Tag = node.Id
                 };
                 var inputText = new TextBlock
                 {
@@ -1808,6 +2154,7 @@ public partial class MainWindow : Window
                 Canvas.SetLeft(inputBg, pos.X + 2);
                 Canvas.SetTop(inputBg, pos.Y - 10);
                 comboCanvas.Children.Add(inputBg);
+                _nodeInputBgs[node.Id] = inputBg;
             }
 
             var label = new TextBlock
@@ -1818,11 +2165,13 @@ public partial class MainWindow : Window
                 TextAlignment = TextAlignment.Center,
                 Width = NODE_WIDTH,
                 TextTrimming = TextTrimming.CharacterEllipsis,
-                IsHitTestVisible = false
+                IsHitTestVisible = false,
+                Tag = node.Id
             };
             Canvas.SetLeft(label, pos.X);
             Canvas.SetTop(label, pos.Y + (NODE_HEIGHT - 14) / 2);
             comboCanvas.Children.Add(label);
+            _nodeLabels[node.Id] = label;
 
             if (node.Id == _selectedNodeId)
             {
@@ -1847,6 +2196,132 @@ public partial class MainWindow : Window
         }
     }
 
+    private void RedrawEdgesOnly()
+    {
+        if (comboCanvas == null || _comboGraph == null) return;
+
+        foreach (var kvp in _edgeVisuals)
+        {
+            var edge = kvp.Key;
+            var vis = kvp.Value;
+            bool isStance = edge.FromNodeId == -1;
+            bool isConnected = _selectedNodeId >= 0
+                && (edge.FromNodeId == _selectedNodeId || edge.ToNodeId == _selectedNodeId);
+
+            Color finalColor;
+            double thickness;
+            int zIndex = 0;
+
+            if (vis.IsConflict)
+            {
+                finalColor = EdgeConflictColor;
+                thickness = 3;
+                zIndex = 2;
+            }
+            else if (isConnected && _selectedNodeId >= 0)
+            {
+                Color baseColor = isStance
+                    ? EdgeStanceDim
+                    : (EdgeColorByInput.TryGetValue(edge.InputName, out var c) ? c : EdgeDefaultColor);
+                finalColor = isStance ? EdgeStanceHighlight : baseColor;
+                thickness = 3.5;
+                zIndex = 1;
+
+                if (vis.Glow == null || vis.Glow.Color != finalColor)
+                {
+                    vis.Glow = new System.Windows.Media.Effects.DropShadowEffect
+                    {
+                        Color = finalColor,
+                        BlurRadius = 8,
+                        ShadowDepth = 0,
+                        Opacity = 0.8
+                    };
+                }
+            }
+            else if (_selectedNodeId >= 0)
+            {
+                Color baseColor = isStance
+                    ? EdgeStanceDim
+                    : (EdgeColorByInput.TryGetValue(edge.InputName, out var c) ? c : EdgeDefaultColor);
+                finalColor = Color.FromArgb(0x30, baseColor.R, baseColor.G, baseColor.B);
+                thickness = 1.5;
+            }
+            else
+            {
+                Color baseColor = isStance
+                    ? EdgeStanceDim
+                    : (EdgeColorByInput.TryGetValue(edge.InputName, out var c) ? c : EdgeDefaultColor);
+                finalColor = baseColor;
+                thickness = isStance ? 1.5 : 2;
+            }
+
+            var brush = new SolidColorBrush(finalColor);
+            if (vis.Path != null)
+            {
+                vis.Path.Stroke = brush;
+                vis.Path.StrokeThickness = thickness;
+                vis.Path.Effect = isConnected && _selectedNodeId >= 0 ? vis.Glow : null;
+                if (vis.LastZIndex != zIndex)
+                {
+                    Panel.SetZIndex(vis.Path, zIndex);
+                    vis.LastZIndex = zIndex;
+                }
+            }
+            if (vis.Arrow != null)
+            {
+                vis.Arrow.Fill = brush;
+                if (vis.LastZIndex != zIndex)
+                    Panel.SetZIndex(vis.Arrow, zIndex);
+            }
+        }
+    }
+
+    private void UpdateEdgesForNode(int nodeId)
+    {
+        if (_comboGraph == null) return;
+        foreach (var kvp in _edgeVisuals)
+        {
+            var edge = kvp.Key;
+            if (edge.FromNodeId != nodeId && edge.ToNodeId != nodeId) continue;
+            if (!_nodePositions.TryGetValue(edge.FromNodeId, out var fromPos)) continue;
+            if (!_nodePositions.TryGetValue(edge.ToNodeId, out var toPos)) continue;
+            var vis = kvp.Value;
+            var siblings = _comboGraph.Edges.Where(e => e.FromNodeId == edge.FromNodeId).ToList();
+            int siblingIndex = siblings.IndexOf(edge);
+            int siblingCount = siblings.Count;
+            double fanY = siblingCount > 1
+                ? fromPos.Y + NODE_HEIGHT * (siblingIndex + 0.5) / siblingCount
+                : fromPos.Y + NODE_HEIGHT / 2;
+            var fromPoint = new Point(fromPos.X + NODE_WIDTH, fanY);
+            var toPoint = new Point(toPos.X, toPos.Y + NODE_HEIGHT / 2);
+            double dx = toPoint.X - fromPoint.X;
+            double curveOffset = Math.Max(40, dx * 0.5);
+            var cp1 = new Point(fromPoint.X + curveOffset, fromPoint.Y);
+            var cp2 = new Point(toPoint.X - curveOffset, toPoint.Y);
+            var pathGeom = new PathGeometry();
+            var figure = new PathFigure { StartPoint = fromPoint, IsClosed = false };
+            figure.Segments.Add(new BezierSegment(cp1, cp2, toPoint, isStroked: true));
+            pathGeom.Figures.Add(figure);
+            if (vis.Path != null) vis.Path.Data = pathGeom;
+            if (vis.Arrow != null)
+            {
+                double tanX = toPoint.X - cp2.X;
+                double tanY = toPoint.Y - cp2.Y;
+                double tanLen = Math.Sqrt(tanX * tanX + tanY * tanY);
+                if (tanLen > 0)
+                {
+                    double ux = tanX / tanLen;
+                    double uy = tanY / tanLen;
+                    int arrowSize = 6;
+                    var arrowTip = toPoint;
+                    var arrowP1 = new Point(arrowTip.X - ux * arrowSize + uy * arrowSize / 2, arrowTip.Y - uy * arrowSize - ux * arrowSize / 2);
+                    var arrowP2 = new Point(arrowTip.X - ux * arrowSize - uy * arrowSize / 2, arrowTip.Y - uy * arrowSize + ux * arrowSize / 2);
+                    vis.Arrow.Points = new PointCollection { arrowTip, arrowP1, arrowP2 };
+                }
+            }
+        }
+    }
+
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern IntPtr SetFocus(IntPtr hWnd);
 
@@ -1857,6 +2332,24 @@ public partial class MainWindow : Window
             var hwnd = new WindowInteropHelper(this).Handle;
             SetFocus(hwnd);
             border.Focus();
+        }
+    }
+
+    private void ComboBorder_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Delete && _selectedNodeId >= 0 && _comboGraph != null)
+        {
+            var node = _comboGraph.Nodes.FirstOrDefault(n => n.Id == _selectedNodeId);
+            if (node == null || node.IsRoot || node.TreeIndex >= 0) return;
+
+            _comboGraph.Edges.RemoveAll(ed => ed.FromNodeId == node.Id || ed.ToNodeId == node.Id);
+            _comboGraph.Nodes.Remove(node);
+            _nodePositions.Remove(node.Id);
+            _nodeBorders.Remove(node.Id);
+            ClearNodeSelection();
+            RenderComboGraph();
+            txtStatus.Text = $"Deleted node: {node.DisplayName}";
+            e.Handled = true;
         }
     }
 
@@ -1887,7 +2380,7 @@ public partial class MainWindow : Window
         return false;
     }
 
-    private void ComboCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    private void ComboCanvas_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         var hit = VisualTreeHelper.HitTest(comboCanvas, e.GetPosition(comboCanvas));
         if (hit != null)
@@ -1895,12 +2388,23 @@ public partial class MainWindow : Window
             var visual = hit.VisualHit;
             while (visual != null && visual != comboCanvas)
             {
-                if (visual is Border border && border.Tag is ComboNode) return;
+                if (visual is Border border && border.Tag is ComboNode)
+                {
+                    _canvasHitNode = true;
+                    return;
+                }
                 visual = VisualTreeHelper.GetParent(visual);
             }
         }
+        _canvasHitNode = false;
+    }
+
+    private void ComboCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_canvasHitNode) return;
 
         _isPanning = true;
+        _panMoved = false;
         _panStart = e.GetPosition(this);
         comboCanvas.CaptureMouse();
         PreviewMouseLeftButtonUp += ComboPan_PreviewMouseLeftButtonUp;
@@ -1909,24 +2413,319 @@ public partial class MainWindow : Window
 
     private void ComboCanvas_MouseMove(object sender, MouseEventArgs e)
     {
+        if (_dragCandidate && !_isDraggingNode && _dragNodeId >= 0)
+        {
+            var cur2 = e.GetPosition(comboCanvas);
+            if (Math.Abs(cur2.X - _dragStartCanvasPos.X) > 3 || Math.Abs(cur2.Y - _dragStartCanvasPos.Y) > 3)
+            {
+                _isDraggingNode = true;
+                comboCanvas.CaptureMouse();
+            }
+        }
+        if (_isDraggingNode && _dragNodeId >= 0)
+        {
+            var cur = e.GetPosition(comboCanvas);
+            var ddx = cur.X - _dragStartCanvasPos.X;
+            var ddy = cur.Y - _dragStartCanvasPos.Y;
+            var newPos = new Point(_dragNodeStartPos.X + ddx, _dragNodeStartPos.Y + ddy);
+            _nodePositions[_dragNodeId] = newPos;
+            if (_nodeBorders.TryGetValue(_dragNodeId, out var b))
+            {
+                Canvas.SetLeft(b, newPos.X);
+                Canvas.SetTop(b, newPos.Y);
+            }
+            if (_nodeLabels.TryGetValue(_dragNodeId, out var lbl))
+            {
+                Canvas.SetLeft(lbl, newPos.X);
+                Canvas.SetTop(lbl, newPos.Y + (NODE_HEIGHT - 14) / 2);
+            }
+            if (_nodeInputBgs.TryGetValue(_dragNodeId, out var ib))
+            {
+                Canvas.SetLeft(ib, newPos.X + 2);
+                Canvas.SetTop(ib, newPos.Y - 10);
+            }
+            UpdateEdgesForNode(_dragNodeId);
+            for (int i = 0; i < comboCanvas.Children.Count; i++)
+            {
+                if (comboCanvas.Children[i] is System.Windows.Shapes.Ellipse el && el.Tag is int id && id == _dragNodeId)
+                {
+                    Canvas.SetLeft(el, newPos.X + NODE_WIDTH - 4);
+                    Canvas.SetTop(el, newPos.Y + NODE_HEIGHT / 2 - 4);
+                    break;
+                }
+            }
+            e.Handled = true;
+            return;
+        }
+        if (_connectFromNodeId >= 0 && _connectLine != null)
+        {
+            var pos = e.GetPosition(comboCanvas);
+            _connectLine.X2 = pos.X;
+            _connectLine.Y2 = pos.Y;
+            e.Handled = true;
+            return;
+        }
         if (!_isPanning) return;
-        var pos = e.GetPosition(this);
-        var dx = pos.X - _panStart.X;
-        var dy = pos.Y - _panStart.Y;
-        _panStart = pos;
+        var panPos = e.GetPosition(this);
+        var dx = panPos.X - _panStart.X;
+        var dy = panPos.Y - _panStart.Y;
+        if (Math.Abs(dx) > 2 || Math.Abs(dy) > 2) _panMoved = true;
+        _panStart = panPos;
         _comboTranslate.X += dx;
         _comboTranslate.Y += dy;
     }
 
     private void ComboCanvas_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (_isDraggingNode)
+        {
+            _isDraggingNode = false;
+            _dragCandidate = false;
+            _dragNodeId = -1;
+            if (comboCanvas.IsMouseCaptured) comboCanvas.ReleaseMouseCapture();
+            e.Handled = true;
+            return;
+        }
+        if (_dragCandidate)
+        {
+            _dragCandidate = false;
+            _dragNodeId = -1;
+            // click without drag — let ComboNode_Click handle selection, don't swallow
+        }
+        if (_connectFromNodeId >= 0)
+        {
+            var pos = e.GetPosition(comboCanvas);
+            int? hitNodeId = HitTestNode(pos);
+            if (hitNodeId.HasValue)
+                FinishConnection(hitNodeId.Value);
+            else
+                CancelConnection();
+            e.Handled = true;
+            return;
+        }
         if (!_isPanning) return;
         StopPanning();
+
+        if (_selectedNodeId >= 0 && _nodeBorders.TryGetValue(_selectedNodeId, out var selBorder))
+        {
+            var upPos = e.GetPosition(comboCanvas);
+            double left = Canvas.GetLeft(selBorder);
+            double top = Canvas.GetTop(selBorder);
+            if (left <= upPos.X && upPos.X <= left + selBorder.ActualWidth
+                && top <= upPos.Y && upPos.Y <= top + selBorder.ActualHeight)
+                return;
+        }
+        if (_selectedNodeId >= 0)
+            ClearNodeSelection();
+    }
+
+    private int? HitTestNode(Point canvasPos)
+    {
+        foreach (var kvp in _nodeBorders)
+        {
+            var b = kvp.Value;
+            double left = Canvas.GetLeft(b);
+            double top = Canvas.GetTop(b);
+            if (left <= canvasPos.X && canvasPos.X <= left + b.ActualWidth
+                && top <= canvasPos.Y && canvasPos.Y <= top + b.ActualHeight)
+                return kvp.Key;
+        }
+        return null;
     }
 
     private void ComboCanvas_LostMouseCapture(object sender, MouseEventArgs e)
     {
         if (_isPanning) StopPanning();
+    }
+
+    private bool _canvasDragOver;
+
+    private void ComboBorder_DragEnter(object sender, DragEventArgs e)
+    {
+        if (string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase)) { e.Effects = DragDropEffects.None; e.Handled = true; return; }
+        if (e.Data.GetDataPresent(typeof(MoveInfo)) && !IsOverNode(e))
+        {
+            _canvasDragOver = true;
+            e.Handled = true;
+        }
+    }
+
+    private void ComboBorder_DragOver(object sender, DragEventArgs e)
+    {
+        if (string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase)) { e.Effects = DragDropEffects.None; _canvasDragOver = false; e.Handled = true; return; }
+        if (e.Data.GetDataPresent(typeof(MoveInfo)) && !IsOverNode(e))
+        {
+            e.Effects = DragDropEffects.Copy;
+            _canvasDragOver = true;
+        }
+        else
+        {
+            e.Effects = DragDropEffects.None;
+            _canvasDragOver = false;
+        }
+        e.Handled = true;
+    }
+
+    private void ComboBorder_DragLeave(object sender, DragEventArgs e)
+    {
+        _canvasDragOver = false;
+        e.Handled = true;
+    }
+
+    private void ComboBorder_Drop(object sender, DragEventArgs e)
+    {
+        _canvasDragOver = false;
+        if (string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase))
+        {
+            ShowToast("Custom MainChar nodes disabled — available for enemy/boss graphs");
+            e.Handled = true;
+            return;
+        }
+        if (!e.Data.GetDataPresent(typeof(MoveInfo)) || _comboGraph == null) return;
+
+        var move = e.Data.GetData(typeof(MoveInfo)) as MoveInfo;
+        if (move == null) return;
+
+        var pos = e.GetPosition(comboCanvas);
+        double nodeX = pos.X - NODE_WIDTH / 2;
+        double nodeY = pos.Y - NODE_HEIGHT / 2;
+
+        var newNode = new ComboNode
+        {
+            Id = _comboGraph.Nodes.Count > 0 ? _comboGraph.Nodes.Max(n => n.Id) + 1 : 0,
+            TreeIndex = -1,
+            Name = Path.GetFileNameWithoutExtension(move.FullPath),
+            AnimPath = move.FullPath,
+            DefaultAnimPath = move.FullPath,
+            DefaultDBPath = "",
+            DisplayName = move.DisplayNameClean,
+            IsRoot = false,
+            InputLabel = "",
+            DirectionLabel = "",
+            VanillaAnimPath = ""
+        };
+
+        _comboGraph.Nodes.Add(newNode);
+        _nodePositions[newNode.Id] = new Point(nodeX, nodeY);
+        if (!_parser.AnimToDbPath.ContainsKey(move.FullPath))
+        {
+            CustomNodeCloneMap[newNode.Id] = $"Game/DB/_MainChar/Combos/Attacks/Custom/MainChar_Custom_{newNode.Id}";
+        }
+
+        RenderComboGraph();
+
+        if (_nodeBorders.TryGetValue(newNode.Id, out var newBorder))
+            PlayFusionAnimation(newBorder);
+
+        SelectNode(newBorder, newNode);
+        txtStatus.Text = $"Created node: {move.DisplayNameClean} (drag from dot to connect)";
+        e.Handled = true;
+    }
+
+    private static bool IsOverNode(DragEventArgs e)
+    {
+        var pos = e.GetPosition((IInputElement)e.Source);
+        var hit = VisualTreeHelper.HitTest((Visual)e.Source, pos);
+        if (hit?.VisualHit == null) return false;
+        var ancestor = VisualTreeHelper.GetParent(hit.VisualHit);
+        while (ancestor != null)
+        {
+            if (ancestor is Border b && b.Tag is ComboNode) return true;
+            ancestor = VisualTreeHelper.GetParent(ancestor);
+        }
+        return false;
+    }
+
+    private void ConnectDot_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase)) { ShowToast("Connecting nodes disabled for MainChar"); return; }
+        if (sender is System.Windows.Shapes.Ellipse dot && dot.Tag is int nodeId && _comboGraph != null)
+        {
+            _connectFromNodeId = nodeId;
+            var fromNode = _comboGraph.Nodes.FirstOrDefault(n => n.Id == nodeId);
+            if (fromNode == null) { _connectFromNodeId = -1; return; }
+
+            var fromPos = _nodePositions.TryGetValue(nodeId, out var p) ? p : new Point(0, 0);
+            var startPt = new Point(fromPos.X + NODE_WIDTH, fromPos.Y + NODE_HEIGHT / 2);
+
+            _connectLine = new System.Windows.Shapes.Line
+            {
+                X1 = startPt.X,
+                Y1 = startPt.Y,
+                X2 = startPt.X,
+                Y2 = startPt.Y,
+                Stroke = ConnectLineBrush,
+                StrokeThickness = 2,
+                StrokeDashArray = new DoubleCollection { 4, 2 },
+                IsHitTestVisible = false
+            };
+            Canvas.SetZIndex(_connectLine, 100);
+            comboCanvas.Children.Add(_connectLine);
+
+            comboCanvas.CaptureMouse();
+            e.Handled = true;
+        }
+    }
+
+    private void Node_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is Border border && border.Tag is ComboNode node)
+        {
+            if (e.OriginalSource is System.Windows.Shapes.Ellipse) return;
+            _dragCandidate = true;
+            _isDraggingNode = false;
+            _dragNodeId = node.Id;
+            _dragStartCanvasPos = e.GetPosition(comboCanvas);
+            _dragNodeStartPos = _nodePositions.TryGetValue(node.Id, out var p) ? p : new Point(Canvas.GetLeft(border), Canvas.GetTop(border));
+            e.Handled = false;
+        }
+    }
+
+    private void FinishConnection(int targetNodeId)
+    {
+        if (_connectFromNodeId < 0 || _comboGraph == null) return;
+        if (_connectFromNodeId == targetNodeId) { CancelConnection(); return; }
+
+        var fromNode = _comboGraph.Nodes.FirstOrDefault(n => n.Id == _connectFromNodeId);
+        var toNode = _comboGraph.Nodes.FirstOrDefault(n => n.Id == targetNodeId);
+        if (fromNode == null || toNode == null) { CancelConnection(); return; }
+
+        var existingEdges = _comboGraph.Edges.Where(e => e.FromNodeId == _connectFromNodeId).ToList();
+        var inputCounts = existingEdges.GroupBy(e => e.InputName)
+            .Where(g => !string.IsNullOrEmpty(g.Key))
+            .ToDictionary(g => g.Key, g => g.Count());
+        var conflictInput = inputCounts.FirstOrDefault(kvp => kvp.Value >= 2).Key;
+
+        if (!string.IsNullOrEmpty(conflictInput))
+        {
+            ShowToast($"Input conflict: '{conflictInput}' already has {inputCounts[conflictInput]} edges from this node. Consider using a different input.");
+        }
+
+        string defaultInput = "LMB";
+        var newEdge = new ComboEdge
+        {
+            FromNodeId = _connectFromNodeId,
+            ToNodeId = targetNodeId,
+            InputName = defaultInput
+        };
+        _comboGraph.Edges.Add(newEdge);
+
+        RenderComboGraph();
+
+        txtStatus.Text = $"Connected: {fromNode.DisplayName} -> {toNode.DisplayName} [{defaultInput}]";
+        CancelConnection();
+    }
+
+    private void CancelConnection()
+    {
+        if (_connectLine != null)
+        {
+            comboCanvas.Children.Remove(_connectLine);
+            _connectLine = null;
+        }
+        _connectFromNodeId = -1;
+        if (comboCanvas.IsMouseCaptured)
+            comboCanvas.ReleaseMouseCapture();
     }
 
     private void ComboPan_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -2158,6 +2957,44 @@ public partial class MainWindow : Window
         fadeOut.Start();
     }
 
+    private void PlayFusionAnimation(Border nodeBorder)
+    {
+        var scaleAnim = new System.Windows.Media.Animation.DoubleAnimationUsingKeyFrames();
+        scaleAnim.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(1.0, System.Windows.Media.Animation.KeyTime.FromPercent(0)));
+        scaleAnim.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(1.15, System.Windows.Media.Animation.KeyTime.FromPercent(0.4)));
+        scaleAnim.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(1.0, System.Windows.Media.Animation.KeyTime.FromPercent(1.0)));
+        scaleAnim.Duration = TimeSpan.FromMilliseconds(300);
+
+        var scaleTransform = new ScaleTransform(1, 1);
+        nodeBorder.RenderTransform = scaleTransform;
+        nodeBorder.RenderTransformOrigin = new Point(0.5, 0.5);
+        scaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim);
+        scaleTransform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim);
+
+        var glow = new System.Windows.Media.Effects.DropShadowEffect
+        {
+            Color = Colors.LimeGreen,
+            BlurRadius = 20,
+            ShadowDepth = 0,
+            Opacity = 0.8
+        };
+        nodeBorder.Effect = glow;
+
+        var fadeTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        fadeTimer.Tick += (s, e) =>
+        {
+            fadeTimer.Stop();
+            var fade = new System.Windows.Media.Animation.Storyboard();
+            var anim = new System.Windows.Media.Animation.DoubleAnimation(0.8, 0, TimeSpan.FromMilliseconds(300));
+            System.Windows.Media.Animation.Storyboard.SetTarget(anim, nodeBorder);
+            System.Windows.Media.Animation.Storyboard.SetTargetProperty(anim, new System.Windows.PropertyPath("(Border.Effect).(DropShadowEffect.Opacity)"));
+            fade.Children.Add(anim);
+            fade.Completed += (s2, e2) => { nodeBorder.Effect = null; };
+            fade.Begin();
+        };
+        fadeTimer.Start();
+    }
+
     private System.Windows.Threading.DispatcherTimer? _toastTimer;
 
     private void ShowToast(string message)
@@ -2305,7 +3142,17 @@ public partial class MainWindow : Window
                 ShowPreviewOverlay();
                 try
                 {
-                    await LoadMeshAsync("MainChar");
+                    string previewChar = "MainChar";
+                    if (!string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase))
+                        previewChar = _activeStance.Split('|')[0];
+                    else if (!string.IsNullOrEmpty(node.AnimPath) && node.AnimPath.Contains("/"))
+                    {
+                        // fallback: infer from anim path containing arch name
+                        var segs = node.AnimPath.Split('/');
+                        var idx = Array.FindIndex(segs, s=> s.Equals("Animations", StringComparison.OrdinalIgnoreCase));
+                        if (idx>=0 && idx+1 < segs.Length) previewChar = segs[idx+1];
+                    }
+                    await LoadMeshAsync(previewChar);
                     await LoadAnimationAsync(node.AnimPath);
                 }
                 catch (Exception ex)
@@ -2324,8 +3171,121 @@ public partial class MainWindow : Window
 
     private async void CmbStance_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (cmbStance.SelectedItem is not string stance || stance == _activeStance) return;
-        await SwitchStanceAsync(stance);
+        string stance = "";
+        if (cmbStance.SelectedItem is ComboBoxItem cbi && cbi.Tag is string t) stance = t;
+        else if (cmbStance.SelectedItem is string s) stance = s;
+        if (string.IsNullOrEmpty(stance) || stance == _activeStance) return;
+        if (stance == "MainChar")
+        {
+            await SwitchStanceAsync(stance);
+            return;
+        }
+        await LoadArchetypeGraphAsync(stance);
+    }
+
+    private void BtnChangeUnit_Click(object sender, RoutedEventArgs e)
+    {
+        if (unitPopupBorder.Visibility == Visibility.Visible)
+        {
+            unitPopupBorder.Visibility = Visibility.Collapsed;
+            return;
+        }
+        if (unitWrapPanel.Children.Count == 0) PopulateUnitCards();
+        unitPopupBorder.Visibility = Visibility.Visible;
+    }
+
+    private void UnitPopupBackground_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource == unitPopupBorder)
+            unitPopupBorder.Visibility = Visibility.Collapsed;
+    }
+
+    private void PopulateUnitCards()
+    {
+        var units = new[] { "MainChar","Yang","Sean","Kuroki","Fengjie","Fajar","Grunt","FireDisciple","FlashKick","BigGuy","BodyGuard","Servant","Juggernaut" };
+        unitWrapPanel.Children.Clear();
+        bool HasHard(string arch)
+        {
+            try {
+                var contentDir = _contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase) ? _contentPath : Path.Combine(_contentPath, "Content");
+                var attacksDir = Path.Combine(contentDir, "DB", "AI", "Archetypes", arch, "Attacks");
+                if (!Directory.Exists(attacksDir)) return false;
+                return Directory.GetFiles(attacksDir, "*Hard*.uasset", SearchOption.AllDirectories).Any(f=>!Path.GetFileName(f).Contains("HitBoxData", StringComparison.OrdinalIgnoreCase));
+            } catch { return false; }
+        }
+        foreach (var arch in units)
+        {
+            void AddCard(string tag, string display)
+            {
+                var card = new Border
+                {
+                    Width = 90, Height = 130, Background = new SolidColorBrush(Color.FromRgb(0x1e,0x1e,0x2e)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0x58,0x5b,0x70)), BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(6), Margin = new Thickness(6), Cursor = Cursors.Hand, Tag = tag
+                };
+                var stack = new StackPanel();
+                var imgBorder = new Border{ Height=90, CornerRadius=new CornerRadius(6,6,0,0), Background=new SolidColorBrush(Color.FromRgb(0x31,0x32,0x44)), ClipToBounds=true };
+                var initials = new TextBlock{ Text=display.Substring(0, Math.Min(2, display.Length)).ToUpper(), Foreground=Brushes.White, FontSize=28, FontWeight=FontWeights.Bold, HorizontalAlignment=HorizontalAlignment.Center, VerticalAlignment=VerticalAlignment.Center, Margin=new Thickness(0,28,0,0)};
+                imgBorder.Child = initials;
+                var nameBlock = new Border{ Height=40, Background=new SolidColorBrush(Color.FromRgb(0x31,0x32,0x44)), CornerRadius=new CornerRadius(0,0,6,6), Padding=new Thickness(4)};
+                nameBlock.Child = new TextBlock{ Text=display, Foreground=new SolidColorBrush(Color.FromRgb(0xcd,0xd6,0xf4)), FontSize=10, FontWeight=FontWeights.SemiBold, TextAlignment=TextAlignment.Center, VerticalAlignment=VerticalAlignment.Center, TextWrapping=TextWrapping.Wrap};
+                stack.Children.Add(imgBorder);
+                stack.Children.Add(nameBlock);
+                card.Child = stack;
+                card.MouseLeftButtonDown += async (s, ev) =>
+                {
+                    unitPopupBorder.Visibility = Visibility.Collapsed;
+                    var parts = tag.Split('|');
+                    string selArch = parts[0];
+                    string diff = parts.Length>1 ? parts[1] : "Normal";
+                    string curTag = _activeStance + (_activeStance=="MainChar" ? "" : "");
+                    // check if already selected (compare without difficulty for MainChar)
+                    if (selArch == _activeStance.Split('|')[0] && diff == (_activeStance.Contains("|") ? _activeStance.Split('|')[1] : "Normal")) return;
+                    if (selArch == "MainChar")
+                        await SwitchStanceAsync(selArch);
+                    else
+                        await LoadArchetypeGraphAsync(tag);
+                };
+                string activeArch = _activeStance.Split('|')[0];
+                string activeDiff = _activeStance.Contains("|") ? _activeStance.Split('|')[1] : "Normal";
+                string cardArch = tag.Split('|')[0];
+                string cardDiff = tag.Contains("|") ? tag.Split('|')[1] : "Normal";
+                if (cardArch == activeArch && cardDiff == activeDiff)
+                {
+                    card.BorderBrush = new SolidColorBrush(Color.FromRgb(0x89,0xb4,0xfa));
+                    card.BorderThickness = new Thickness(2);
+                }
+                unitWrapPanel.Children.Add(card);
+            }
+            AddCard(arch, arch);
+            if (arch != "MainChar" && HasHard(arch))
+                AddCard(arch+"|Hard", arch+" (Hard)");
+        }
+    }
+
+    private void NodeCondition_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (cmbNodeCondition.SelectedItem is ComboBoxItem cbi && cbi.Content?.ToString() == "Custom...")
+            txtNodeConditionX.IsEnabled = true;
+        else
+            txtNodeConditionX.IsEnabled = false;
+        // persist condition to selected node's ConditionLabel if needed
+        if (_selectedNodeId >= 0 && _comboGraph != null)
+        {
+            var node = _comboGraph.Nodes.FirstOrDefault(n=>n.Id==_selectedNodeId);
+            if (node != null && string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase)==false)
+            {
+                var sel = (cmbNodeCondition.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "";
+                if (sel == "Custom...") sel = $"Custom {txtNodeConditionX.Text}";
+                node.DirectionLabel = sel; // repurpose DirectionLabel as Condition storage for enemy
+            }
+        }
+    }
+
+    private void SetStanceSelection(string tag)
+    {
+        foreach (var item in cmbStance.Items)
+            if (item is ComboBoxItem cbi && (cbi.Tag as string) == tag) { cmbStance.SelectedItem = item; return; }
     }
 
     private async Task SwitchStanceAsync(string stance)
@@ -2447,7 +3407,44 @@ public partial class MainWindow : Window
         {
             ErrorLog.Write("STANCE", ex);
             txtStatus.Text = $"Error switching stance: {ex.Message}";
-            cmbStance.SelectedItem = _activeStance;
+            SetStanceSelection(_activeStance);
+        }
+    }
+
+    private async Task LoadArchetypeGraphAsync(string arch)
+    {
+        var parts = arch.Split('|');
+        string baseArch = parts[0];
+        string diff = parts.Length>1 ? parts[1] : "Normal";
+        graphLoadingText.Text = $"Loading {arch}...";
+        graphLoadingBorder.Visibility = Visibility.Visible;
+        comboCanvas.IsHitTestVisible = false;
+        try
+        {
+            var graph = await Task.Run(() => _parser.LoadArchetypeAttackGraph(baseArch, diff));
+            if (graph == null || graph.Nodes.Count == 0)
+            {
+                txtStatus.Text = $"{arch}: no attack data found";
+                return;
+            }
+            _comboGraph = graph;
+            _activeStance = arch;
+            txtComboInfo.Text = $"{arch} - {graph.Nodes.Count} attacks (DataTable rows)";
+            _comboTranslate.X = 0;
+            _comboTranslate.Y = 0;
+            LayoutComboGraph();
+            RenderComboGraph();
+            txtStatus.Text = $"Loaded {arch} ({graph.Nodes.Count} attacks)";
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("ARCH", ex);
+            txtStatus.Text = $"Error loading {arch}: {ex.Message}";
+        }
+        finally
+        {
+            graphLoadingBorder.Visibility = Visibility.Collapsed;
+            comboCanvas.IsHitTestVisible = true;
         }
     }
 
@@ -2527,6 +3524,14 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ComboNode_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(typeof(MoveInfo))
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+        e.Handled = true;
+    }
+
     private void ComboNode_DragLeave(object sender, DragEventArgs e)
     {
         if (sender is Border border && border.Tag is ComboNode node)
@@ -2572,6 +3577,9 @@ public partial class MainWindow : Window
                         RenderComboGraph();
                         txtStatus.Text = $"Replaced: {node.Name} -> {move.DisplayName}";
                     }
+
+                    if (_nodeBorders.TryGetValue(node.Id, out var newNodeBorder))
+                        PlayFusionAnimation(newNodeBorder);
                 }
             }
             e.Handled = true;

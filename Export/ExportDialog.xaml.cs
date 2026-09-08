@@ -26,6 +26,9 @@ public partial class ExportDialog : Window
     private readonly string? _charTransitionPath;
     private readonly string? _charBaseMovementDBPath;
     private readonly string? _referenceModDir;
+    private ComboGraph? _graph;
+    private Dictionary<int, string>? _customClones;
+    private readonly bool _enableCustomTreeAppend = true; // Phase 1 deep-copy enabled
     private string? _pakPath;
     private string? _outputDir;
 
@@ -40,7 +43,9 @@ public partial class ExportDialog : Window
         string? activeStance = null,
         string? charTransitionPath = null,
         string? charBaseMovementDBPath = null,
-        string? referenceModDir = null)
+        string? referenceModDir = null,
+        ComboGraph? graph = null,
+        Dictionary<int, string>? customClones = null)
     {
         InitializeComponent();
 
@@ -52,6 +57,8 @@ public partial class ExportDialog : Window
         _charTransitionPath = charTransitionPath;
         _charBaseMovementDBPath = charBaseMovementDBPath;
         _referenceModDir = referenceModDir;
+        _graph = graph;
+        _customClones = customClones;
 
         LoadReview();
     }
@@ -75,7 +82,39 @@ public partial class ExportDialog : Window
         var outputDir = string.IsNullOrEmpty(_outputPath)
             ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods")
             : _outputPath;
-        txtOutput.Text = $"Output: {outputDir}/MainCharComboMod.pak + .sig";
+
+        txtModName.Text = "MainCharComboMod";
+        UpdateOutputPreview(outputDir);
+    }
+
+    private void UpdateOutputPreview(string outputDir)
+    {
+        var name = GetModFileName();
+        txtOutput.Text = $"Output: {outputDir}/{name}.pak + .sig";
+    }
+
+    private string GetModBaseName()
+    {
+        var raw = txtModName?.Text?.Trim() ?? "";
+        if (string.IsNullOrEmpty(raw)) return "MainCharComboMod";
+
+        foreach (var c in Path.GetInvalidFileNameChars())
+            raw = raw.Replace(c, '_');
+
+        if (raw.EndsWith(".pak", StringComparison.OrdinalIgnoreCase))
+            raw = raw.Substring(0, raw.Length - 4);
+
+        return string.IsNullOrEmpty(raw) ? "MainCharComboMod" : raw;
+    }
+
+    private string GetModFileName() => GetModBaseName() + ".pak";
+
+    private void txtModName_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        var outputDir = string.IsNullOrEmpty(_outputPath)
+            ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods")
+            : _outputPath;
+        UpdateOutputPreview(outputDir);
     }
 
     private async void Confirm_Click(object sender, RoutedEventArgs e)
@@ -165,6 +204,33 @@ public partial class ExportDialog : Window
                     {
                         if (string.IsNullOrEmpty(node.DefaultDBPath))
                         {
+                            // Option B: clone template AttackDB for custom nodes (e.g. FireDisciple moves without AttackDB)
+                            if (node.TreeIndex == -1 && !string.IsNullOrEmpty(node.AnimPath))
+                            {
+                                var templateRel = "DB/_MainChar/Combos/Attacks/BareHands/LightCombo/MainChar_Jab_FR.uasset";
+                                var templateFile = Path.Combine(gameRoot, templateRel);
+                                if (!File.Exists(templateFile))
+                                    templateFile = Directory.GetFiles(Path.Combine(gameRoot, "DB"), "MainChar_Jab*.uasset", SearchOption.AllDirectories).FirstOrDefault();
+                                if (templateFile != null && File.Exists(templateFile))
+                                {
+                                    var cloneRel = $"DB/_MainChar/Combos/Attacks/Custom/MainChar_Custom_{node.Id}";
+                                    var cloneOut = Path.Combine(outputPath, "Sifu", "Content", cloneRel + ".uasset");
+                                    Directory.CreateDirectory(Path.GetDirectoryName(cloneOut)!);
+                                    if (PatchDbAnimation(templateFile, node.AnimPath, cloneOut, EngineVersion.VER_UE4_26))
+                                    {
+                                        var cloneOutUexp = Path.ChangeExtension(cloneOut, ".uexp");
+                                        var templateUexp = Path.ChangeExtension(templateFile, ".uexp");
+                                        if (File.Exists(templateUexp) && !File.Exists(cloneOutUexp))
+                                            File.Copy(templateUexp, cloneOutUexp, true);
+                                        fileEntries.Add((cloneOut, $"../../../Sifu/Content/{cloneRel}.uasset"));
+                                        fileEntries.Add((cloneOutUexp, $"../../../Sifu/Content/{cloneRel}.uexp"));
+                                        patched++;
+                                        ErrorLog.Write("EXPORT", new Exception($"  CLONED DB for {node.DisplayName} -> {cloneRel} (anim {node.AnimPath})"));
+                                        // TODO: append new node to combo tree m_Nodes + inject edge Input — next iteration
+                                        continue;
+                                    }
+                                }
+                            }
                             skippedEmpty++;
                             if (skippedEmpty <= 3)
                                 ErrorLog.Write("EXPORT", new Exception($"  SKIP(empty DB): {node.DisplayName} AnimPath='{node.AnimPath}' DefaultDBPath='{node.DefaultDBPath}' DefaultAnimPath='{node.DefaultAnimPath}'"));
@@ -172,11 +238,15 @@ public partial class ExportDialog : Window
                         }
                         if (!_animToDbPath.TryGetValue(node.AnimPath, out var newDbPath))
                         {
-                            var vanillaDbFile = Path.Combine(gameRoot, node.DefaultDBPath.TrimStart('/') + ".uasset");
+                            var relDbPath = node.DefaultDBPath.TrimStart('/');
+                            if (relDbPath.StartsWith("Game/", StringComparison.OrdinalIgnoreCase))
+                                relDbPath = relDbPath.Substring(5);
+                            var vanillaDbFile = Path.Combine(gameRoot, relDbPath + ".uasset");
                             if (!patchedDbFiles.Contains(node.DefaultDBPath) && File.Exists(vanillaDbFile))
                             {
-                                var relDbPath = node.DefaultDBPath.TrimStart('/') + ".uasset";
-                                var outDbPath = Path.Combine(outputPath, "Sifu", "Content", relDbPath);
+                                var outDbPath = Path.Combine(outputPath, "Sifu", "Content", relDbPath + ".uasset");
+
+                                ErrorLog.Write("EXPORT", new Exception($"  FALLBACK ATTEMPT: {node.DisplayName} vanillaDb='{vanillaDbFile}'"));
 
                                 if (PatchDbAnimation(vanillaDbFile, node.AnimPath, outDbPath, EngineVersion.VER_UE4_26))
                                 {
@@ -186,14 +256,18 @@ public partial class ExportDialog : Window
                                     if (File.Exists(vanillaDbUexp) && !File.Exists(outDbUexp))
                                         File.Copy(vanillaDbUexp, outDbUexp, true);
 
-                                    fileEntries.Add((outDbPath, "../../../Sifu/Content/" + relDbPath));
-                                    fileEntries.Add((outDbUexp, "../../../Sifu/Content/" + relDbPath.Replace(".uasset", ".uexp")));
+                                    fileEntries.Add((outDbPath, "../../../Sifu/Content/" + relDbPath + ".uasset"));
+                                    fileEntries.Add((outDbUexp, "../../../Sifu/Content/" + relDbPath + ".uexp"));
 
                                     patchedFallback++;
                                     patched++;
                                     ErrorLog.Write("EXPORT", new Exception($"  PATCHED (fallback): {node.DisplayName} -> {node.AnimPath} (modified {Path.GetFileName(node.DefaultDBPath)})"));
                                     continue;
                                 }
+                            }
+                            else
+                            {
+                                ErrorLog.Write("EXPORT", new Exception($"  FALLBACK SKIP: {node.DisplayName} vanillaDb='{vanillaDbFile}' exists={File.Exists(vanillaDbFile)} alreadyPatched={patchedDbFiles.Contains(node.DefaultDBPath)}"));
                             }
 
                             skippedNoDb++;
@@ -235,6 +309,159 @@ public partial class ExportDialog : Window
 
                         if (!found)
                             ErrorLog.Write("EXPORT", new Exception($"  NOT FOUND: {node.DisplayName} slot key '{normalizedSlotKey}'"));
+                    }
+
+                    // Append new custom nodes to m_Nodes and inject edges
+                    if (_graph != null && _enableCustomTreeAppend)
+                    {
+                        try
+                        {
+                            var newNodes = _graph.Nodes.Where(n => n.TreeIndex == -1).ToList();
+                            if (newNodes.Count > 0)
+                            {
+                                var nodesArr = comboExport.Data.OfType<ArrayPropertyData>().FirstOrDefault(p => p.Name.Value.ToString() == "m_Nodes");
+                                if (nodesArr != null && nodesArr.Value != null && nodesArr.Value.Length > 0)
+                                {
+                                    var idToTreeIndex = new Dictionary<int,int>();
+                                    foreach (var n in _graph.Nodes.Where(n=>n.TreeIndex>=0))
+                                        idToTreeIndex[n.Id] = n.TreeIndex;
+                                    int baseCount = nodesArr.Value.Length;
+                                    // pick first non-conduit real combo node as template, not Value[0] which is often Conduit/Root
+                                    StructPropertyData template = null;
+                                    foreach (var cand in nodesArr.Value)
+                                    {
+                                        if (cand is StructPropertyData spd)
+                                        {
+                                            var nm = spd.Value.OfType<NamePropertyData>().FirstOrDefault(p=>p.Name.Value.ToString()=="m_Name");
+                                            var nameStr = nm?.Value.ToString() ?? "";
+                                            if (!nameStr.Contains("Conduit", StringComparison.OrdinalIgnoreCase) && !nameStr.Contains("Root", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(nameStr) && nameStr!="None")
+                                            { template = spd; break; }
+                                        }
+                                    }
+                                    if (template == null) template = nodesArr.Value[0] as StructPropertyData;
+                                    var newList = new List<PropertyData>(nodesArr.Value);
+                                    for (int ni = 0; ni < newNodes.Count; ni++)
+                                    {
+                                        var cn = newNodes[ni];
+                                        int newIdx = baseCount + ni;
+                                        idToTreeIndex[cn.Id] = newIdx;
+                                        var cloneDbPath = _customClones != null && _customClones.TryGetValue(cn.Id, out var cp) ? cp : null;
+                                        if (cloneDbPath == null && _animToDbPath.TryGetValue(cn.AnimPath, out var existingDb)) cloneDbPath = existingDb;
+                                        string attackName2 = cloneDbPath != null ? Path.GetFileNameWithoutExtension(cloneDbPath) : Path.GetFileNameWithoutExtension(cn.AnimPath);
+                                        string attackPath2 = cloneDbPath != null ? EnsureLeadingSlash(cloneDbPath) : $"/Game/DB/_MainChar/Combos/Attacks/Custom/MainChar_Custom_{cn.Id}";
+                                        int impIdx = FindImport(asset, attackName2, attackPath2);
+                                        if (impIdx < 0) impIdx = AddAttackDBImport(asset, attackName2, attackPath2);
+                                        // shallow clone template struct
+                                        StructPropertyData newNodeStruct;
+                                        if (template != null)
+                                        {
+                                            newNodeStruct = new StructPropertyData();
+                                            newNodeStruct.Name = new FName(asset, "m_Nodes");
+                                            newNodeStruct.StructType = template.StructType;
+                                            newNodeStruct.Value = new List<PropertyData>();
+                                            // deep copy children — replace patched ones with new instances to avoid mutating template
+                                            for (int ci=0; ci<template.Value.Count; ci++)
+                                            {
+                                                var child = template.Value[ci];
+                                                if (child.Name.Value.ToString()=="m_Name" && child is NamePropertyData np)
+                                                {
+                                                    newNodeStruct.Value.Add(new NamePropertyData{ Name=np.Name, Value=new FName(asset, $"Custom_{cn.Id}") });
+                                                }
+                                                else if (child.Name.Value.ToString()=="m_AttackInfos" && child is StructPropertyData sp)
+                                                {
+                                                    var spCopy = new StructPropertyData{ Name=sp.Name, StructType=sp.StructType, Value=new List<PropertyData>() };
+                                                    foreach (var gc in sp.Value)
+                                                    {
+                                                        if (gc is MapPropertyData mp && gc.Name.Value.ToString()=="m_Attacks")
+                                                        {
+                                                            var mpCopy = new MapPropertyData{ Name=mp.Name, KeyType=mp.KeyType, ValueType=mp.ValueType, Value=new TMap<PropertyData,PropertyData>() };
+                                                            // copy existing entries then overwrite first value to new import
+                                                            bool first = true;
+                                                            foreach (var kv in mp.Value)
+                                                            {
+                                                                if (first && kv.Value is ObjectPropertyData opd)
+                                                                {
+                                                                    mpCopy.Value.Add(kv.Key, new ObjectPropertyData{ Name=opd.Name, Value=FPackageIndex.FromImport(impIdx)});
+                                                                    first = false;
+                                                                }
+                                                                else mpCopy.Value.Add(kv.Key, kv.Value);
+                                                            }
+                                                            if (mpCopy.Value.Count==0)
+                                                                mpCopy.Value.Add(new NamePropertyData{ Name=new FName(asset,"m_Attacks"), Value=new FName(asset, attackPath2)}, new ObjectPropertyData{ Name=new FName(asset,"m_Attacks"), Value=FPackageIndex.FromImport(impIdx)});
+                                                            spCopy.Value.Add(mpCopy);
+                                                        }
+                                                        else spCopy.Value.Add(gc);
+                                                    }
+                                                    newNodeStruct.Value.Add(spCopy);
+                                                }
+                                                else
+                                                {
+                                                    newNodeStruct.Value.Add(child);
+                                                }
+                                            }
+                                        }
+                                        else
+                                        {
+                                            newNodeStruct = template;
+                                        }
+                                        newList.Add(newNodeStruct);
+                                        ErrorLog.Write("EXPORT", new Exception($"  APPENDED new node {cn.DisplayName} -> idx {newIdx} import {impIdx}"));
+                                    }
+                                    nodesArr.Value = newList.ToArray();
+                                    // Inject edges: for each ComboEdge, ensure source m_Transitions has target
+                                    foreach (var edge in _graph.Edges)
+                                    {
+                                        if (!idToTreeIndex.TryGetValue(edge.FromNodeId, out var srcIdx)) continue;
+                                        if (!idToTreeIndex.TryGetValue(edge.ToNodeId, out var dstIdx)) continue;
+                                        var srcNodeData = nodesArr.Value[srcIdx] as StructPropertyData;
+                                        if (srcNodeData == null) continue;
+                                        var transStruct = srcNodeData.Value.OfType<StructPropertyData>().FirstOrDefault(p=>p.Name.Value.ToString()=="m_Transitions");
+                                        if (transStruct == null) continue;
+                                        var transArr = transStruct.Value.OfType<ArrayPropertyData>().FirstOrDefault(p=>p.Name.Value.ToString()=="m_Transitions");
+                                        if (transArr == null) continue;
+                                        string inputEnum = edge.InputName?.Replace(" Delay","") ?? "";
+                                        string ueEnum = inputEnum switch { "LMB"=>"Light","RMB"=>"Heavy","RMB Hold"=>"HeavyHold","S"=>"Special","Shift"=>"Dodge","Q"=>"Throw", _=>"Light"};
+                                        // find existing transition element for this input
+                                        StructPropertyData targetTrans = null;
+                                        foreach (var elem in transArr.Value)
+                                        {
+                                            if (elem is StructPropertyData spd)
+                                            {
+                                                var enumProp = spd.Value.OfType<EnumPropertyData>().FirstOrDefault(p=>p.Name.Value.ToString()=="m_eInputTransition");
+                                                if (enumProp != null && enumProp.Value.ToString().Contains(ueEnum)) { targetTrans = spd; break; }
+                                            }
+                                        }
+                                        if (targetTrans == null)
+                                        {
+                                            // create new transition element by cloning first
+                                            if (transArr.Value.Length>0 && transArr.Value[0] is StructPropertyData first)
+                                            {
+                                                targetTrans = new StructPropertyData { Name = first.Name, StructType = first.StructType, Value = new List<PropertyData>() };
+                                                foreach (var ch in first.Value)
+                                                {
+                                                    if (ch.Name.Value.ToString()=="m_eInputTransition" && ch is EnumPropertyData ep)
+                                                        targetTrans.Value.Add(new EnumPropertyData{ Name=ep.Name, EnumType=ep.EnumType, Value=new FName(asset, $"EComboInputTransition::{ueEnum}")});
+                                                    else if (ch.Name.Value.ToString()=="m_TargetNodes" && ch is MapPropertyData mp)
+                                                        targetTrans.Value.Add(new MapPropertyData{ Name=mp.Name, KeyType=mp.KeyType, ValueType=mp.ValueType, Value=new TMap<PropertyData,PropertyData>()});
+                                                    else targetTrans.Value.Add(ch);
+                                                }
+                                                var list = new List<PropertyData>(transArr.Value) { targetTrans };
+                                                transArr.Value = list.ToArray();
+                                            }
+                                        }
+                                        if (targetTrans != null)
+                                        {
+                                            var map2 = targetTrans.Value.OfType<MapPropertyData>().FirstOrDefault(p=>p.Name.Value.ToString()=="m_TargetNodes");
+                                            if (map2 != null && !map2.Value.Any(kvp=> kvp.Key is IntPropertyData ip && ip.Value==dstIdx))
+                                            {
+                                                map2.Value.Add(new IntPropertyData{ Name=new FName(asset,"m_TargetNodes"), Value=dstIdx }, new IntPropertyData{ Name=new FName(asset,"m_TargetNodes"), Value=1});
+                                            }
+                                        }
+                                    }
+                                    ErrorLog.Write("EXPORT", new Exception($"  Appended {newNodes.Count} custom nodes, injected edges, new total {nodesArr.Value.Length}"));
+                                }
+                            }
+                        } catch (Exception ex2) { ErrorLog.Write("EXPORT", new Exception($"  APPEND/EDGE inject failed: {ex2.Message}")); }
                     }
 
                     ErrorLog.Write("EXPORT", new Exception($"Patched {patched}/{_modifiedNodes.Count} nodes (direct: {patched - patchedFallback}, fallback DB: {patchedFallback}, skipped empty DB: {skippedEmpty}, skipped no anim->db: {skippedNoDb})"));
@@ -394,7 +621,7 @@ public partial class ExportDialog : Window
             ErrorLog.Write("EXPORT", new Exception($"Filelist content:\n{filelistContent}"));
 
             var pakExe = @"C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\4.26\UE4\UnrealPak\UnrealPak.exe";
-            var pakFileName = "MainCharComboMod.pak";
+            var pakFileName = GetModFileName();
             _pakPath = Path.Combine(outputPath, pakFileName);
 
             if (!File.Exists(pakExe))
