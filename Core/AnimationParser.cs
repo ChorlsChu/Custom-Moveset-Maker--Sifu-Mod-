@@ -121,6 +121,7 @@ public class ComboNode
     public string AnimPath { get; set; } = "";
     public string DefaultAnimPath { get; set; } = "";
     public string DefaultDBPath { get; set; } = "";
+    public string SourceDBPath { get; set; } = "";
     public string DisplayName { get; set; } = "";
     public bool IsRoot { get; set; }
     public int Depth { get; set; }
@@ -134,6 +135,9 @@ public class ComboEdge
     public int FromNodeId { get; set; }
     public int ToNodeId { get; set; }
     public string InputName { get; set; } = "";
+    public string ConditionName { get; set; } = "";
+    public string ConditionResult { get; set; } = "";
+    public float Probability { get; set; } = 100;
 }
 
 public class ComboGraph
@@ -222,6 +226,7 @@ public class AnimationParser : IDisposable
     private string _contentPath = "";
     public bool IsLoaded => _provider != null;
     public Dictionary<string, string> AnimToDbPath { get; } = new();
+    public Dictionary<string, (float hitFrame, int buildupFrame)> AnimToTiming { get; } = new();
 
     private static readonly HashSet<string> SkipDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -625,6 +630,61 @@ public class AnimationParser : IDisposable
         }
     }
 
+    public void ScanDataTableTiming()
+    {
+        AnimToTiming.Clear();
+        if (_provider == null) return;
+
+        foreach (var dtPath in AttackDataTablePaths)
+        {
+            try
+            {
+                var table = _provider.SafeLoadPackageObject<UDataTable>(dtPath);
+                if (table == null || table.RowMap.Count == 0) continue;
+
+                foreach (var (rowName, rowData) in table.RowMap)
+                {
+                    string? animPath = null;
+                    float hitFrame = 0;
+                    int buildupFrame = 0;
+                    bool hasHitFrame = false;
+                    bool hasBuildup = false;
+
+                    foreach (var prop in rowData.Properties)
+                    {
+                        if (prop.Tag == null) continue;
+
+                        if (prop.PropertyType.Text == "SoftObjectProperty" && prop.Tag is SoftObjectProperty softObj)
+                        {
+                            var assetPath = softObj.Value.AssetPathName.Text;
+                            if (!string.IsNullOrEmpty(assetPath))
+                                animPath = NormalizeAnimPath(assetPath);
+                        }
+                        else if (prop.Name.Text == "m_fHitFrame" && prop.Tag is FloatProperty fp)
+                        {
+                            hitFrame = fp.Value;
+                            hasHitFrame = true;
+                        }
+                        else if (prop.Name.Text == "m_iLastBuildupFrame" && prop.Tag is IntProperty ip)
+                        {
+                            buildupFrame = ip.Value;
+                            hasBuildup = true;
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(animPath) && hasHitFrame && hasBuildup)
+                        AnimToTiming[animPath] = (hitFrame, buildupFrame);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogDebug($"[DT] Error reading timing from {dtPath}: {ex.Message}");
+            }
+        }
+
+        LogDebug($"[DT] Built anim→timing mapping: {AnimToTiming.Count} entries");
+    }
+
     internal static string NormalizeAnimPath(string path)
     {
         path = path.Replace("\\", "/");
@@ -710,6 +770,28 @@ public class AnimationParser : IDisposable
         }
     }
 
+    public ComboGraph? LoadComboTreeFromPath(string gamePath, string weaponName)
+    {
+        if (_provider == null) return null;
+
+        try
+        {
+            var obj = _provider.SafeLoadPackageObject<UObject>(gamePath);
+            if (obj == null)
+            {
+                LogDebug($"[COMBO] Could not load combo tree at {gamePath}");
+                return null;
+            }
+
+            return ParseComboTreeFromObject(obj, weaponName);
+        }
+        catch (Exception ex)
+        {
+            LogDebug($"[COMBO] Error loading combo tree {gamePath}: {ex.Message}");
+            return null;
+        }
+    }
+
     public ComboGraph? LoadModdedComboTree(string moddedComboTreeDir)
     {
         if (_provider == null || string.IsNullOrEmpty(_contentPath))
@@ -780,11 +862,13 @@ public class AnimationParser : IDisposable
         }
     }
 
-    private ComboGraph? ParseComboTreeFromObject(UObject obj)
+    private ComboGraph? ParseComboTreeFromObject(UObject obj, string weaponName = "BareHands")
     {
+        bool isMainChar = string.Equals(weaponName, "BareHands", StringComparison.OrdinalIgnoreCase) 
+                       || string.Equals(weaponName, "MainChar", StringComparison.OrdinalIgnoreCase);
         try
         {
-            LogDebug($"[COMBO] Loaded MainChar_ComboTree: exportType={obj.ExportType}");
+            LogDebug($"[COMBO] Loaded {obj.GetPathName()}: exportType={obj.ExportType}, weapon={weaponName}");
 
             var allNodeStructs = new List<FStructFallback>();
             var nodesProp = obj.Properties.FirstOrDefault(p => p.Name.Text == "m_Nodes");
@@ -844,12 +928,19 @@ public class AnimationParser : IDisposable
 
                     foreach (var kv in targetMap.Value.Properties)
                     {
+                        byte targetKey = 255;
+                        if (kv.Key is ByteProperty byteKey)
+                            targetKey = byteKey.Value;
+                        else if (kv.Key is IntProperty intKey)
+                            targetKey = (byte)intKey.Value;
+
                         if (kv.Value is IntProperty intProp)
                         {
                             var targetTreeIndex = intProp.Value;
                             if (targetTreeIndex >= 0 && targetTreeIndex < allNodeStructs.Count &&
                                 treeIndexToNodeIds.ContainsKey(targetTreeIndex))
                             {
+                                var (condName, condResult, prob) = ExtractConditionInfo(elemData, targetKey);
                                 var targetIds = treeIndexToNodeIds[targetTreeIndex];
                                 foreach (var srcId in sourceIds)
                                 {
@@ -859,7 +950,10 @@ public class AnimationParser : IDisposable
                                         {
                                             FromNodeId = srcId,
                                             ToNodeId = tgtId,
-                                            InputName = inputName
+                                            InputName = inputName,
+                                            ConditionName = condName,
+                                            ConditionResult = condResult,
+                                            Probability = prob
                                         });
                                     }
                                 }
@@ -934,7 +1028,7 @@ public class AnimationParser : IDisposable
                 keptNodes[i].Id = i;
             }
 
-            var graph = new ComboGraph { WeaponName = "BareHands" };
+            var graph = new ComboGraph { WeaponName = isMainChar ? "BareHands" : weaponName };
             graph.Nodes.AddRange(keptNodes);
 
             foreach (var edge in finalEdges)
@@ -953,11 +1047,12 @@ public class AnimationParser : IDisposable
 
             LogDebug($"[COMBO] Final: {graph.Nodes.Count} nodes, {graph.Edges.Count} edges (removed {conduitIds.Count} conduits)");
 
-            var delayAnimNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            var delayAnimNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (isMainChar)
             {
-                "MainChar_Attack_Man_Barehands_Skill_MultiHit_FL",
-                "MainChar_Attack_Man_Barehands_Pressure_TripleHit_BR"
-            };
+                delayAnimNames.Add("MainChar_Attack_Man_Barehands_Skill_MultiHit_FL");
+                delayAnimNames.Add("MainChar_Attack_Man_Barehands_Pressure_TripleHit_BR");
+            }
 
             foreach (var edge in graph.Edges)
             {
@@ -989,25 +1084,28 @@ public class AnimationParser : IDisposable
                     node.InputLabel = string.Join(" / ", inputs.OrderBy(x => x));
             }
 
-            var stanceNode = new ComboNode
+            if (isMainChar)
             {
-                Id = -1,
-                Name = "MainChar_Stance",
-                DisplayName = "Combat Stance",
-                AnimPath = "Game/Animations/MainChar/Locomotion/Man/Barehands/Moving/V1/Lockmove/North/MC_man_barehands_V1_north_tense",
-                DefaultAnimPath = "Game/Animations/MainChar/Locomotion/Man/Barehands/Moving/V1/Lockmove/North/MC_man_barehands_V1_north_tense",
-                IsRoot = true,
-                Depth = -1
-            };
+                var stanceNode = new ComboNode
+                {
+                    Id = -1,
+                    Name = "MainChar_Stance",
+                    DisplayName = "Combat Stance",
+                    AnimPath = "Game/Animations/MainChar/Locomotion/Man/Barehands/Moving/V1/Lockmove/North/MC_man_barehands_V1_north_tense",
+                    DefaultAnimPath = "Game/Animations/MainChar/Locomotion/Man/Barehands/Moving/V1/Lockmove/North/MC_man_barehands_V1_north_tense",
+                    IsRoot = true,
+                    Depth = -1
+                };
 
-            var existingRootIds = graph.Nodes
-                .Where(n => n.IsRoot || !graph.Edges.Any(e => e.ToNodeId == n.Id))
-                .Select(n => n.Id).ToList();
+                var existingRootIds = graph.Nodes
+                    .Where(n => n.IsRoot || !graph.Edges.Any(e => e.ToNodeId == n.Id))
+                    .Select(n => n.Id).ToList();
 
-            foreach (var rootId in existingRootIds)
-                graph.Edges.Add(new ComboEdge { FromNodeId = -1, ToNodeId = rootId, InputName = "" });
+                foreach (var rootId in existingRootIds)
+                    graph.Edges.Add(new ComboEdge { FromNodeId = -1, ToNodeId = rootId, InputName = "" });
 
-            graph.Nodes.Insert(0, stanceNode);
+                graph.Nodes.Insert(0, stanceNode);
+            }
 
             return graph;
         }
@@ -1168,6 +1266,7 @@ public class AnimationParser : IDisposable
                 AnimPath = anim,
                 DefaultAnimPath = anim,
                 DefaultDBPath = db,
+                SourceDBPath = db,
                 DisplayName = displayName,
                 IsRoot = isRoot,
                 DirectionLabel = dir
@@ -1200,6 +1299,112 @@ public class AnimationParser : IDisposable
         }
 
         return "";
+    }
+
+    private static readonly Dictionary<string, string> ConditionNameMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["ComboAIConditionMCDomination"] = "Player Dominating",
+        ["BP_AICondition_FullLifeCheck_C"] = "Full HP",
+        ["ComboTransitionConditionLastAttackHit"] = "Last Attack Hit",
+        ["ComboTransitionConditionAILastAttackGuardType"] = "Guard Type",
+        ["ComboTransitionConditionTargetDistance"] = "Distance",
+        ["BP_AICondition_BackObstacleCheck_C"] = "Back Obstacle",
+        ["BP_IsTargetKnockedDownComboCondition_C"] = "Target Knocked Down",
+        ["BP_IsTargetDizziedComboCondition_C"] = "Target Dizzied",
+        ["BP_IsTargetPushedComboCondition_C"] = "Target Pushed",
+        ["BP_TargetIsParryVictim_C"] = "Parry Victim",
+        ["BP_TargetPlaysOrder_C"] = "Target Plays Order",
+        ["BP_IsNotEasyMod_C"] = "Not Easy Mode",
+    };
+
+    private static readonly Dictionary<string, Dictionary<byte, string>> ConditionResultMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["ComboAIConditionMCDomination"] = new() { [0] = "No", [1] = "Yes" },
+        ["BP_AICondition_FullLifeCheck_C"] = new() { [0] = "No", [1] = "Yes" },
+        ["ComboTransitionConditionLastAttackHit"] = new() { [0] = "Miss", [1] = "Hit" },
+        ["ComboTransitionConditionAILastAttackGuardType"] = new() { [0] = "Unblocked", [1] = "Blocked", [2] = "Parried", [3] = "Dodged" },
+        ["ComboTransitionConditionTargetDistance"] = new() { [0] = "Close", [1] = "Far" },
+        ["BP_AICondition_BackObstacleCheck_C"] = new() { [0] = "No", [1] = "Yes" },
+        ["BP_IsTargetKnockedDownComboCondition_C"] = new() { [0] = "No", [1] = "Yes" },
+        ["BP_IsTargetDizziedComboCondition_C"] = new() { [0] = "No", [1] = "Yes" },
+        ["BP_IsTargetPushedComboCondition_C"] = new() { [0] = "No", [1] = "Yes" },
+        ["BP_TargetIsParryVictim_C"] = new() { [0] = "No", [1] = "Yes" },
+        ["BP_TargetPlaysOrder_C"] = new() { [0] = "No", [1] = "Yes" },
+        ["BP_IsNotEasyMod_C"] = new() { [0] = "Easy", [1] = "Normal+" },
+    };
+
+    private (string conditionName, string conditionResult, float probability) ExtractConditionInfo(
+        FStructFallback transitionData, byte targetKey)
+    {
+        var conditionProp = transitionData.Properties.FirstOrDefault(p => p.Name.Text == "m_ConditionInstance");
+        var probProp = transitionData.Properties.FirstOrDefault(p => p.Name.Text == "m_fProbability");
+        float probability = 100;
+        if (probProp?.Tag is FloatProperty fp)
+            probability = fp.Value;
+
+        if (targetKey == 255)
+            return ("", "", probability);
+
+        if (conditionProp?.Tag is ObjectProperty objProp && objProp.Value != null)
+        {
+            var objText = objProp.Value.ToString() ?? "";
+            var className = objText;
+            var apostropheIdx = objText.IndexOf('\'');
+            if (apostropheIdx >= 0)
+            {
+                var afterApostrophe = objText[(apostropheIdx + 1)..];
+                var slashIdx = afterApostrophe.LastIndexOf('/');
+                var dotIdx = afterApostrophe.LastIndexOf('.');
+                if (slashIdx >= 0 && dotIdx > slashIdx)
+                {
+                    var path = afterApostrophe[(slashIdx + 1)..dotIdx];
+                    var lastUnderscore = path.LastIndexOf('_');
+                    if (lastUnderscore > 0)
+                    {
+                        var clsName = path[..lastUnderscore];
+                        var lastDot = clsName.LastIndexOf('.');
+                        if (lastDot >= 0) clsName = clsName[(lastDot + 1)..];
+                        className = clsName;
+                    }
+                }
+            }
+            else
+            {
+                var slashIdx = objText.LastIndexOf('/');
+                var dotIdx = objText.LastIndexOf('.');
+                if (slashIdx >= 0 && dotIdx > slashIdx)
+                {
+                    var path = objText[(slashIdx + 1)..dotIdx];
+                    var lastUnderscore = path.LastIndexOf('_');
+                    if (lastUnderscore > 0)
+                    {
+                        var clsName = path[..lastUnderscore];
+                        var lastDot = clsName.LastIndexOf('.');
+                        if (lastDot >= 0) clsName = clsName[(lastDot + 1)..];
+                        className = clsName;
+                    }
+                }
+            }
+
+            ConditionNameMap.TryGetValue(className, out var condName);
+            if (string.IsNullOrEmpty(condName))
+            {
+                var niceName = className.Replace("ComboAICondition", "").Replace("ComboTransitionCondition", "")
+                    .Replace("BP_AICondition_", "").Replace("_C", "").Replace("BP_", "");
+                condName = niceName;
+            }
+
+            ConditionResultMap.TryGetValue(className, out var resultMap);
+            string result = "";
+            if (resultMap != null && resultMap.TryGetValue(targetKey, out var r))
+                result = r;
+            else
+                result = $"Branch {targetKey}";
+
+            return (condName, result, probability);
+        }
+
+        return ("", $"Branch {targetKey}", probability);
     }
 
     private static readonly Dictionary<string, string> AnimFallbacks = new(StringComparer.OrdinalIgnoreCase)
@@ -1633,7 +1838,7 @@ public class AnimationParser : IDisposable
                 var (nm, ap) = rows[i];
                 int poolIdx = Math.Min(i / 8, poolConds.Length-1);
                 string cond = poolConds[poolIdx];
-                graph.Nodes.Add(new ComboNode{ Id=i, TreeIndex=i, Name=nm, AnimPath=ap, DefaultAnimPath=ap, DefaultDBPath=$"Game/DB/AI/Archetypes/{arch}/Attacks/{nm}", DisplayName=nm, IsRoot=false, DirectionLabel=cond });
+                graph.Nodes.Add(new ComboNode{ Id=i, TreeIndex=i, Name=nm, AnimPath=ap, DefaultAnimPath=ap, DefaultDBPath=$"Game/DB/AI/Archetypes/{arch}/Attacks/{nm}", SourceDBPath=$"Game/DB/AI/Archetypes/{arch}/Attacks/{nm}", DisplayName=nm, IsRoot=false, DirectionLabel=cond });
                 if (i>0 && i % 8 != 0) graph.Edges.Add(new ComboEdge{ FromNodeId=i-1, ToNodeId=i, InputName="Auto"});
             }
             return graph;

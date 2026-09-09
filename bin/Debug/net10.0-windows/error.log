@@ -1,141 +1,771 @@
-[23:45:45] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
-[23:45:46] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
-[23:45:46] [DT] Loaded Game/DB/AI/Archetypes/Grunt/Attacks/Grunt_AttacksDatatable: 19 rows, struct=AttackDataRow
-[23:45:46] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[23:45:46] [DT] Loaded Game/DB/AI/Archetypes/Grunt/Attacks/Grunt_WeaponsDatatable: 15 rows, struct=AttackDataRow
-[23:45:46] [DT] Loaded Game/DB/AI/Archetypes/Grunt/Attacks/Grunt_WeaponsDatatable: 15 rows, struct=AttackDataRow
-[23:45:46] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[23:45:46] [DT] Loaded Game/DB/AI/Archetypes/FlashKick/Attacks/FlashKick_AttackData: 30 rows, struct=AttackDataRow
-[23:45:46] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[23:45:46] [DT] Loaded Game/DB/AI/Archetypes/BigGuy/Attacks/BigGuy_AttackData: 28 rows, struct=AttackDataRow
-[23:45:46] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[23:45:46] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[23:45:46] [DT] Loaded Game/DB/AI/Archetypes/Bodyguard/Attacks/BodyGuard_AttackData: 14 rows, struct=AttackDataRow
-[23:45:46] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[23:45:46] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[23:45:46] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_AttackData: 22 rows, struct=AttackDataRow
-[23:45:46] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[23:45:46] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_AttackData: 22 rows, struct=AttackDataRow
-[23:45:46] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[23:45:46] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_Staff_AttackData: 11 rows, struct=AttackDataRow
-[23:45:46] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[23:45:46] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_Staff_AttackData: 11 rows, struct=AttackDataRow
-[23:45:46] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[23:45:46] [DT] Loaded Game/DB/AI/Archetypes/Fajar/Attacks/Fajar_AttacksDatatable: 18 rows, struct=AttackDataRow
-[23:45:46] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[23:45:46] [DT] Loaded Game/DB/AI/Archetypes/Sean/Attacks/Sean_AttacksDatatable: 35 rows, struct=AttackDataRow
-[23:45:46] [DT] Loaded Game/DB/AI/Archetypes/Sean/Attacks/Sean_AttacksDatatable: 35 rows, struct=AttackDataRow
-[23:45:46] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[23:45:46] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[23:45:46] [DT] Loaded Game/DB/AI/Archetypes/Kuroki/Kuroki_AttacksDatatable: 48 rows, struct=AttackDataRow
-[23:45:46] [DT] Loaded Game/DB/AI/Archetypes/Kuroki/Kuroki_AttacksDatatable: 48 rows, struct=AttackDataRow
-[23:45:46] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[23:45:46] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[23:45:46] [DT] Loaded Game/DB/AI/Archetypes/Fengjie/Attacks/Fengjie_AttacksDatatable: 31 rows, struct=AttackDataRow
-[23:45:46] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[23:45:46] [DT] Loaded Game/DB/AI/Archetypes/Yang/Attacks/Yang_Attacks: 29 rows, struct=AttackDataRow
-[23:45:46] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
-[23:45:46] [DT] Loaded Game/DB/Attacks/WUGUAN_Attacks: 0 rows, struct=AttackDataRow
-[23:45:46] [DT] Total used animation paths found: 298
-[23:45:46] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/_old/Grunt_Attack_Barehands_Sweep_360
-[23:45:46] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/GroundAttack/Grunt_attack_barehands_GroundAttack
-[23:45:46] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/GroundAttack/Grunt_attack_barehands_GroundAttack
-[23:45:46] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/BaseBallHook/Grunt_Attack_barehands_BaseBallHook
-[23:45:46] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/BaseBallHook/Grunt_Attack_barehands_BaseBallHook
-[23:45:46] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Hook/Grunt_Attack_barehands_Hook
-[23:45:46] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Hook/Grunt_Attack_barehands_Hook
-[23:45:46] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/RollUppercut/Grunt_Attack_Barehands_RollUppercut
-[23:45:46] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/RollUppercut/Grunt_Attack_Barehands_RollUppercut
-[23:45:46] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/KneeStrike/Grunt_Attack_Barehands_KneeStrike
-[23:45:46] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/KneeStrike/Grunt_Attack_Barehands_KneeStrike
-[23:45:46] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_FastJab
-[23:45:46] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_FastJab
-[23:45:46] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_StraightJab
-[23:45:46] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_StraightJab
-[23:45:46] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Rush/Grunt_Attack_Barehands_RushKick
-[23:45:46] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Rush/Grunt_Attack_Barehands_RushKick
-[23:45:46] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/FalconPunch/Grunt_attack_barehands_FalconPunch
-[23:45:46] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/FalconPunch/Grunt_attack_barehands_FalconPunch
-[23:45:57] [MAP] Built anim→DB mapping: 504 entries
-[23:45:57] [MAP] Built anim→DB mapping: 504 entries
-[23:45:57] [COMBO] Loaded MainChar_ComboTree: exportType=Combo
-[23:45:57] [COMBO] Loaded MainChar_ComboTree: exportType=Combo
-[23:45:57] [COMBO] Split tree node 0 into 2 direction variants: GetUp Attack [], GetUp Attack []
-[23:45:57] [COMBO] Split tree node 4 into 2 direction variants: ShinKick [FR], ShinKick [BL]
-[23:45:57] [COMBO] Split tree node 5 into 2 direction variants: ThroatPunch [FL], ThroatPunch [BL]
-[23:45:57] [COMBO] Split tree node 5 into 2 direction variants: ThroatPunch [FL], ThroatPunch [BL]
-[23:45:57] [COMBO] Split tree node 7 into 2 direction variants: Palm02 [FL], Palm02 [BR]
-[23:45:57] [COMBO] Split tree node 7 into 2 direction variants: Palm02 [FL], Palm02 [BR]
-[23:45:57] [COMBO] Split tree node 8 into 2 direction variants: TripleHit [FL], TripleHit [BR]
-[23:45:57] [COMBO] Split tree node 9 into 2 direction variants: MultiHitClaws [FL], MultiHitClaws [BR]
-[23:45:57] [COMBO] Split tree node 10 into 2 direction variants: DoubleElbow [FL], DoubleElbow [BR]
-[23:45:57] [COMBO] Split tree node 11 into 2 direction variants: ClawsElbow [FL], ClawsElbow [BR]
-[23:45:57] [COMBO] Split tree node 11 into 2 direction variants: ClawsElbow [FL], ClawsElbow [BR]
-[23:45:57] [COMBO] Split tree node 12 into 2 direction variants: ElbowSync [FL], ElbowSync [BR]
-[23:45:57] [COMBO] Split tree node 12 into 2 direction variants: ElbowSync [FL], ElbowSync [BR]
-[23:45:57] [COMBO] Split tree node 14 into 2 direction variants: Ext02 [FR], Ext02 [BL]
-[23:45:57] [COMBO] Split tree node 14 into 2 direction variants: Ext02 [FR], Ext02 [BL]
-[23:45:57] [COMBO] Split tree node 15 into 2 direction variants: AoeKnockdown [FL], AoeKnockdown [BR]
-[23:45:57] [COMBO] Split tree node 15 into 2 direction variants: AoeKnockdown [FL], AoeKnockdown [BR]
-[23:45:57] [COMBO] Split tree node 16 into 2 direction variants: DelaySpinHighKick [FL], DelaySpinHighKick [BL]
-[23:45:57] [COMBO] Split tree node 16 into 2 direction variants: DelaySpinHighKick [FL], DelaySpinHighKick [BL]
-[23:45:57] [COMBO] Split tree node 30 into 2 direction variants: FrontKick [FR], FrontKick [BL]
-[23:45:57] [COMBO] Split tree node 30 into 2 direction variants: FrontKick [FR], FrontKick [BL]
-[23:45:57] [COMBO] Split tree node 31 into 2 direction variants: LowKick [FL], LowKick [BR]
-[23:45:57] [COMBO] Split tree node 31 into 2 direction variants: LowKick [FL], LowKick [BR]
-[23:45:57] [COMBO] Split tree node 32 into 2 direction variants: Palm Strike [FR], Palm Strike [BL]
-[23:45:57] [COMBO] Split tree node 32 into 2 direction variants: Palm Strike [FR], Palm Strike [BL]
-[23:45:57] [COMBO] Split tree node 33 into 2 direction variants: GuardBreak [FL], GuardBreak [BL]
-[23:45:57] [COMBO] Split tree node 33 into 2 direction variants: GuardBreak [FL], GuardBreak [BL]
-[23:45:57] [COMBO] Split tree node 36 into 2 direction variants: Thrust Kick [FL], Thrust Kick [BL]
-[23:45:57] [COMBO] Split tree node 36 into 2 direction variants: Thrust Kick [FL], Thrust Kick [BL]
-[23:45:57] [COMBO] Split tree node 39 into 2 direction variants: GroundPunch [FL], GroundPunch [BL]
-[23:45:57] [COMBO] Split tree node 39 into 2 direction variants: GroundPunch [FL], GroundPunch [BL]
-[23:45:57] [COMBO] Split tree node 44 into 2 direction variants: Jab(new) [FR], Jab(new) [BL]
-[23:45:57] [COMBO] Split tree node 44 into 2 direction variants: Jab(new) [FR], Jab(new) [BL]
-[23:45:57] [COMBO] Split tree node 45 into 2 direction variants: ThroatPlexus [FR], ThroatPlexus [BL]
-[23:45:57] [COMBO] Split tree node 45 into 2 direction variants: ThroatPlexus [FR], ThroatPlexus [BL]
-[23:45:57] [COMBO] Split tree node 48 into 2 direction variants: BellyPalm [FR], BellyPalm [BR]
-[23:45:57] [COMBO] Split tree node 48 into 2 direction variants: BellyPalm [FR], BellyPalm [BR]
-[23:45:58] [COMBO] Split tree node 50 into 2 direction variants: MultiHit [FL], MultiHit [BR]
-[23:45:58] [COMBO] Split tree node 50 into 2 direction variants: MultiHit [FL], MultiHit [BR]
-[23:45:58] [COMBO] Split tree node 51 into 2 direction variants: ResilientAttack [FL], ResilientAttack [BL]
-[23:45:58] [COMBO] Split tree node 51 into 2 direction variants: ResilientAttack [FL], ResilientAttack [BL]
-[23:45:58] [COMBO] Split tree node 54 into 2 direction variants: SpinHighKickFollowUp [FL], SpinHighKickFollowUp [BL]
-[23:45:58] [COMBO] Split tree node 54 into 2 direction variants: SpinHighKickFollowUp [FL], SpinHighKickFollowUp [BL]
-[23:45:58] [COMBO] Parsed 81 raw nodes from 57 tree nodes
-[23:45:58] [COMBO] Parsed 110 raw edges
-[23:45:58] [COMBO] Parsed 81 raw nodes from 57 tree nodes
-[23:45:58] [COMBO] Parsed 110 raw edges
-[23:45:58] [COMBO] Final: 60 nodes, 64 edges (removed 21 conduits)
-[23:47:34] [STANCE] System.Exception: [MainChar] Source DB: C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Sifu\Content\DB/Movement/BaseMovementDB.uasset (exists=True, size=0 bytes)
-[23:47:35] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
-[23:47:35] [COMBO] Loaded MainChar_ComboTree: exportType=Combo
-[23:47:35] [COMBO] Split tree node 0 into 2 direction variants: GetUp Attack [], GetUp Attack []
-[23:47:35] [COMBO] Split tree node 4 into 2 direction variants: ShinKick [FR], ShinKick [BL]
-[23:47:35] [COMBO] Split tree node 5 into 2 direction variants: ThroatPunch [FL], ThroatPunch [BL]
-[23:47:35] [COMBO] Split tree node 7 into 2 direction variants: Palm02 [FL], Palm02 [BR]
-[23:47:35] [COMBO] Split tree node 8 into 2 direction variants: TripleHit [FL], TripleHit [BR]
-[23:47:35] [COMBO] Split tree node 9 into 2 direction variants: MultiHitClaws [FL], MultiHitClaws [BR]
-[23:47:35] [COMBO] Split tree node 10 into 2 direction variants: DoubleElbow [FL], DoubleElbow [BR]
-[23:47:35] [COMBO] Split tree node 11 into 2 direction variants: ClawsElbow [FL], ClawsElbow [BR]
-[23:47:35] [COMBO] Split tree node 12 into 2 direction variants: ElbowSync [FL], ElbowSync [BR]
-[23:47:35] [COMBO] Split tree node 14 into 2 direction variants: Ext02 [FR], Ext02 [BL]
-[23:47:35] [COMBO] Split tree node 15 into 2 direction variants: AoeKnockdown [FL], AoeKnockdown [BR]
-[23:47:35] [COMBO] Split tree node 16 into 2 direction variants: DelaySpinHighKick [FL], DelaySpinHighKick [BL]
-[23:47:35] [COMBO] Split tree node 30 into 2 direction variants: FrontKick [FR], FrontKick [BL]
-[23:47:35] [COMBO] Split tree node 31 into 2 direction variants: LowKick [FL], LowKick [BR]
-[23:47:35] [COMBO] Split tree node 32 into 2 direction variants: Palm Strike [FR], Palm Strike [BL]
-[23:47:35] [COMBO] Split tree node 33 into 2 direction variants: GuardBreak [FL], GuardBreak [BL]
-[23:47:35] [COMBO] Split tree node 36 into 2 direction variants: Thrust Kick [FL], Thrust Kick [BL]
-[23:47:35] [COMBO] Split tree node 39 into 2 direction variants: GroundPunch [FL], GroundPunch [BL]
-[23:47:35] [COMBO] Split tree node 44 into 2 direction variants: Jab(new) [FR], Jab(new) [BL]
-[23:47:35] [COMBO] Split tree node 45 into 2 direction variants: ThroatPlexus [FR], ThroatPlexus [BL]
-[23:47:35] [COMBO] Split tree node 48 into 2 direction variants: BellyPalm [FR], BellyPalm [BR]
-[23:47:35] [COMBO] Split tree node 50 into 2 direction variants: MultiHit [FL], MultiHit [BR]
-[23:47:35] [COMBO] Split tree node 51 into 2 direction variants: ResilientAttack [FL], ResilientAttack [BL]
-[23:47:35] [COMBO] Split tree node 54 into 2 direction variants: SpinHighKickFollowUp [FL], SpinHighKickFollowUp [BL]
-[23:47:35] [COMBO] Parsed 81 raw nodes from 57 tree nodes
-[23:47:35] [COMBO] Parsed 110 raw edges
-[23:47:35] [COMBO] Final: 60 nodes, 64 edges (removed 21 conduits)
-[23:47:36] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
+[18:28:22] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
+[18:28:23] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
+[18:28:23] [DT] Loaded Game/DB/AI/Archetypes/Grunt/Attacks/Grunt_AttacksDatatable: 19 rows, struct=AttackDataRow
+[18:28:23] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[18:28:23] [DT] Loaded Game/DB/AI/Archetypes/Grunt/Attacks/Grunt_WeaponsDatatable: 15 rows, struct=AttackDataRow
+[18:28:23] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[18:28:23] [DT] Loaded Game/DB/AI/Archetypes/FlashKick/Attacks/FlashKick_AttackData: 30 rows, struct=AttackDataRow
+[18:28:23] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[18:28:23] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[18:28:23] [DT] Loaded Game/DB/AI/Archetypes/BigGuy/Attacks/BigGuy_AttackData: 28 rows, struct=AttackDataRow
+[18:28:23] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[18:28:23] [DT] Loaded Game/DB/AI/Archetypes/Bodyguard/Attacks/BodyGuard_AttackData: 14 rows, struct=AttackDataRow
+[18:28:23] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[18:28:23] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_AttackData: 22 rows, struct=AttackDataRow
+[18:28:23] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_AttackData: 22 rows, struct=AttackDataRow
+[18:28:23] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[18:28:23] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[18:28:23] [DT] Loaded Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_Staff_AttackData: 11 rows, struct=AttackDataRow
+[18:28:23] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[18:28:23] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[18:28:23] [DT] Loaded Game/DB/AI/Archetypes/Fajar/Attacks/Fajar_AttacksDatatable: 18 rows, struct=AttackDataRow
+[18:28:23] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[18:28:23] [DT] Loaded Game/DB/AI/Archetypes/Sean/Attacks/Sean_AttacksDatatable: 35 rows, struct=AttackDataRow
+[18:28:23] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[18:28:23] [DT] Loaded Game/DB/AI/Archetypes/Kuroki/Kuroki_AttacksDatatable: 48 rows, struct=AttackDataRow
+[18:28:23] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[18:28:23] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[18:28:23] [DT] Loaded Game/DB/AI/Archetypes/Fengjie/Attacks/Fengjie_AttacksDatatable: 31 rows, struct=AttackDataRow
+[18:28:23] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[18:28:23] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[18:28:23] [DT] Loaded Game/DB/AI/Archetypes/Yang/Attacks/Yang_Attacks: 29 rows, struct=AttackDataRow
+[18:28:23] [DT] Loaded Game/DB/AI/Archetypes/Yang/Attacks/Yang_Attacks: 29 rows, struct=AttackDataRow
+[18:28:23] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[18:28:23] [DT]   Fields: m_Anim[SoftObjectProperty], m_bCanBeMirrored[BoolProperty], m_eMirroringMethod[EnumProperty], m_fMirrorUseNextFootMarkerThreshold[FloatProperty], m_eStartQuadrant[EnumProperty], m_eEndQuadrant[EnumProperty], m_fMeasuredForwardMovement[FloatProperty], m_fMovementRightLength[FloatProperty], m_bDirectRightMovementFollow[BoolProperty], m_iLastBuildupFrame[IntProperty], m_fHitFrame[FloatProperty], m_bStrikelessAttack[BoolProperty], m_Name[NameProperty], m_RealAttackName[TextProperty]
+[18:28:23] [DT] Loaded Game/DB/Attacks/WUGUAN_Attacks: 0 rows, struct=AttackDataRow
+[18:28:23] [DT] Total used animation paths found: 298
+[18:28:23] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/_old/Grunt_Attack_Barehands_Sweep_360
+[18:28:23] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/GroundAttack/Grunt_attack_barehands_GroundAttack
+[18:28:23] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/BaseBallHook/Grunt_Attack_barehands_BaseBallHook
+[18:28:23] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Hook/Grunt_Attack_barehands_Hook
+[18:28:23] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/RollUppercut/Grunt_Attack_Barehands_RollUppercut
+[18:28:23] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/KneeStrike/Grunt_Attack_Barehands_KneeStrike
+[18:28:23] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_FastJab
+[18:28:23] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_FastJab
+[18:28:23] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_StraightJab
+[18:28:23] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Jab/Grunt_Attack_barehands_StraightJab
+[18:28:23] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Rush/Grunt_Attack_Barehands_RushKick
+[18:28:23] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/Rush/Grunt_Attack_Barehands_RushKick
+[18:28:23] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/FalconPunch/Grunt_attack_barehands_FalconPunch
+[18:28:23] [DT] Error reading timing from Game/DB/AI/Archetypes/Grunt/Attacks/Grunt_AttacksDatatable: Operations that change non-concurrent collections must have exclusive access. A concurrent update was performed on this collection and corrupted its state. The collection's state is no longer correct.
+[18:28:23] [DT] Error reading timing from Game/DB/AI/Archetypes/Grunt/Attacks/Grunt_WeaponsDatatable: Operations that change non-concurrent collections must have exclusive access. A concurrent update was performed on this collection and corrupted its state. The collection's state is no longer correct.
+[18:28:23] [DT] Error reading timing from Game/DB/AI/Archetypes/FlashKick/Attacks/FlashKick_AttackData: Operations that change non-concurrent collections must have exclusive access. A concurrent update was performed on this collection and corrupted its state. The collection's state is no longer correct.
+[18:28:23] [DT] Error reading timing from Game/DB/AI/Archetypes/BigGuy/Attacks/BigGuy_AttackData: Operations that change non-concurrent collections must have exclusive access. A concurrent update was performed on this collection and corrupted its state. The collection's state is no longer correct.
+[18:28:23] [DT] Error reading timing from Game/DB/AI/Archetypes/Bodyguard/Attacks/BodyGuard_AttackData: Operations that change non-concurrent collections must have exclusive access. A concurrent update was performed on this collection and corrupted its state. The collection's state is no longer correct.
+[18:28:23] [DT] Error reading timing from Game/DB/AI/Archetypes/Bodyguard/Attacks/BodyGuard_AttackData: Operations that change non-concurrent collections must have exclusive access. A concurrent update was performed on this collection and corrupted its state. The collection's state is no longer correct.
+[18:28:23] [DT] Error reading timing from Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_AttackData: Operations that change non-concurrent collections must have exclusive access. A concurrent update was performed on this collection and corrupted its state. The collection's state is no longer correct.
+[18:28:23] [DT] Error reading timing from Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_AttackData: Operations that change non-concurrent collections must have exclusive access. A concurrent update was performed on this collection and corrupted its state. The collection's state is no longer correct.
+[18:28:23] [DT] Error reading timing from Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_Staff_AttackData: Operations that change non-concurrent collections must have exclusive access. A concurrent update was performed on this collection and corrupted its state. The collection's state is no longer correct.
+[18:28:23] [DT] Error reading timing from Game/DB/AI/Archetypes/FireDisciple/Attacks/FireDisciple_Staff_AttackData: Operations that change non-concurrent collections must have exclusive access. A concurrent update was performed on this collection and corrupted its state. The collection's state is no longer correct.
+[18:28:23] [DT] Error reading timing from Game/DB/AI/Archetypes/Fajar/Attacks/Fajar_AttacksDatatable: Operations that change non-concurrent collections must have exclusive access. A concurrent update was performed on this collection and corrupted its state. The collection's state is no longer correct.
+[18:28:23] [DT] Error reading timing from Game/DB/AI/Archetypes/Fajar/Attacks/Fajar_AttacksDatatable: Operations that change non-concurrent collections must have exclusive access. A concurrent update was performed on this collection and corrupted its state. The collection's state is no longer correct.
+[18:28:23] [DT] Error reading timing from Game/DB/AI/Archetypes/Sean/Attacks/Sean_AttacksDatatable: Operations that change non-concurrent collections must have exclusive access. A concurrent update was performed on this collection and corrupted its state. The collection's state is no longer correct.
+[18:28:23] [DT] Error reading timing from Game/DB/AI/Archetypes/Sean/Attacks/Sean_AttacksDatatable: Operations that change non-concurrent collections must have exclusive access. A concurrent update was performed on this collection and corrupted its state. The collection's state is no longer correct.
+[18:28:23] [DT] Error reading timing from Game/DB/AI/Archetypes/Kuroki/Kuroki_AttacksDatatable: Operations that change non-concurrent collections must have exclusive access. A concurrent update was performed on this collection and corrupted its state. The collection's state is no longer correct.
+[18:28:23] [DT] Error reading timing from Game/DB/AI/Archetypes/Fengjie/Attacks/Fengjie_AttacksDatatable: Operations that change non-concurrent collections must have exclusive access. A concurrent update was performed on this collection and corrupted its state. The collection's state is no longer correct.
+[18:28:23] [DT] Error reading timing from Game/DB/AI/Archetypes/Fengjie/Attacks/Fengjie_AttacksDatatable: Operations that change non-concurrent collections must have exclusive access. A concurrent update was performed on this collection and corrupted its state. The collection's state is no longer correct.
+[18:28:23] [DT] Built anim→timing mapping: 46 entries
+[18:28:36] [MAP] Built anim→DB mapping: 499 entries
+[18:28:36] [MAP] Built anim→DB mapping: 499 entries
+[18:28:36] [COMBO] Loaded Sifu/Content/DB/_MainChar/Combos/MainChar_ComboTree.MainChar_ComboTree: exportType=Combo, weapon=BareHands
+[18:28:36] [COMBO] Split tree node 0 into 2 direction variants: GetUp Attack [], GetUp Attack []
+[18:28:36] [COMBO] Split tree node 4 into 2 direction variants: ShinKick [FR], ShinKick [BL]
+[18:28:36] [COMBO] Split tree node 4 into 2 direction variants: ShinKick [FR], ShinKick [BL]
+[18:28:36] [COMBO] Split tree node 5 into 2 direction variants: ThroatPunch [FL], ThroatPunch [BL]
+[18:28:36] [COMBO] Split tree node 5 into 2 direction variants: ThroatPunch [FL], ThroatPunch [BL]
+[18:28:36] [COMBO] Split tree node 7 into 2 direction variants: Palm02 [FL], Palm02 [BR]
+[18:28:36] [COMBO] Split tree node 8 into 2 direction variants: TripleHit [FL], TripleHit [BR]
+[18:28:36] [COMBO] Split tree node 8 into 2 direction variants: TripleHit [FL], TripleHit [BR]
+[18:28:36] [COMBO] Split tree node 9 into 2 direction variants: MultiHitClaws [FL], MultiHitClaws [BR]
+[18:28:36] [COMBO] Split tree node 9 into 2 direction variants: MultiHitClaws [FL], MultiHitClaws [BR]
+[18:28:36] [COMBO] Split tree node 10 into 2 direction variants: DoubleElbow [FL], DoubleElbow [BR]
+[18:28:36] [COMBO] Split tree node 10 into 2 direction variants: DoubleElbow [FL], DoubleElbow [BR]
+[18:28:36] [COMBO] Split tree node 11 into 2 direction variants: ClawsElbow [FL], ClawsElbow [BR]
+[18:28:36] [COMBO] Split tree node 11 into 2 direction variants: ClawsElbow [FL], ClawsElbow [BR]
+[18:28:36] [COMBO] Split tree node 12 into 2 direction variants: ElbowSync [FL], ElbowSync [BR]
+[18:28:36] [COMBO] Split tree node 12 into 2 direction variants: ElbowSync [FL], ElbowSync [BR]
+[18:28:36] [COMBO] Split tree node 14 into 2 direction variants: Ext02 [FR], Ext02 [BL]
+[18:28:36] [COMBO] Split tree node 14 into 2 direction variants: Ext02 [FR], Ext02 [BL]
+[18:28:36] [COMBO] Split tree node 15 into 2 direction variants: AoeKnockdown [FL], AoeKnockdown [BR]
+[18:28:36] [COMBO] Split tree node 15 into 2 direction variants: AoeKnockdown [FL], AoeKnockdown [BR]
+[18:28:36] [COMBO] Split tree node 16 into 2 direction variants: DelaySpinHighKick [FL], DelaySpinHighKick [BL]
+[18:28:36] [COMBO] Split tree node 16 into 2 direction variants: DelaySpinHighKick [FL], DelaySpinHighKick [BL]
+[18:28:36] [COMBO] Split tree node 30 into 2 direction variants: FrontKick [FR], FrontKick [BL]
+[18:28:36] [COMBO] Split tree node 30 into 2 direction variants: FrontKick [FR], FrontKick [BL]
+[18:28:36] [COMBO] Split tree node 31 into 2 direction variants: LowKick [FL], LowKick [BR]
+[18:28:36] [COMBO] Split tree node 31 into 2 direction variants: LowKick [FL], LowKick [BR]
+[18:28:36] [COMBO] Split tree node 32 into 2 direction variants: Palm Strike [FR], Palm Strike [BL]
+[18:28:36] [COMBO] Split tree node 32 into 2 direction variants: Palm Strike [FR], Palm Strike [BL]
+[18:28:36] [COMBO] Split tree node 33 into 2 direction variants: GuardBreak [FL], GuardBreak [BL]
+[18:28:36] [COMBO] Split tree node 33 into 2 direction variants: GuardBreak [FL], GuardBreak [BL]
+[18:28:36] [COMBO] Split tree node 36 into 2 direction variants: Thrust Kick [FL], Thrust Kick [BL]
+[18:28:36] [COMBO] Split tree node 36 into 2 direction variants: Thrust Kick [FL], Thrust Kick [BL]
+[18:28:36] [COMBO] Split tree node 39 into 2 direction variants: GroundPunch [FL], GroundPunch [BL]
+[18:28:36] [COMBO] Split tree node 39 into 2 direction variants: GroundPunch [FL], GroundPunch [BL]
+[18:28:36] [COMBO] Split tree node 44 into 2 direction variants: Jab(new) [FR], Jab(new) [BL]
+[18:28:36] [COMBO] Split tree node 44 into 2 direction variants: Jab(new) [FR], Jab(new) [BL]
+[18:28:36] [COMBO] Split tree node 45 into 2 direction variants: ThroatPlexus [FR], ThroatPlexus [BL]
+[18:28:36] [COMBO] Split tree node 48 into 2 direction variants: BellyPalm [FR], BellyPalm [BR]
+[18:28:36] [COMBO] Split tree node 45 into 2 direction variants: ThroatPlexus [FR], ThroatPlexus [BL]
+[18:28:36] [COMBO] Split tree node 48 into 2 direction variants: BellyPalm [FR], BellyPalm [BR]
+[18:28:37] [COMBO] Split tree node 50 into 2 direction variants: MultiHit [FL], MultiHit [BR]
+[18:28:37] [COMBO] Split tree node 50 into 2 direction variants: MultiHit [FL], MultiHit [BR]
+[18:28:37] [COMBO] Split tree node 51 into 2 direction variants: ResilientAttack [FL], ResilientAttack [BL]
+[18:28:37] [COMBO] Split tree node 51 into 2 direction variants: ResilientAttack [FL], ResilientAttack [BL]
+[18:28:37] [COMBO] Split tree node 54 into 2 direction variants: SpinHighKickFollowUp [FL], SpinHighKickFollowUp [BL]
+[18:28:37] [COMBO] Parsed 81 raw nodes from 57 tree nodes
+[18:28:37] [COMBO] Split tree node 54 into 2 direction variants: SpinHighKickFollowUp [FL], SpinHighKickFollowUp [BL]
+[18:28:37] [COMBO] Parsed 110 raw edges
+[18:28:37] [COMBO] Parsed 81 raw nodes from 57 tree nodes
+[18:28:37] [COMBO] Final: 60 nodes, 64 edges (removed 21 conduits)
+[18:28:37] [COMBO] Parsed 110 raw edges
+[18:28:37] [COMBO] Final: 60 nodes, 64 edges (removed 21 conduits)
+[18:28:43] [COMBO] Loaded Sifu/Content/DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo.Yang_P1_Combo: exportType=Combo, weapon=Yang
+[18:28:43] [COMBO] Parsed 138 raw nodes from 138 tree nodes
+[18:28:43] [COMBO] Parsed 123 raw edges
+[18:28:43] [COMBO] Final: 25 nodes, 7 edges (removed 113 conduits)
+[18:28:49] [STANCE] System.Exception: [MainChar] Source DB: C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Sifu\Content\DB/Movement/BaseMovementDB.uasset (exists=True, size=0 bytes)
+[18:28:50] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
+[18:28:50] [COMBO] Loaded Sifu/Content/DB/_MainChar/Combos/MainChar_ComboTree.MainChar_ComboTree: exportType=Combo, weapon=BareHands
+[18:28:50] [COMBO] Split tree node 0 into 2 direction variants: GetUp Attack [], GetUp Attack []
+[18:28:50] [COMBO] Split tree node 4 into 2 direction variants: ShinKick [FR], ShinKick [BL]
+[18:28:50] [COMBO] Split tree node 5 into 2 direction variants: ThroatPunch [FL], ThroatPunch [BL]
+[18:28:50] [COMBO] Split tree node 7 into 2 direction variants: Palm02 [FL], Palm02 [BR]
+[18:28:50] [COMBO] Split tree node 8 into 2 direction variants: TripleHit [FL], TripleHit [BR]
+[18:28:50] [COMBO] Split tree node 9 into 2 direction variants: MultiHitClaws [FL], MultiHitClaws [BR]
+[18:28:50] [COMBO] Split tree node 10 into 2 direction variants: DoubleElbow [FL], DoubleElbow [BR]
+[18:28:50] [COMBO] Split tree node 11 into 2 direction variants: ClawsElbow [FL], ClawsElbow [BR]
+[18:28:50] [COMBO] Split tree node 12 into 2 direction variants: ElbowSync [FL], ElbowSync [BR]
+[18:28:50] [COMBO] Split tree node 14 into 2 direction variants: Ext02 [FR], Ext02 [BL]
+[18:28:50] [COMBO] Split tree node 15 into 2 direction variants: AoeKnockdown [FL], AoeKnockdown [BR]
+[18:28:50] [COMBO] Split tree node 16 into 2 direction variants: DelaySpinHighKick [FL], DelaySpinHighKick [BL]
+[18:28:50] [COMBO] Split tree node 30 into 2 direction variants: FrontKick [FR], FrontKick [BL]
+[18:28:50] [COMBO] Split tree node 31 into 2 direction variants: LowKick [FL], LowKick [BR]
+[18:28:50] [COMBO] Split tree node 32 into 2 direction variants: Palm Strike [FR], Palm Strike [BL]
+[18:28:50] [COMBO] Split tree node 33 into 2 direction variants: GuardBreak [FL], GuardBreak [BL]
+[18:28:50] [COMBO] Split tree node 36 into 2 direction variants: Thrust Kick [FL], Thrust Kick [BL]
+[18:28:50] [COMBO] Split tree node 39 into 2 direction variants: GroundPunch [FL], GroundPunch [BL]
+[18:28:50] [COMBO] Split tree node 44 into 2 direction variants: Jab(new) [FR], Jab(new) [BL]
+[18:28:50] [COMBO] Split tree node 45 into 2 direction variants: ThroatPlexus [FR], ThroatPlexus [BL]
+[18:28:50] [COMBO] Split tree node 48 into 2 direction variants: BellyPalm [FR], BellyPalm [BR]
+[18:28:50] [COMBO] Split tree node 50 into 2 direction variants: MultiHit [FL], MultiHit [BR]
+[18:28:50] [COMBO] Split tree node 51 into 2 direction variants: ResilientAttack [FL], ResilientAttack [BL]
+[18:28:50] [COMBO] Split tree node 54 into 2 direction variants: SpinHighKickFollowUp [FL], SpinHighKickFollowUp [BL]
+[18:28:50] [COMBO] Parsed 81 raw nodes from 57 tree nodes
+[18:28:50] [COMBO] Parsed 110 raw edges
+[18:28:50] [COMBO] Final: 60 nodes, 64 edges (removed 21 conduits)
+[18:28:51] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
+[18:28:54] [COMBO] Loaded Sifu/Content/DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo.Yang_P1_Combo: exportType=Combo, weapon=Yang
+[18:28:54] [COMBO] Parsed 138 raw nodes from 138 tree nodes
+[18:28:54] [COMBO] Parsed 123 raw edges
+[18:28:54] [COMBO] Final: 25 nodes, 7 edges (removed 113 conduits)
+[18:29:02] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:29:02] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/GrabTakedown/BodyGuard_attack_barehands_GrabTakedown
+[18:29:02] [ANIM] Direct load: OK
+[18:29:02] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/GrabTakedown/BodyGuard_attack_barehands_GrabTakedown, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=104, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:29:07] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:08] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_TripleHit_02_FL
+[18:29:08] [ANIM] Direct load: OK
+[18:29:08] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_TripleHit_02_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=124, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:29:15] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:15] [ANIM] Loading: Game/Animations/MainChar/Attacks/Man/Barehands/Skills/InvertPosition/MainChar_Attack_Man_Barehands_Skill_InvertPosition_FR_connect
+[18:29:15] [ANIM] Direct load: OK
+[18:29:15] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Skills/InvertPosition/MainChar_Attack_Man_Barehands_Skill_InvertPosition_FR_connect, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:29:16] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:16] [ANIM] Loading: Game/Animations/Yang/Attacks/Yang_Attack_PicHead_FR
+[18:29:16] [ANIM] Direct load: OK
+[18:29:16] [DEBUG] Anim=Game/Animations/Yang/Attacks/Yang_Attack_PicHead_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=124, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:29:18] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:18] [ANIM] Loading: Game/Animations/MainChar/Attacks/Man/Barehands/HeavyCombo/MainChar_Attack_Man_Barehands_Punish_BellyPalm_FR
+[18:29:18] [ANIM] Direct load: OK
+[18:29:18] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/HeavyCombo/MainChar_Attack_Man_Barehands_Punish_BellyPalm_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=134, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:29:19] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:20] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_TripleHit_02_FL
+[18:29:20] [ANIM] Direct load: OK
+[18:29:20] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_TripleHit_02_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=124, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:29:20] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:21] [ANIM] Loading: Game/Animations/Yang/Attacks/Yang_Attack_PicHead_FR
+[18:29:21] [ANIM] Direct load: OK
+[18:29:21] [DEBUG] Anim=Game/Animations/Yang/Attacks/Yang_Attack_PicHead_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=124, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:29:21] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:22] [ANIM] Loading: Game/Animations/MainChar/Attacks/Man/Barehands/HeavyCombo/MainChar_Attack_Man_Barehands_Punish_BellyPalm_FR
+[18:29:22] [ANIM] Direct load: OK
+[18:29:22] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/HeavyCombo/MainChar_Attack_Man_Barehands_Punish_BellyPalm_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=134, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:29:22] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:23] [ANIM] Loading: Game/Animations/MainChar/Attacks/Man/Barehands/PostParry/PostParry_Knockdown/MainChar_Attack_Man_Barehands_PunishKD_CrookedFoot_Thrust
+[18:29:23] [ANIM] Direct load: OK
+[18:29:23] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:24] [ANIM] Loading: Game/Animations/Yang/Attacks/Yang_Attack_GroundPunch_FL
+[18:29:24] [ANIM] Direct load: OK
+[18:29:24] [DEBUG] Anim=Game/Animations/Yang/Attacks/Yang_Attack_GroundPunch_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=124, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:29:26] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:26] [ANIM] Loading: Game/Animations/Yang/Attacks/Yang_MultiHit_FL
+[18:29:26] [ANIM] Direct load: OK
+[18:29:26] [DEBUG] Anim=Game/Animations/Yang/Attacks/Yang_MultiHit_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=155, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:29:27] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:27] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Rush_KhapChoy_FL
+[18:29:27] [ANIM] Direct load: OK
+[18:29:27] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Rush_KhapChoy_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=146, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:29:29] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:29] [ANIM] Loading: Game/Animations/Yang/Attacks/New/Yang_Attack_Sweep_FL
+[18:29:29] [ANIM] Direct load: OK
+[18:29:29] [DEBUG] Anim=Game/Animations/Yang/Attacks/New/Yang_Attack_Sweep_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=76, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_2
+[18:29:30] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:30] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Rush_KhapChoy_FL
+[18:29:30] [ANIM] Direct load: OK
+[18:29:30] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Rush_KhapChoy_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=146, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:29:31] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:31] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_ThrustKick_FL
+[18:29:31] [ANIM] Direct load: OK
+[18:29:31] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_ThrustKick_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=132, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:29:32] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:32] [ANIM] Loading: Game/Animations/Yang/Attacks/New/Yang_Attack_Sweep_FL
+[18:29:32] [ANIM] Direct load: OK
+[18:29:32] [DEBUG] Anim=Game/Animations/Yang/Attacks/New/Yang_Attack_Sweep_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=76, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_2
+[18:29:33] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:33] [ANIM] Loading: Game/Animations/Yang/Attacks/Yang_MultiHit_FL
+[18:29:33] [ANIM] Direct load: OK
+[18:29:33] [DEBUG] Anim=Game/Animations/Yang/Attacks/Yang_MultiHit_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=155, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:29:34] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:35] [ANIM] Loading: Game/Animations/Yang/Attacks/New/Yang_Attack_Sweep_FL
+[18:29:35] [ANIM] Direct load: OK
+[18:29:35] [DEBUG] Anim=Game/Animations/Yang/Attacks/New/Yang_Attack_Sweep_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=76, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_2
+[18:29:36] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:36] [ANIM] Loading: Game/Animations/MainChar/Attacks/Man/Barehands/Pushback/MC_Attack_Man_Barehands_PushBack_Palm_FR
+[18:29:36] [ANIM] Direct load: OK
+[18:29:36] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Pushback/MC_Attack_Man_Barehands_PushBack_Palm_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=134, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:29:37] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:37] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_MultiHitClaws_FL
+[18:29:37] [ANIM] Direct load: OK
+[18:29:37] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_MultiHitClaws_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=124, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:29:39] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:29:39] [ANIM] Loading: Game/Animations/MainChar/Attacks/Man/Barehands/Pushback/MC_Attack_Man_Barehands_PushBack_Palm_FR
+[18:29:39] [ANIM] Direct load: OK
+[18:29:39] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Pushback/MC_Attack_Man_Barehands_PushBack_Palm_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=134, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:29:41] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:29:41] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack
+[18:29:41] [ANIM] Direct load: OK
+[18:29:41] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=90, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:29:42] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:29:42] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/GrabTakedown/BodyGuard_attack_barehands_GrabTakedown
+[18:29:42] [ANIM] Direct load: OK
+[18:29:42] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/GrabTakedown/BodyGuard_attack_barehands_GrabTakedown, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=104, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:29:43] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:29:43] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/GrabTakedown/BodyGuard_attack_barehands_GrabTakedown
+[18:29:43] [ANIM] Direct load: OK
+[18:29:43] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/GrabTakedown/BodyGuard_attack_barehands_GrabTakedown, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=104, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:00] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:32:00] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack
+[18:32:00] [ANIM] Direct load: OK
+[18:32:00] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=90, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:02] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:32:02] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_MultiHitClaws_FL
+[18:32:02] [ANIM] Direct load: OK
+[18:32:02] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_MultiHitClaws_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=124, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:03] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:32:04] [ANIM] Loading: Game/Animations/Yang/Attacks/New/Yang_Attack_Sweep_FL
+[18:32:04] [ANIM] Direct load: OK
+[18:32:04] [DEBUG] Anim=Game/Animations/Yang/Attacks/New/Yang_Attack_Sweep_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=76, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_2
+[18:32:05] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:32:05] [ANIM] Loading: Game/Animations/Yang/Attacks/Yang_MultiHit_FL
+[18:32:05] [ANIM] Direct load: OK
+[18:32:05] [DEBUG] Anim=Game/Animations/Yang/Attacks/Yang_MultiHit_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=155, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:06] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:32:07] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_TripleHit_02_FL
+[18:32:07] [ANIM] Direct load: OK
+[18:32:07] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_TripleHit_02_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=124, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:08] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:32:08] [ANIM] Loading: Game/Animations/MainChar/Attacks/Man/Barehands/Skills/InvertPosition/MainChar_Attack_Man_Barehands_Skill_InvertPosition_FR_connect
+[18:32:08] [ANIM] Direct load: OK
+[18:32:08] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Skills/InvertPosition/MainChar_Attack_Man_Barehands_Skill_InvertPosition_FR_connect, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:09] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:32:09] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_TripleHit_02_FL
+[18:32:09] [ANIM] Direct load: OK
+[18:32:09] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_TripleHit_02_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=124, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:10] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:32:10] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack
+[18:32:10] [ANIM] Direct load: OK
+[18:32:10] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=90, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:11] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:32:11] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack
+[18:32:11] [ANIM] Direct load: OK
+[18:32:11] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=90, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:13] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:32:13] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack
+[18:32:13] [ANIM] Direct load: OK
+[18:32:13] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=90, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:14] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:32:14] [ANIM] Loading: Game/Animations/MainChar/Attacks/Man/Barehands/Skills/InvertPosition/MainChar_Attack_Man_Barehands_Skill_InvertPosition_FR_connect
+[18:32:14] [ANIM] Direct load: OK
+[18:32:14] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Skills/InvertPosition/MainChar_Attack_Man_Barehands_Skill_InvertPosition_FR_connect, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:15] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:32:15] [ANIM] Loading: Game/Animations/Yang/Attacks/Yang_Attack_PicHead_FR
+[18:32:15] [ANIM] Direct load: OK
+[18:32:15] [DEBUG] Anim=Game/Animations/Yang/Attacks/Yang_Attack_PicHead_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=124, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:17] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:32:17] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack
+[18:32:17] [ANIM] Direct load: OK
+[18:32:17] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=90, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:18] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:32:18] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/KneeSmash/Bodyguard_Attack_Barehands_KneeSmash
+[18:32:18] [ANIM] Direct load: OK
+[18:32:18] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/KneeSmash/Bodyguard_Attack_Barehands_KneeSmash, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=80, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:19] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:32:19] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_hook_front_01
+[18:32:19] [ANIM] Direct load: OK
+[18:32:19] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_hook_front_01, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=90, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:25] [MESH] Loaded 'Fengjie' from Game/Characters/Boss/Fengjie/Meshes/SK_Fengjie_HD0 (10986 verts, 256 bones)
+[18:32:25] [ANIM] Loading: Game/Animations/Fengjie/Attacks/MeteorHammer/Combos/LongRange/BodyWrapThrow/Fengjie_attack_MeteorHammer_BodyWrapThrow_3m
+[18:32:25] [ANIM] Direct load: OK
+[18:32:25] [DEBUG] Anim=Game/Animations/Fengjie/Attacks/MeteorHammer/Combos/LongRange/BodyWrapThrow/Fengjie_attack_MeteorHammer_BodyWrapThrow_3m, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=122, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:31] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:32:31] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalMidKick
+[18:32:31] [ANIM] Direct load: OK
+[18:32:31] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalMidKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=90, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:32] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:32:32] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalLowKick
+[18:32:32] [ANIM] Direct load: OK
+[18:32:32] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalLowKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:33] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:32:33] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo1/Flashkick_attacks_barehands_combo1_ThrustHighKick
+[18:32:33] [ANIM] Direct load: OK
+[18:32:33] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo1/Flashkick_attacks_barehands_combo1_ThrustHighKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=128, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:34] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:32:35] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo1/Flashkick_attacks_barehands_combo1_StabbingKnee_pushback
+[18:32:35] [ANIM] Direct load: OK
+[18:32:35] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo1/Flashkick_attacks_barehands_combo1_StabbingKnee_pushback, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=176, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:36] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:32:36] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo1/Flashkick_attacks_barehands_combo1_DoubleFist
+[18:32:36] [ANIM] Direct load: OK
+[18:32:36] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo1/Flashkick_attacks_barehands_combo1_DoubleFist, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=88, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:37] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:32:37] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalLowKick
+[18:32:37] [ANIM] Direct load: OK
+[18:32:37] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalLowKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:38] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:32:38] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_hammer_kick
+[18:32:38] [ANIM] Direct load: OK
+[18:32:38] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_hammer_kick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=100, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:39] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:32:39] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_AxeKick
+[18:32:39] [ANIM] Direct load: OK
+[18:32:39] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_AxeKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=98, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:41] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:32:41] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_HammerKick_60fps
+[18:32:41] [ANIM] Direct load: OK
+[18:32:41] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_HammerKick_60fps, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=144, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:43] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:32:43] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Light/FlashKick_attack_barehands_light_front_04
+[18:32:43] [ANIM] Direct load: OK
+[18:32:43] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Light/FlashKick_attack_barehands_light_front_04, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=36, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:44] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:32:44] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_jumping_kick_60fps
+[18:32:44] [ANIM] Direct load: OK
+[18:32:44] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_jumping_kick_60fps, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=50, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:45] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:32:45] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_HammerSlightKick_60fps
+[18:32:45] [ANIM] Direct load: OK
+[18:32:45] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_HammerSlightKick_60fps, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=112, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:46] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:32:47] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_back_fist
+[18:32:47] [ANIM] Direct load: OK
+[18:32:47] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_back_fist, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=44, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:48] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:32:48] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo3/Flashkick_attacks_barehands_combo3_Handstand_SpinKick
+[18:32:48] [ANIM] Direct load: OK
+[18:32:48] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo3/Flashkick_attacks_barehands_combo3_Handstand_SpinKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=128, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:49] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:32:49] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_hammer_kick
+[18:32:49] [ANIM] Direct load: OK
+[18:32:49] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_hammer_kick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=100, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:50] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:32:51] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo3/Flashkick_attacks_barehands_combo3_Knee_HighBackKick
+[18:32:51] [ANIM] Direct load: OK
+[18:32:51] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo3/Flashkick_attacks_barehands_combo3_Knee_HighBackKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=104, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:52] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:32:52] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalMidKick
+[18:32:52] [ANIM] Direct load: OK
+[18:32:52] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalMidKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=90, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:53] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:32:53] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalLowKick
+[18:32:53] [ANIM] Direct load: OK
+[18:32:53] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalLowKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:56] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:32:56] [ANIM] Loading: Game/Animations/MainChar/Attacks/Man/Barehands/HeavyCombo/MainChar_Attack_Man_Barehands_Punish_BellyPalm_FR
+[18:32:56] [ANIM] Direct load: OK
+[18:32:56] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/HeavyCombo/MainChar_Attack_Man_Barehands_Punish_BellyPalm_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=134, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:57] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:32:58] [ANIM] Loading: Game/Animations/Yang/Attacks/Yang_Attack_GroundPunch_FL
+[18:32:58] [ANIM] Direct load: OK
+[18:32:58] [DEBUG] Anim=Game/Animations/Yang/Attacks/Yang_Attack_GroundPunch_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=124, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:32:59] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:32:59] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_ElbowStrike_FL
+[18:32:59] [ANIM] Direct load: OK
+[18:32:59] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_ElbowStrike_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=108, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:33:01] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:33:01] [ANIM] Loading: Game/Animations/Yang/Attacks/New/Yang_Attack_DownAttack_FR
+[18:33:01] [ANIM] Direct load: OK
+[18:33:01] [DEBUG] Anim=Game/Animations/Yang/Attacks/New/Yang_Attack_DownAttack_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=144, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:33:03] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:33:03] [ANIM] Loading: Game/Animations/Yang/Attacks/Yang_Attack_HeadExt_FR
+[18:33:03] [ANIM] Direct load: OK
+[18:33:03] [DEBUG] Anim=Game/Animations/Yang/Attacks/Yang_Attack_HeadExt_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=116, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:33:05] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:33:05] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_PushKick_FR
+[18:33:05] [ANIM] Direct load: OK
+[18:33:05] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_PushKick_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:33:07] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:33:07] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_ThrustHighPunch
+[18:33:07] [ANIM] Direct load: OK
+[18:33:07] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_ThrustHighPunch, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=126, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:33:08] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:33:08] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalMidKick
+[18:33:08] [ANIM] Direct load: OK
+[18:33:08] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalMidKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=90, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:33:09] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:33:09] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalLowKick
+[18:33:09] [ANIM] Direct load: OK
+[18:33:09] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalLowKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:33:10] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:33:10] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalLowKick
+[18:33:10] [ANIM] Direct load: OK
+[18:33:10] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalLowKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:33:13] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:33:13] [ANIM] Loading: Game/Animations/Yang/Attacks/Yang_Attack_PicHead_FR
+[18:33:13] [ANIM] Direct load: OK
+[18:33:13] [DEBUG] Anim=Game/Animations/Yang/Attacks/Yang_Attack_PicHead_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=124, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:33:15] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:33:15] [ANIM] Loading: Game/Animations/Yang/Attacks/Yang_MultiHit_FL
+[18:33:15] [ANIM] Direct load: OK
+[18:33:15] [DEBUG] Anim=Game/Animations/Yang/Attacks/Yang_MultiHit_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=155, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:33:15] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:33:15] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_MultiHitClaws_FL
+[18:33:15] [ANIM] Direct load: OK
+[18:33:15] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_MultiHitClaws_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=124, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:33:16] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:33:17] [ANIM] Loading: Game/Animations/Yang/Attacks/Yang_MultiHit_FL
+[18:33:17] [ANIM] Direct load: OK
+[18:33:17] [DEBUG] Anim=Game/Animations/Yang/Attacks/Yang_MultiHit_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=155, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:33:18] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:33:18] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Rush_KhapChoy_FL
+[18:33:18] [ANIM] Direct load: OK
+[18:33:18] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Rush_KhapChoy_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=146, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:33:19] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:33:19] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_ThrustKick_FL
+[18:33:19] [ANIM] Direct load: OK
+[18:33:19] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_ThrustKick_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=132, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:33:19] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:33:19] [ANIM] Loading: Game/Animations/Yang/Attacks/New/Yang_Attack_Sweep_FL
+[18:33:19] [ANIM] Direct load: OK
+[18:33:19] [DEBUG] Anim=Game/Animations/Yang/Attacks/New/Yang_Attack_Sweep_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=76, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_2
+[18:33:22] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:33:22] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo3/Flashkick_attacks_barehands_combo3_Knee_HighBackKick
+[18:33:22] [ANIM] Direct load: OK
+[18:33:22] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo3/Flashkick_attacks_barehands_combo3_Knee_HighBackKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=104, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:33:23] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:33:23] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_AxeKick
+[18:33:23] [ANIM] Direct load: OK
+[18:33:23] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_AxeKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=98, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:33:25] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:33:25] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_AxeKick
+[18:33:25] [ANIM] Direct load: OK
+[18:33:25] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_AxeKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=98, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:33:29] [EXPORT] System.Exception: [_contentPath] C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Sifu
+[18:33:29] [EXPORT] System.Exception: [contentDir] C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Sifu\Content
+[18:33:29] [EXPORT] System.Exception: [detectedStance] MainChar (node AnimPath=)
+[18:33:33] [EXPORT] System.Exception: === EXPORT START: 4 modified nodes, stance=MainChar ===
+[18:33:33] [EXPORT] System.Exception: Found 1 m_Attacks maps
+[18:33:33] [EXPORT] System.Exception: [DB PATCH] Modified Yang_FrontKick_FL.uasset: anim -> Flashkick_attacks_barehands_combo2_HorizontalLowKick (3581B)
+[18:33:33] [EXPORT] System.Exception:   COPIED source DB Yang_FrontKick_FL.uasset -> Yang_FrontKick_FL.uasset (anim Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalLowKick)
+[18:33:33] [EXPORT] System.Exception:   PATCHED enemy FrontKick2 -> Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalLowKick (arch Yang, source DB Yang_FrontKick_FL.uasset)
+[18:33:33] [EXPORT] System.Exception: [DB PATCH] Modified Yang_Sweep_Hard_FL.uasset: anim -> Flashkick_attacks_barehands_combo3_Knee_HighBackKick (3786B)
+[18:33:33] [EXPORT] System.Exception:   COPIED source DB Yang_Sweep_Hard_FL.uasset -> Yang_Sweep_Hard_FL.uasset (anim Game/Animations/FlashKick/Attacks/Barehands/Combo3/Flashkick_attacks_barehands_combo3_Knee_HighBackKick)
+[18:33:33] [EXPORT] System.Exception:   PATCHED enemy LowKick Hard -> Game/Animations/FlashKick/Attacks/Barehands/Combo3/Flashkick_attacks_barehands_combo3_Knee_HighBackKick (arch Yang, source DB Yang_Sweep_Hard_FL.uasset)
+[18:33:33] [EXPORT] System.Exception: [DB PATCH] Modified Yang_3Punches_02_FL.uasset: anim -> BodyGuard_attack_barehands_GroundAttack (4079B)
+[18:33:33] [EXPORT] System.Exception:   COPIED source DB Yang_3Punches_02_FL.uasset -> Yang_3Punches_02_FL.uasset (anim Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack)
+[18:33:33] [EXPORT] System.Exception:   PATCHED enemy 3Hits 02 -> Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack (arch Yang, source DB Yang_3Punches_02_FL.uasset)
+[18:33:33] [EXPORT] System.Exception: [DB PATCH] Modified Yang_PalmStrike_FR.uasset: anim -> BodyGuard_attack_barehands_GrabTakedown (3931B)
+[18:33:33] [EXPORT] System.Exception:   COPIED source DB Yang_PalmStrike_FR.uasset -> Yang_PalmStrike_FR.uasset (anim Game/Animations/BodyGuard/Attacks/Barehands/GrabTakedown/BodyGuard_attack_barehands_GrabTakedown)
+[18:33:33] [EXPORT] System.Exception:   PATCHED enemy PalmStrike -> Game/Animations/BodyGuard/Attacks/Barehands/GrabTakedown/BodyGuard_attack_barehands_GrabTakedown (arch Yang, source DB Yang_PalmStrike_FR.uasset)
+[18:33:33] [EXPORT] System.Exception: Patched 4/4 nodes (direct: 4, fallback DB: 0, skipped empty DB: 0, skipped no anim->db: 0)
+[18:33:33] [EXPORT] System.Exception: Loaded enemy combo tree: C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Sifu\Content\DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo.uasset
+[18:33:33] [EXPORT] System.Exception: No custom enemy nodes to append
+[18:33:33] [EXPORT] System.Exception: Total files for pak: 12
+[18:33:33] [EXPORT] System.Exception: Filelist content:
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_FrontKick_FL.uasset" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_FrontKick_FL.uasset"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_FrontKick_FL.uexp" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_FrontKick_FL.uexp"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_Sweep_Hard_FL.uasset" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_Sweep_Hard_FL.uasset"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_Sweep_Hard_FL.uexp" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_Sweep_Hard_FL.uexp"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_3Punches_02_FL.uasset" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_3Punches_02_FL.uasset"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_3Punches_02_FL.uexp" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_3Punches_02_FL.uexp"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_PalmStrike_FR.uasset" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_PalmStrike_FR.uasset"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_PalmStrike_FR.uexp" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_PalmStrike_FR.uexp"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB\_MainChar\Combos\MainChar_ComboTree.uasset" "../../../Sifu/Content/DB/_MainChar/Combos/MainChar_ComboTree.uasset"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB\_MainChar\Combos\MainChar_ComboTree.uexp" "../../../Sifu/Content/DB/_MainChar/Combos/MainChar_ComboTree.uexp"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB\AI\Archetypes\Yang\_DB\Phase1\Yang_P1_Combo.uasset" "../../../Sifu/Content/DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo.uasset"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB\AI\Archetypes\Yang\_DB\Phase1\Yang_P1_Combo.uexp" "../../../Sifu/Content/DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo.uexp"
+[18:33:34] [EXPORT] System.Exception: UnrealPak stdout:
+LogPakFile: Display: Using command line for crypto configuration
+LogPakFile: Display: Loading response file C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\temp_mod\filelist.txt
+LogPakFile: Display: Added 12 entries to add to pak file.
+LogPakFile: Display: Collecting files to add to pak file...
+LogPakFile: Display: Collected 12 files in 0.00s.
+LogPakFile: Display: Creating pak C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Yang.pak.
+LogDerivedDataCache: Display: Performance to ../../../Engine/DerivedDataCache: Latency=0.00ms. RandomReadSpeed=999.00MBs, RandomWriteSpeed=999.00MBs. Assigned SpeedClass 'Local'
+LogPakFile: Warning: Missing file "C:/Users/Charles/Downloads/Sifu Modding/Movesets Prototypes/Moveset Maker/SifuMovesetEditor/ExportedMods/Sifu/Content/DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo.uasset" will not be added to PAK file.
+LogPakFile: Warning: Missing file "C:/Users/Charles/Downloads/Sifu Modding/Movesets Prototypes/Moveset Maker/SifuMovesetEditor/ExportedMods/Sifu/Content/DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo.uexp" will not be added to PAK file.
+LogPakFile: Display: Added 10 files, 181200 bytes total, time 0.01s.
+LogPakFile: Display: PrimaryIndex size: 250 bytes
+LogPakFile: Display: PathHashIndex size: 128 bytes
+LogPakFile: Display: FullDirectoryIndex size: 534 bytes
+LogPakFile: Display: Encryption - DISABLED
+LogPakFile: Display: Unreal pak executed in 0.011589 seconds
+
+[18:33:34] [EXPORT] System.Exception: UnrealPak stderr:
+
+[18:33:34] [EXPORT] System.Exception: UnrealPak exit code: 0
+[18:33:34] [EXPORT] System.Exception: Created pak size: 181200 bytes
+[18:35:58] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:35:58] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_ThrustKick_FL
+[18:35:58] [ANIM] Direct load: OK
+[18:35:58] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_ThrustKick_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=132, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:35:59] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:35:59] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo3/Flashkick_attacks_barehands_combo3_Handstand_SpinKick
+[18:35:59] [ANIM] Direct load: OK
+[18:35:59] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo3/Flashkick_attacks_barehands_combo3_Handstand_SpinKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=128, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:01] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:36:01] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_AxeKick
+[18:36:01] [ANIM] Direct load: OK
+[18:36:01] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_AxeKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=98, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:03] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:36:03] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo3/Flashkick_attacks_barehands_combo3_Knee_HighBackKick
+[18:36:03] [ANIM] Direct load: OK
+[18:36:03] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo3/Flashkick_attacks_barehands_combo3_Knee_HighBackKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=104, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:06] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:36:06] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo3/Flashkick_attacks_barehands_combo3_Knee_HighBackKick
+[18:36:06] [ANIM] Direct load: OK
+[18:36:06] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo3/Flashkick_attacks_barehands_combo3_Knee_HighBackKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=104, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:09] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:36:09] [ANIM] Loading: Game/Animations/Yang/Attacks/New/Yang_Attack_Sweep_FL
+[18:36:09] [ANIM] Direct load: OK
+[18:36:09] [DEBUG] Anim=Game/Animations/Yang/Attacks/New/Yang_Attack_Sweep_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=76, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_2
+[18:36:10] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:36:11] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_AxeKick
+[18:36:11] [ANIM] Direct load: OK
+[18:36:11] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_AxeKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=98, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:11] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:36:12] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_AxeKick
+[18:36:12] [ANIM] Direct load: OK
+[18:36:12] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_AxeKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=98, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:14] [MESH] Loaded 'FlashKick' from Game/Characters/PNJ/FlashKick/Meshes/Hideout03/SK_FlashKick_Hideout_03_FlashBlade_01 (18382 verts, 289 bones)
+[18:36:14] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo3/Flashkick_attacks_barehands_combo3_Knee_HighBackKick
+[18:36:14] [ANIM] Direct load: OK
+[18:36:14] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo3/Flashkick_attacks_barehands_combo3_Knee_HighBackKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=104, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:16] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:36:17] [ANIM] Loading: Game/Animations/MainChar/Attacks/Man/Barehands/PostParry/PostParry_Knockdown/MainChar_Attack_Man_Barehands_PunishKD_CrookedFoot_Thrust
+[18:36:17] [ANIM] Direct load: OK
+[18:36:18] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:36:18] [ANIM] Loading: Game/Animations/MainChar/Attacks/Man/Barehands/HeavyCombo/MainChar_Attack_Man_Barehands_Punish_BellyPalm_FR
+[18:36:18] [ANIM] Direct load: OK
+[18:36:18] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/HeavyCombo/MainChar_Attack_Man_Barehands_Punish_BellyPalm_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=134, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:20] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:36:20] [ANIM] Loading: Game/Animations/Yang/Attacks/Yang_Attack_PicHead_FR
+[18:36:20] [ANIM] Direct load: OK
+[18:36:20] [DEBUG] Anim=Game/Animations/Yang/Attacks/Yang_Attack_PicHead_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=124, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:21] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:36:21] [ANIM] Loading: Game/Animations/MainChar/Attacks/Man/Barehands/Skills/InvertPosition/MainChar_Attack_Man_Barehands_Skill_InvertPosition_FR_connect
+[18:36:21] [ANIM] Direct load: OK
+[18:36:21] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Skills/InvertPosition/MainChar_Attack_Man_Barehands_Skill_InvertPosition_FR_connect, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:22] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:36:22] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_MultiHitClaws_FL
+[18:36:22] [ANIM] Direct load: OK
+[18:36:22] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Attack_MultiHitClaws_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=124, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:23] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:36:23] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_RushSweep_FL
+[18:36:23] [ANIM] Direct load: OK
+[18:36:23] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_RushSweep_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=151, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:27] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:36:27] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/Disarm/BodyGuard_attack_barehands_disarm
+[18:36:27] [ANIM] Direct load: OK
+[18:36:27] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/Disarm/BodyGuard_attack_barehands_disarm, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=66, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:29] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:36:29] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack
+[18:36:29] [ANIM] Direct load: OK
+[18:36:29] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=90, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:30] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:36:31] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/GrabTakedown/BodyGuard_attack_barehands_GrabTakedown
+[18:36:31] [ANIM] Direct load: OK
+[18:36:31] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/GrabTakedown/BodyGuard_attack_barehands_GrabTakedown, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=104, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:31] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:36:31] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/GrabTakedown/BodyGuard_attack_barehands_GrabTakedown
+[18:36:31] [ANIM] Direct load: OK
+[18:36:31] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/GrabTakedown/BodyGuard_attack_barehands_GrabTakedown, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=104, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:35] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:36:35] [ANIM] Loading: Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalLowKick
+[18:36:35] [ANIM] Direct load: OK
+[18:36:35] [DEBUG] Anim=Game/Animations/FlashKick/Attacks/Barehands/Combo2/Flashkick_attacks_barehands_combo2_HorizontalLowKick, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:38] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:36:38] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/DoubleHitUppercut/BodyGuard_attack_barehands_DoubleHitUppercut_front
+[18:36:38] [ANIM] Direct load: OK
+[18:36:38] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/DoubleHitUppercut/BodyGuard_attack_barehands_DoubleHitUppercut_front, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:40] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:36:40] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/GrabTakedown/BodyGuard_attack_barehands_GrabTakedown
+[18:36:40] [ANIM] Direct load: OK
+[18:36:40] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/GrabTakedown/BodyGuard_attack_barehands_GrabTakedown, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=104, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:40] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:36:41] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack
+[18:36:41] [ANIM] Direct load: OK
+[18:36:41] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=90, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:42] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:36:42] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/KneeSmash/Bodyguard_Attack_Barehands_KneeSmash
+[18:36:42] [ANIM] Direct load: OK
+[18:36:42] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/KneeSmash/Bodyguard_Attack_Barehands_KneeSmash, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=80, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:44] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:36:44] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_hook_front_01
+[18:36:44] [ANIM] Direct load: OK
+[18:36:44] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_hook_front_01, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=90, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:45] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:36:45] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/KneeSmash/Bodyguard_Attack_Barehands_KneeSmash
+[18:36:45] [ANIM] Direct load: OK
+[18:36:45] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/KneeSmash/Bodyguard_Attack_Barehands_KneeSmash, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=80, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:47] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:36:47] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_hook_front_01
+[18:36:47] [ANIM] Direct load: OK
+[18:36:47] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_hook_front_01, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=90, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:48] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:36:48] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/Midpercut/Bodyguard_attack_barehands_Midpercut_60fps
+[18:36:48] [ANIM] Direct load: OK
+[18:36:48] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/Midpercut/Bodyguard_attack_barehands_Midpercut_60fps, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=100, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:49] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:36:49] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_stomachPunchFinisher_front_03
+[18:36:49] [ANIM] Direct load: OK
+[18:36:49] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_stomachPunchFinisher_front_03, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=100, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:50] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:36:50] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_stomachPunch_front_02
+[18:36:50] [ANIM] Direct load: OK
+[18:36:50] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_stomachPunch_front_02, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=62, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:51] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:36:51] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_KneeGrab_front_04_attacker
+[18:36:51] [ANIM] Direct load: OK
+[18:36:51] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_KneeGrab_front_04_attacker, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=100, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:52] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:36:52] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_hook_front_01
+[18:36:52] [ANIM] Direct load: OK
+[18:36:52] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_hook_front_01, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=90, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:54] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:36:54] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/KneeSmash/Bodyguard_Attack_Barehands_KneeSmash
+[18:36:54] [ANIM] Direct load: OK
+[18:36:54] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/KneeSmash/Bodyguard_Attack_Barehands_KneeSmash, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=80, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:55] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:36:55] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_stomachPunchFinisher_front_03
+[18:36:55] [ANIM] Direct load: OK
+[18:36:55] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_stomachPunchFinisher_front_03, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=100, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:56] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:36:56] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_stomachPunchFinisher_front_03
+[18:36:56] [ANIM] Direct load: OK
+[18:36:56] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_stomachPunchFinisher_front_03, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=100, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:36:58] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:36:58] [ANIM] Loading: Game/Animations/Yang/Attacks/Yang_Attack_HeadExt_FR
+[18:36:58] [ANIM] Direct load: OK
+[18:36:58] [DEBUG] Anim=Game/Animations/Yang/Attacks/Yang_Attack_HeadExt_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=116, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:37:01] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:37:01] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Resilient_FL
+[18:37:01] [ANIM] Direct load: OK
+[18:37:01] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Resilient_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=118, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:37:03] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:37:03] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Resilient_FL
+[18:37:03] [ANIM] Direct load: OK
+[18:37:03] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Resilient_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=118, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:37:05] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:37:05] [ANIM] Loading: Game/Animations/MainChar/Attacks/Man/Barehands/LightCombo/MainChar_Attack_Man_Barehands_Pressure_PalmPunch02_FL
+[18:37:05] [ANIM] Direct load: OK
+[18:37:05] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/LightCombo/MainChar_Attack_Man_Barehands_Pressure_PalmPunch02_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=134, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:37:06] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:37:06] [ANIM] Loading: Game/Animations/MainChar/Attacks/Man/Barehands/Skills/PostPushback/MainChar_Attack_Man_Barehands_Skill_PostPushback_Damage_FL
+[18:37:06] [ANIM] Direct load: OK
+[18:37:06] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/Skills/PostPushback/MainChar_Attack_Man_Barehands_Skill_PostPushback_Damage_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=180, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:37:08] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:37:08] [ANIM] Loading: Game/Animations/MainChar/Attacks/Man/Barehands/LightCombo/MainChar_Attack_Man_Barehands_Pressure_Jab_FR
+[18:37:08] [ANIM] Direct load: OK
+[18:37:08] [DEBUG] Anim=Game/Animations/MainChar/Attacks/Man/Barehands/LightCombo/MainChar_Attack_Man_Barehands_Pressure_Jab_FR, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=126, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:37:10] [MESH] Loaded 'Yang' from Game/Characters/Boss/Yang/Meshes/SK_Yang_Hideout00 (18042 verts, 270 bones)
+[18:37:10] [ANIM] Loading: Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Resilient_FL
+[18:37:10] [ANIM] Direct load: OK
+[18:37:10] [DEBUG] Anim=Game/Animations/Yang/Attacks/ReusedMainChar/Yang_Resilient_FL, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=118, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:37:11] [MESH] Loaded 'BodyGuard' from Game/Characters/PNJ/BodyGuards/M/Meshes/Hideout03/SK_BodyGuard_M_Hideout03_Fighter_01 (12426 verts, 254 bones)
+[18:37:12] [ANIM] Loading: Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_stomachPunch_front_02
+[18:37:12] [ANIM] Direct load: OK
+[18:37:12] [DEBUG] Anim=Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_stomachPunch_front_02, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=62, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:37:21] [MESH] Loaded 'Fajar' from Game/Characters/Boss/Fajar/Meshes/SK_Fajar_HD0 (15735 verts, 270 bones)
+[18:37:21] [ANIM] Loading: Game/Animations/Fajar/Attacks/Barehands/Fajar_attack_barehands_Reaper_Deadly_Waltz_60fps
+[18:37:21] [ANIM] Direct load: OK
+[18:37:21] [DEBUG] Anim=Game/Animations/Fajar/Attacks/Barehands/Fajar_attack_barehands_Reaper_Deadly_Waltz_60fps, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:37:24] [MESH] Loaded 'Fajar' from Game/Characters/Boss/Fajar/Meshes/SK_Fajar_HD0 (15735 verts, 270 bones)
+[18:37:24] [ANIM] Loading: Game/Animations/Fajar/Attacks/Barehands/Fajar_attack_barehands_Reaper_Deadly_Waltz_60fps
+[18:37:24] [ANIM] Direct load: OK
+[18:37:24] [DEBUG] Anim=Game/Animations/Fajar/Attacks/Barehands/Fajar_attack_barehands_Reaper_Deadly_Waltz_60fps, CompressedType=FUECompressedAnimData, HasRaw=False, NumFrames=120, BoneSettings=Engine/Content/Animation/DefaultAnimBoneCompressionSettings.DefaultAnimBoneCompressionSettings, CodecHandle=AnimCompress_PerTrackCompression_0
+[18:37:29] [EXPORT] System.Exception: [_contentPath] C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Sifu
+[18:37:29] [EXPORT] System.Exception: [contentDir] C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Sifu\Content
+[18:37:29] [EXPORT] System.Exception: [detectedStance] MainChar (node AnimPath=)
+[18:37:33] [EXPORT] System.Exception: === EXPORT START: 6 modified nodes, stance=MainChar ===
+[18:37:33] [EXPORT] System.Exception: Found 1 m_Attacks maps
+[18:37:33] [EXPORT] System.Exception: [DB PATCH] Modified Yang_Rush_Sweep_FL.uasset: anim -> BodyGuard_attack_barehands_GrabTakedown (3876B)
+[18:37:33] [EXPORT] System.Exception:   COPIED source DB Yang_Rush_Sweep_FL.uasset -> Yang_Rush_Sweep_FL.uasset (anim Game/Animations/BodyGuard/Attacks/Barehands/GrabTakedown/BodyGuard_attack_barehands_GrabTakedown)
+[18:37:33] [EXPORT] System.Exception:   PATCHED enemy Rush Sweep -> Game/Animations/BodyGuard/Attacks/Barehands/GrabTakedown/BodyGuard_attack_barehands_GrabTakedown (arch Yang, source DB Yang_Rush_Sweep_FL.uasset)
+[18:37:33] [EXPORT] System.Exception: [DB PATCH] Modified Yang_ThrustKick_FL.uasset: anim -> Flashkick_attack_barehands_AxeKick (3746B)
+[18:37:33] [EXPORT] System.Exception:   COPIED source DB Yang_ThrustKick_FL.uasset -> Yang_ThrustKick_FL.uasset (anim Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_AxeKick)
+[18:37:33] [EXPORT] System.Exception:   PATCHED enemy Thrust Kick -> Game/Animations/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_AxeKick (arch Yang, source DB Yang_ThrustKick_FL.uasset)
+[18:37:33] [EXPORT] System.Exception: [DB PATCH] Modified Yang_Resilient.uasset: anim -> Fajar_attack_barehands_Reaper_Deadly_Waltz_60fps (3729B)
+[18:37:33] [EXPORT] System.Exception:   COPIED source DB Yang_Resilient.uasset -> Yang_Resilient.uasset (anim Game/Animations/Fajar/Attacks/Barehands/Fajar_attack_barehands_Reaper_Deadly_Waltz_60fps)
+[18:37:33] [EXPORT] System.Exception:   PATCHED enemy GuardAttack Resilient -> Game/Animations/Fajar/Attacks/Barehands/Fajar_attack_barehands_Reaper_Deadly_Waltz_60fps (arch Yang, source DB Yang_Resilient.uasset)
+[18:37:33] [EXPORT] System.Exception: [DB PATCH] Modified Yang_FrontKick_FL.uasset: anim -> BodyGuard_attack_barehands_stomachPunchFinisher_front_03 (3588B)
+[18:37:33] [EXPORT] System.Exception:   COPIED source DB Yang_FrontKick_FL.uasset -> Yang_FrontKick_FL.uasset (anim Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_stomachPunchFinisher_front_03)
+[18:37:33] [EXPORT] System.Exception:   PATCHED enemy FrontKick2 -> Game/Animations/BodyGuard/Attacks/Barehands/Light/BodyGuard_attack_barehands_stomachPunchFinisher_front_03 (arch Yang, source DB Yang_FrontKick_FL.uasset)
+[18:37:33] [EXPORT] System.Exception: [DB PATCH] Modified Yang_3Punches_02_FL.uasset: anim -> BodyGuard_attack_barehands_GroundAttack (4079B)
+[18:37:33] [EXPORT] System.Exception:   COPIED source DB Yang_3Punches_02_FL.uasset -> Yang_3Punches_02_FL.uasset (anim Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack)
+[18:37:33] [EXPORT] System.Exception:   PATCHED enemy 3Hits 02 -> Game/Animations/BodyGuard/Attacks/Barehands/GroundAttack/BodyGuard_attack_barehands_GroundAttack (arch Yang, source DB Yang_3Punches_02_FL.uasset)
+[18:37:33] [EXPORT] System.Exception: [DB PATCH] Modified Yang_PalmStrike_FR.uasset: anim -> BodyGuard_attack_barehands_GrabTakedown (3931B)
+[18:37:33] [EXPORT] System.Exception:   COPIED source DB Yang_PalmStrike_FR.uasset -> Yang_PalmStrike_FR.uasset (anim Game/Animations/BodyGuard/Attacks/Barehands/GrabTakedown/BodyGuard_attack_barehands_GrabTakedown)
+[18:37:33] [EXPORT] System.Exception:   PATCHED enemy PalmStrike -> Game/Animations/BodyGuard/Attacks/Barehands/GrabTakedown/BodyGuard_attack_barehands_GrabTakedown (arch Yang, source DB Yang_PalmStrike_FR.uasset)
+[18:37:33] [EXPORT] System.Exception: Patched 6/6 nodes (direct: 6, fallback DB: 0, skipped empty DB: 0, skipped no anim->db: 0)
+[18:37:33] [EXPORT] System.Exception: Loaded enemy combo tree: C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Sifu\Content\DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo.uasset
+[18:37:33] [EXPORT] System.Exception: No custom enemy nodes to append
+[18:37:33] [EXPORT] System.Exception: Total files for pak: 16
+[18:37:33] [EXPORT] System.Exception: Filelist content:
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_Rush_Sweep_FL.uasset" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_Rush_Sweep_FL.uasset"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_Rush_Sweep_FL.uexp" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_Rush_Sweep_FL.uexp"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_ThrustKick_FL.uasset" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_ThrustKick_FL.uasset"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_ThrustKick_FL.uexp" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_ThrustKick_FL.uexp"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_Resilient.uasset" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_Resilient.uasset"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_Resilient.uexp" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_Resilient.uexp"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_FrontKick_FL.uasset" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_FrontKick_FL.uasset"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_FrontKick_FL.uexp" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_FrontKick_FL.uexp"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_3Punches_02_FL.uasset" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_3Punches_02_FL.uasset"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_3Punches_02_FL.uexp" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_3Punches_02_FL.uexp"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_PalmStrike_FR.uasset" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_PalmStrike_FR.uasset"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_PalmStrike_FR.uexp" "../../../Sifu/Content/DB/AI/Archetypes/Yang/Attacks/P1Attacks/Yang_PalmStrike_FR.uexp"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB\_MainChar\Combos\MainChar_ComboTree.uasset" "../../../Sifu/Content/DB/_MainChar/Combos/MainChar_ComboTree.uasset"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB\_MainChar\Combos\MainChar_ComboTree.uexp" "../../../Sifu/Content/DB/_MainChar/Combos/MainChar_ComboTree.uexp"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB\AI\Archetypes\Yang\_DB\Phase1\Yang_P1_Combo.uasset" "../../../Sifu/Content/DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo.uasset"
+"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Sifu\Content\DB\AI\Archetypes\Yang\_DB\Phase1\Yang_P1_Combo.uexp" "../../../Sifu/Content/DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo.uexp"
+[18:37:34] [EXPORT] System.Exception: UnrealPak stdout:
+LogPakFile: Display: Using command line for crypto configuration
+LogPakFile: Display: Loading response file C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\temp_mod\filelist.txt
+LogPakFile: Display: Added 16 entries to add to pak file.
+LogPakFile: Display: Collecting files to add to pak file...
+LogPakFile: Display: Collected 16 files in 0.00s.
+LogPakFile: Display: Creating pak C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\ExportedMods\Yang.pak.
+LogDerivedDataCache: Display: Performance to ../../../Engine/DerivedDataCache: Latency=0.00ms. RandomReadSpeed=999.00MBs, RandomWriteSpeed=999.00MBs. Assigned SpeedClass 'Local'
+LogPakFile: Warning: Missing file "C:/Users/Charles/Downloads/Sifu Modding/Movesets Prototypes/Moveset Maker/SifuMovesetEditor/ExportedMods/Sifu/Content/DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo.uasset" will not be added to PAK file.
+LogPakFile: Warning: Missing file "C:/Users/Charles/Downloads/Sifu Modding/Movesets Prototypes/Moveset Maker/SifuMovesetEditor/ExportedMods/Sifu/Content/DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo.uexp" will not be added to PAK file.
+LogPakFile: Display: Added 14 files, 194567 bytes total, time 0.01s.
+LogPakFile: Display: PrimaryIndex size: 298 bytes
+LogPakFile: Display: PathHashIndex size: 176 bytes
+LogPakFile: Display: FullDirectoryIndex size: 658 bytes
+LogPakFile: Display: Encryption - DISABLED
+LogPakFile: Display: Unreal pak executed in 0.015795 seconds
+
+[18:37:34] [EXPORT] System.Exception: UnrealPak stderr:
+
+[18:37:34] [EXPORT] System.Exception: UnrealPak exit code: 0
+[18:37:34] [EXPORT] System.Exception: Created pak size: 194567 bytes

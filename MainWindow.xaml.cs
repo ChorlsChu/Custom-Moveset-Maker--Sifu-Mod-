@@ -105,6 +105,7 @@ public partial class MainWindow : Window
     private bool _isResetMode = false;
     private ComboGraph? _originalVanillaComboGraph;
     private string _activeStance = "MainChar";
+    private string? _activeVariant;
     private List<MoveInfo> _comboTreeMoves = new();
 
     private readonly record struct StanceEntry(string MovementDb, string? Transition, string DisplayAnim);
@@ -324,6 +325,7 @@ public partial class MainWindow : Window
 
             UpdateLoading("Scanning combo tree data...", "Reading attack data tables...");
             var usedPaths = await Task.Run(() => _parser.ScanUsedAnimations());
+            await Task.Run(() => _parser.ScanDataTableTiming());
             foreach (var move in _allMoves)
                 move.IsUsed = usedPaths.Contains(move.FullPath);
 
@@ -1321,6 +1323,8 @@ public partial class MainWindow : Window
                     if (swaps.TryGetValue(node.Id.ToString(), out string? animPath) && !string.IsNullOrEmpty(animPath))
                     {
                         node.AnimPath = animPath;
+                        if (_parser.AnimToDbPath.TryGetValue(animPath, out var srcDb))
+                            node.SourceDBPath = srcDb;
                         var matchedMove = _allMoves.FirstOrDefault(m => m.FullPath == animPath);
                         if (matchedMove != null)
                             node.DisplayName = matchedMove.DisplayName;
@@ -1391,6 +1395,10 @@ public partial class MainWindow : Window
 
         var referenceModDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Template");
 
+        string? enemyComboPath = null;
+        if (_activeVariant != null && !string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase))
+            enemyComboPath = ResolveComboFilePath(_activeVariant);
+
         var dialog = new ExportDialog(
             modified,
             _contentPath,
@@ -1401,7 +1409,9 @@ public partial class MainWindow : Window
             charBaseMovementDBPath,
             referenceModDir,
             _comboGraph,
-            CustomNodeCloneMap)
+            CustomNodeCloneMap,
+            enemyComboPath,
+            _parser.AnimToTiming)
         {
             Owner = this,
         };
@@ -1952,26 +1962,6 @@ public partial class MainWindow : Window
         double colWidth = NODE_WIDTH + H_SPACING;
         double rowHeight = NODE_HEIGHT + V_SPACING;
 
-        // Enemy/boss: wrap into multiple linear rows (8 per row) for readability by pool
-        bool isEnemyGraph = !string.Equals(_comboGraph.WeaponName, "MainChar", StringComparison.OrdinalIgnoreCase) && !_comboGraph.Nodes.Any(n=>n.IsRoot);
-        if (isEnemyGraph)
-        {
-            int perRow = 8;
-            var ordered = _comboGraph.Nodes.OrderBy(n=>n.Id).ToList();
-            for (int i=0;i<ordered.Count;i++)
-            {
-                int col = i % perRow;
-                int row = i / perRow;
-                double x = 30 + col * colWidth;
-                double y = 30 + row * rowHeight * 2.2;
-                _nodePositions[ordered[i].Id] = new Point(x, y);
-                ordered[i].Depth = col;
-            }
-            foreach (var kvp in customPositions)
-                _nodePositions[kvp.Key] = kvp.Value;
-            return;
-        }
-
         for (int d = 0; d < columns.Count; d++)
         {
             var nodesInCol = columns[d];
@@ -1996,52 +1986,6 @@ public partial class MainWindow : Window
         _nodeLabels.Clear();
         _nodeInputBgs.Clear();
         if (_comboGraph == null) return;
-
-        // Enemy pools: gray dynamic boxes with black header
-        bool isEnemyGraph = !string.Equals(_comboGraph.WeaponName, "MainChar", StringComparison.OrdinalIgnoreCase) && !_comboGraph.Nodes.Any(n=>n.IsRoot);
-        if (isEnemyGraph)
-        {
-            var pools = _comboGraph.Nodes.GroupBy(n=> string.IsNullOrEmpty(n.DirectionLabel) ? "Pool" : n.DirectionLabel).ToList();
-            foreach (var pool in pools)
-            {
-                var ids = pool.Select(n=>n.Id).Where(id=>_nodePositions.ContainsKey(id)).ToList();
-                if (ids.Count==0) continue;
-                double minX = ids.Min(id=>_nodePositions[id].X);
-                double maxX = ids.Max(id=>_nodePositions[id].X);
-                double minY = ids.Min(id=>_nodePositions[id].Y);
-                double maxY = ids.Max(id=>_nodePositions[id].Y);
-                double pad = 12;
-                double headerH = 18;
-                var gray = new Border
-                {
-                    Background = new SolidColorBrush(Color.FromRgb(0x2a,0x2a,0x3a)),
-                    BorderBrush = new SolidColorBrush(Color.FromRgb(0x6c,0x70,0x86)),
-                    BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(6),
-                    Width = (maxX - minX) + NODE_WIDTH + pad*2,
-                    Height = (maxY - minY) + NODE_HEIGHT + pad*2 + headerH,
-                    IsHitTestVisible = false
-                };
-                Canvas.SetLeft(gray, minX - pad);
-                Canvas.SetTop(gray, minY - pad - headerH);
-                Panel.SetZIndex(gray, -1);
-                comboCanvas.Children.Add(gray);
-                var header = new Border
-                {
-                    Background = new SolidColorBrush(Colors.Black),
-                    BorderBrush = new SolidColorBrush(Colors.Black),
-                    BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(2),
-                    Padding = new Thickness(6,2,6,2),
-                    IsHitTestVisible = false,
-                    Child = new TextBlock{ Text=pool.Key, Foreground=Brushes.White, FontSize=9, FontWeight=FontWeights.Bold}
-                };
-                Canvas.SetLeft(header, minX - pad + 4);
-                Canvas.SetTop(header, minY - pad - headerH + 2);
-                Panel.SetZIndex(header, 1);
-                comboCanvas.Children.Add(header);
-            }
-        }
 
         var edgesBySource = new Dictionary<int, List<ComboEdge>>();
         foreach (var edge in _comboGraph.Edges)
@@ -2140,6 +2084,29 @@ public partial class MainWindow : Window
                 };
                 arrow.Tag = edge;
                 comboCanvas.Children.Add(arrow);
+            }
+
+            string edgeLabel = "";
+            if (!string.IsNullOrEmpty(edge.ConditionName) && !string.IsNullOrEmpty(edge.ConditionResult))
+                edgeLabel = $"{edge.ConditionName}? {edge.ConditionResult}";
+            else if (!string.IsNullOrEmpty(edge.InputName) && !string.IsNullOrEmpty(edge.ConditionName))
+                edgeLabel = $"{edge.InputName} {edge.ConditionName}";
+
+            if (!string.IsNullOrEmpty(edgeLabel))
+            {
+                double mx = (fromPoint.X + 3 * cp1.X + 3 * cp2.X + toPoint.X) / 8;
+                double my = (fromPoint.Y + 3 * cp1.Y + 3 * cp2.Y + toPoint.Y) / 8;
+                var edgeLabelBlock = new TextBlock
+                {
+                    Text = edgeLabel,
+                    FontSize = 9,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xcd, 0xcd, 0xcd)),
+                    IsHitTestVisible = false
+                };
+                Canvas.SetLeft(edgeLabelBlock, mx - 30);
+                Canvas.SetTop(edgeLabelBlock, my - 7);
+                Canvas.SetZIndex(edgeLabelBlock, 3);
+                comboCanvas.Children.Add(edgeLabelBlock);
             }
 
             _edgeVisuals[edge] = new EdgeVisuals
@@ -2679,6 +2646,7 @@ public partial class MainWindow : Window
             AnimPath = move.FullPath,
             DefaultAnimPath = move.FullPath,
             DefaultDBPath = "",
+            SourceDBPath = _parser.AnimToDbPath.TryGetValue(move.FullPath, out var srcDb) ? srcDb : "",
             DisplayName = move.DisplayNameClean,
             IsRoot = false,
             InputLabel = "",
@@ -3281,66 +3249,206 @@ public partial class MainWindow : Window
             unitPopupBorder.Visibility = Visibility.Collapsed;
     }
 
+    private void UpdateVariantButtonVisibility()
+    {
+        bool isEnemy = !string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase);
+        btnVariant.Visibility = isEnemy ? Visibility.Visible : Visibility.Collapsed;
+        if (!isEnemy) { _activeVariant = null; variantPopupBorder.Visibility = Visibility.Collapsed; }
+    }
+
+    private void BtnVariant_Click(object sender, RoutedEventArgs e)
+    {
+        if (variantPopupBorder.Visibility == Visibility.Visible)
+        {
+            variantPopupBorder.Visibility = Visibility.Collapsed;
+            return;
+        }
+        PopulateVariantCards();
+        variantPopupBorder.Visibility = Visibility.Visible;
+    }
+
+    private void VariantPopupBackground_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource == variantPopupBorder)
+            variantPopupBorder.Visibility = Visibility.Collapsed;
+    }
+
+    private void PopulateVariantCards()
+    {
+        string arch = _activeStance.Split('|')[0];
+        variantPopupTitle.Text = $"Select {arch} Variant";
+        variantWrapPanel.Children.Clear();
+
+        var variants = GetVariantsForArchetype(arch);
+        if (variants.Length == 0) { variantPopupTitle.Text = $"No variants for {arch}"; return; }
+
+        foreach (var (name, tag) in variants)
+        {
+            var card = new Border
+            {
+                Width = 90, Height = 130, Background = new SolidColorBrush(Color.FromRgb(0x1e,0x1e,0x2e)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0x58,0x5b,0x70)), BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6), Margin = new Thickness(6), Cursor = Cursors.Hand, Tag = tag
+            };
+            var stack = new StackPanel();
+            var imgBorder = new Border{ Height=90, CornerRadius=new CornerRadius(6,6,0,0), Background=new SolidColorBrush(Color.FromRgb(0x31,0x32,0x44)), ClipToBounds=true };
+            var initials = new TextBlock{ Text=name.Substring(0, Math.Min(2, name.Length)).ToUpper(), Foreground=Brushes.White, FontSize=28, FontWeight=FontWeights.Bold, HorizontalAlignment=HorizontalAlignment.Center, VerticalAlignment=VerticalAlignment.Center, Margin=new Thickness(0,28,0,0)};
+            imgBorder.Child = initials;
+            var nameBlock = new Border{ Height=40, Background=new SolidColorBrush(Color.FromRgb(0x31,0x32,0x44)), CornerRadius=new CornerRadius(0,0,6,6), Padding=new Thickness(4)};
+            nameBlock.Child = new TextBlock{ Text=name, Foreground=new SolidColorBrush(Color.FromRgb(0xcd,0xd6,0xf4)), FontSize=10, FontWeight=FontWeights.SemiBold, TextAlignment=TextAlignment.Center, VerticalAlignment=VerticalAlignment.Center, TextWrapping=TextWrapping.Wrap};
+            stack.Children.Add(imgBorder);
+            stack.Children.Add(nameBlock);
+            card.Child = stack;
+            string variantTag = tag;
+            card.MouseLeftButtonDown += async (s, ev) =>
+            {
+                variantPopupBorder.Visibility = Visibility.Collapsed;
+                if (variantTag == _activeVariant) return;
+                await LoadVariantComboGraphAsync(variantTag);
+            };
+            if (tag == _activeVariant)
+            {
+                card.BorderBrush = new SolidColorBrush(Color.FromRgb(0x89,0xb4,0xfa));
+                card.BorderThickness = new Thickness(2);
+            }
+            variantWrapPanel.Children.Add(card);
+        }
+    }
+
+    private static (string name, string tag)[] GetVariantsForArchetype(string arch) => arch switch
+    {
+        "Yang" => new[]{ ("Phase 1","Yang_P1"), ("Phase 2","Yang_P2"), ("Phase 3","Yang_P3") },
+        "Sean" => new[]{ ("Phase 1","Sean_P1"), ("Phase 2","Sean_P2"), ("Burst","Sean_Burst") },
+        "Kuroki" => new[]{ ("Phase 1","Kuroki_P1"), ("Phase 2","Kuroki_P2") },
+        "Fengjie" => new[]{ ("Phase 1","Fengjie_P1"), ("Phase 2","Fengjie_P2") },
+        "Fajar" => new[]{ ("Phase 1","Fajar_P1"), ("Phase 2","Fajar_P2") },
+        "Grunt" => new[]{ ("Base","Grunt_Base"), ("Advanced","Grunt_Advanced"), ("Miniboss","Grunt_Miniboss") },
+        "BigGuy" => new[]{ ("Base","BigGuy_Base"), ("Advanced","BigGuy_Advanced"), ("Miniboss","BigGuy_Miniboss") },
+        "BodyGuard" => new[]{ ("Base","Bodyguard_Base"), ("Advanced","Bodyguard_Advanced"), ("Miniboss","Bodyguard_Miniboss") },
+        "FlashKick" => new[]{ ("Base","FlashKick_Base"), ("Advanced","FlashKick_Advanced"), ("Miniboss","FlashKick_Miniboss") },
+        "FireDisciple" => new[]{ ("Base","FD_Base"), ("Advanced","FD_Advanced"), ("Miniboss","FD_Miniboss") },
+        "Servant" => new[]{ ("Default","Servant") },
+        "Sifu" => new[]{ ("Default","Sifu") },
+        _ => Array.Empty<(string, string)>()
+    };
+
+    private static string? ResolveComboFilePath(string variantTag) => variantTag switch
+    {
+        "Yang_P1" => "Game/DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo",
+        "Yang_P2" => "Game/DB/AI/Archetypes/Yang/_DB/Phase2/Yang_P2_Combo",
+        "Yang_P3" => "Game/DB/AI/Archetypes/Yang/_DB/Phase3/Yang_P3_Combo",
+        "Sean_P1" => "Game/DB/AI/Archetypes/Sean/Sean_Combo_Phase1",
+        "Sean_P2" => "Game/DB/AI/Archetypes/Sean/Sean_Combo_Phase2",
+        "Sean_Burst" => "Game/DB/AI/Archetypes/Sean/Sean_BurstCombo",
+        "Kuroki_P1" => "Game/DB/AI/Archetypes/Kuroki/Kuroki_ComboPhase1_NEW",
+        "Kuroki_P2" => "Game/DB/AI/Archetypes/Kuroki/Kuroki_ComboPhase2_Shiroizu",
+        "Fengjie_P1" => "Game/DB/AI/Archetypes/Fengjie/Phase1/Fengjie_Phase1_Combo",
+        "Fengjie_P2" => "Game/DB/AI/Archetypes/Fengjie/Phase2/Fengjie_Phase2_Combo",
+        "Fajar_P1" => "Game/DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P1",
+        "Fajar_P2" => "Game/DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P2",
+        "Grunt_Base" => "Game/DB/AI/Archetypes/Grunt/_Base/Grunt_Base_Combo",
+        "Grunt_Advanced" => "Game/DB/AI/Archetypes/Grunt/_Advanced/Grunt_Advanced_Combo",
+        "Grunt_Miniboss" => "Game/DB/AI/Archetypes/Grunt/_Miniboss/Grunt_Miniboss_Combo",
+        "BigGuy_Base" => "Game/DB/AI/Archetypes/BigGuy/_MainGame/Generic/BigGuy_Base_Combo",
+        "BigGuy_Advanced" => "Game/DB/AI/Archetypes/BigGuy/_MainGame/Generic/BigGuy_Advanced_Combo",
+        "BigGuy_Miniboss" => "Game/DB/AI/Archetypes/BigGuy/_MainGame/Generic/BigGuy_Miniboss_Combo",
+        "Bodyguard_Base" => "Game/DB/AI/Archetypes/Bodyguard/_Base/Bodyguard_Base_Combo",
+        "Bodyguard_Advanced" => "Game/DB/AI/Archetypes/Bodyguard/_Advanced/Bodyguard_Advanced_Combo",
+        "Bodyguard_Miniboss" => "Game/DB/AI/Archetypes/Bodyguard/_Miniboss/Bodyguard_Miniboss_Combo",
+        "FlashKick_Base" => "Game/DB/AI/Archetypes/FlashKick/_MainGame/Generic/FlashKick_Base_Combo",
+        "FlashKick_Advanced" => "Game/DB/AI/Archetypes/FlashKick/_MainGame/Generic/FlashKick_Advanced_Combo",
+        "FlashKick_Miniboss" => "Game/DB/AI/Archetypes/FlashKick/_MainGame/Generic/FlashKick_Miniboss_Combo",
+        "FD_Base" => "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Base_Combo",
+        "FD_Advanced" => "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Advanced_Combo",
+        "FD_Miniboss" => "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_MiniBoss_Combo",
+        "Servant" => "Game/DB/AI/Archetypes/Servant/Servant_Combo",
+        "Sifu" => "Game/DB/AI/Archetypes/Sifu/Sifu_Combo",
+        _ => null
+    };
+
+    private async Task LoadVariantComboGraphAsync(string variantTag)
+    {
+        var comboPath = ResolveComboFilePath(variantTag);
+        if (comboPath == null) { txtStatus.Text = $"No combo file for {variantTag}"; return; }
+        string arch = _activeStance.Split('|')[0];
+        graphLoadingText.Text = $"Loading {arch} {variantTag}...";
+        graphLoadingBorder.Visibility = Visibility.Visible;
+        comboCanvas.IsHitTestVisible = false;
+        try
+        {
+            var graph = await Task.Run(() => _parser.LoadComboTreeFromPath(comboPath, arch));
+            if (graph == null || graph.Nodes.Count == 0)
+            {
+                txtStatus.Text = $"{variantTag}: no combo data found at {comboPath}";
+                return;
+            }
+            _comboGraph = graph;
+            _activeVariant = variantTag;
+            txtComboInfo.Text = $"{arch} {variantTag} - {graph.Nodes.Count} nodes";
+            _comboTranslate.X = 0;
+            _comboTranslate.Y = 0;
+            LayoutComboGraph();
+            RenderComboGraph();
+            txtStatus.Text = $"Loaded {arch} {variantTag} ({graph.Nodes.Count} nodes)";
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("VARIANT", ex);
+            txtStatus.Text = $"Error loading {variantTag}: {ex.Message}";
+        }
+        finally
+        {
+            graphLoadingBorder.Visibility = Visibility.Collapsed;
+            comboCanvas.IsHitTestVisible = true;
+        }
+    }
+
     private void PopulateUnitCards()
     {
-        var units = new[] { "MainChar","Yang","Sean","Kuroki","Fengjie","Fajar","Grunt","FireDisciple","FlashKick","BigGuy","BodyGuard","Servant","Juggernaut" };
+        var units = new[] { "MainChar","Yang","Sean","Kuroki","Fengjie","Fajar","Grunt","FireDisciple","FlashKick","BigGuy","BodyGuard","Servant","Sifu" };
         unitWrapPanel.Children.Clear();
-        bool HasHard(string arch)
-        {
-            try {
-                var contentDir = _contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase) ? _contentPath : Path.Combine(_contentPath, "Content");
-                var attacksDir = Path.Combine(contentDir, "DB", "AI", "Archetypes", arch, "Attacks");
-                if (!Directory.Exists(attacksDir)) return false;
-                return Directory.GetFiles(attacksDir, "*Hard*.uasset", SearchOption.AllDirectories).Any(f=>!Path.GetFileName(f).Contains("HitBoxData", StringComparison.OrdinalIgnoreCase));
-            } catch { return false; }
-        }
         foreach (var arch in units)
         {
-            void AddCard(string tag, string display)
+            var card = new Border
             {
-                var card = new Border
+                Width = 90, Height = 130, Background = new SolidColorBrush(Color.FromRgb(0x1e,0x1e,0x2e)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0x58,0x5b,0x70)), BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6), Margin = new Thickness(6), Cursor = Cursors.Hand, Tag = arch
+            };
+            var stack = new StackPanel();
+            var imgBorder = new Border{ Height=90, CornerRadius=new CornerRadius(6,6,0,0), Background=new SolidColorBrush(Color.FromRgb(0x31,0x32,0x44)), ClipToBounds=true };
+            var initials = new TextBlock{ Text=arch.Substring(0, Math.Min(2, arch.Length)).ToUpper(), Foreground=Brushes.White, FontSize=28, FontWeight=FontWeights.Bold, HorizontalAlignment=HorizontalAlignment.Center, VerticalAlignment=VerticalAlignment.Center, Margin=new Thickness(0,28,0,0)};
+            imgBorder.Child = initials;
+            var nameBlock = new Border{ Height=40, Background=new SolidColorBrush(Color.FromRgb(0x31,0x32,0x44)), CornerRadius=new CornerRadius(0,0,6,6), Padding=new Thickness(4)};
+            nameBlock.Child = new TextBlock{ Text=arch, Foreground=new SolidColorBrush(Color.FromRgb(0xcd,0xd6,0xf4)), FontSize=10, FontWeight=FontWeights.SemiBold, TextAlignment=TextAlignment.Center, VerticalAlignment=VerticalAlignment.Center, TextWrapping=TextWrapping.Wrap};
+            stack.Children.Add(imgBorder);
+            stack.Children.Add(nameBlock);
+            card.Child = stack;
+            card.MouseLeftButtonDown += async (s, ev) =>
+            {
+                unitPopupBorder.Visibility = Visibility.Collapsed;
+                string selArch = (string)((Border)s).Tag;
+                if (selArch == _activeStance.Split('|')[0]) return;
+                if (selArch == "MainChar")
                 {
-                    Width = 90, Height = 130, Background = new SolidColorBrush(Color.FromRgb(0x1e,0x1e,0x2e)),
-                    BorderBrush = new SolidColorBrush(Color.FromRgb(0x58,0x5b,0x70)), BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(6), Margin = new Thickness(6), Cursor = Cursors.Hand, Tag = tag
-                };
-                var stack = new StackPanel();
-                var imgBorder = new Border{ Height=90, CornerRadius=new CornerRadius(6,6,0,0), Background=new SolidColorBrush(Color.FromRgb(0x31,0x32,0x44)), ClipToBounds=true };
-                var initials = new TextBlock{ Text=display.Substring(0, Math.Min(2, display.Length)).ToUpper(), Foreground=Brushes.White, FontSize=28, FontWeight=FontWeights.Bold, HorizontalAlignment=HorizontalAlignment.Center, VerticalAlignment=VerticalAlignment.Center, Margin=new Thickness(0,28,0,0)};
-                imgBorder.Child = initials;
-                var nameBlock = new Border{ Height=40, Background=new SolidColorBrush(Color.FromRgb(0x31,0x32,0x44)), CornerRadius=new CornerRadius(0,0,6,6), Padding=new Thickness(4)};
-                nameBlock.Child = new TextBlock{ Text=display, Foreground=new SolidColorBrush(Color.FromRgb(0xcd,0xd6,0xf4)), FontSize=10, FontWeight=FontWeights.SemiBold, TextAlignment=TextAlignment.Center, VerticalAlignment=VerticalAlignment.Center, TextWrapping=TextWrapping.Wrap};
-                stack.Children.Add(imgBorder);
-                stack.Children.Add(nameBlock);
-                card.Child = stack;
-                card.MouseLeftButtonDown += async (s, ev) =>
-                {
-                    unitPopupBorder.Visibility = Visibility.Collapsed;
-                    var parts = tag.Split('|');
-                    string selArch = parts[0];
-                    string diff = parts.Length>1 ? parts[1] : "Normal";
-                    string curTag = _activeStance + (_activeStance=="MainChar" ? "" : "");
-                    // check if already selected (compare without difficulty for MainChar)
-                    if (selArch == _activeStance.Split('|')[0] && diff == (_activeStance.Contains("|") ? _activeStance.Split('|')[1] : "Normal")) return;
-                    if (selArch == "MainChar")
-                        await SwitchStanceAsync(selArch);
-                    else
-                        await LoadArchetypeGraphAsync(tag);
-                };
-                string activeArch = _activeStance.Split('|')[0];
-                string activeDiff = _activeStance.Contains("|") ? _activeStance.Split('|')[1] : "Normal";
-                string cardArch = tag.Split('|')[0];
-                string cardDiff = tag.Contains("|") ? tag.Split('|')[1] : "Normal";
-                if (cardArch == activeArch && cardDiff == activeDiff)
-                {
-                    card.BorderBrush = new SolidColorBrush(Color.FromRgb(0x89,0xb4,0xfa));
-                    card.BorderThickness = new Thickness(2);
+                    await SwitchStanceAsync(selArch);
                 }
-                unitWrapPanel.Children.Add(card);
+                else
+                {
+                    _activeStance = selArch;
+                    UpdateVariantButtonVisibility();
+                    var variants = GetVariantsForArchetype(selArch);
+                    if (variants.Length > 0)
+                        await LoadVariantComboGraphAsync(variants[0].tag);
+                }
+            };
+            string activeArch = _activeStance.Split('|')[0];
+            if (arch == activeArch)
+            {
+                card.BorderBrush = new SolidColorBrush(Color.FromRgb(0x89,0xb4,0xfa));
+                card.BorderThickness = new Thickness(2);
             }
-            AddCard(arch, arch);
-            if (arch != "MainChar" && HasHard(arch))
-                AddCard(arch+"|Hard", arch+" (Hard)");
+            unitWrapPanel.Children.Add(card);
         }
     }
 
@@ -3469,6 +3577,7 @@ public partial class MainWindow : Window
             }
 
             _activeStance = stance;
+            UpdateVariantButtonVisibility();
 
             var freshParser = new AnimationParser();
             freshParser.Initialize(_contentPath, contentDir);
@@ -3545,6 +3654,7 @@ public partial class MainWindow : Window
             }
             _comboGraph = graph;
             _activeStance = arch;
+            UpdateVariantButtonVisibility();
             txtComboInfo.Text = $"{arch} - {graph.Nodes.Count} attacks (DataTable rows)";
             _comboTranslate.X = 0;
             _comboTranslate.Y = 0;
@@ -3683,13 +3793,19 @@ public partial class MainWindow : Window
                             .Where(n => n.DefaultAnimPath == node.DefaultAnimPath)
                             .ToList();
                         foreach (var ln in linkedNodes)
+                        {
                             ln.AnimPath = move.FullPath;
+                            if (_parser.AnimToDbPath.TryGetValue(move.FullPath, out var srcDb))
+                                ln.SourceDBPath = srcDb;
+                        }
                         RenderComboGraph();
                         txtStatus.Text = $"Replaced {linkedNodes.Count} linked nodes -> {move.DisplayName}";
                     }
                     else
                     {
                         node.AnimPath = move.FullPath;
+                        if (_parser.AnimToDbPath.TryGetValue(move.FullPath, out var srcDb))
+                            node.SourceDBPath = srcDb;
                         RenderComboGraph();
                         txtStatus.Text = $"Replaced: {node.Name} -> {move.DisplayName}";
                     }

@@ -329,6 +329,17 @@
                                 </StackPanel>
                             </Border>
                         </Border>
+                        <Border Name="variantPopupBorder" Visibility="Collapsed" Background="#99000000"
+                                VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Panel.ZIndex="5"
+                                MouseLeftButtonDown="VariantPopupBackground_Click">
+                            <Border Background="#1e1e2e" CornerRadius="6" BorderBrush="#585b70" BorderThickness="1"
+                                    VerticalAlignment="Center" HorizontalAlignment="Center" Padding="12" MaxWidth="400">
+                                <StackPanel>
+                                    <TextBlock Name="variantPopupTitle" Text="Select Variant" Foreground="#89b4fa" FontWeight="Bold" FontSize="13" Margin="0,0,0,8" HorizontalAlignment="Center"/>
+                                    <WrapPanel Name="variantWrapPanel" Orientation="Horizontal"/>
+                                </StackPanel>
+                            </Border>
+                        </Border>
                         <Border Background="#11111b" Padding="10,6"
                                 VerticalAlignment="Top">
                             <DockPanel>
@@ -337,6 +348,9 @@
                                 <Button Name="btnChangeUnit" Content="Change Unit" Style="{StaticResource DarkButton}"
                                         Click="BtnChangeUnit_Click" FontSize="11" Padding="8,4" Margin="8,0,0,0"
                                         VerticalAlignment="Center" Width="110"/>
+                                <Button Name="btnVariant" Content="Variant" Style="{StaticResource DarkButton}"
+                                        Click="BtnVariant_Click" FontSize="11" Padding="8,4" Margin="8,0,0,0"
+                                        VerticalAlignment="Center" Width="90" Visibility="Collapsed"/>
                                 <ComboBox Name="cmbStance" Visibility="Collapsed" Width="0" Height="0"/>
                                 <Button Name="btnResetMode" Content="Reset Node Mode" Style="{StaticResource DarkButton}"
                                         Click="ToggleResetMode_Click" FontSize="11" Padding="8,3" Margin="8,0,0,0"
