@@ -59,6 +59,7 @@ public partial class MainWindow : Window
     private const double INPUT_HEIGHT = 22;
     private const double H_SPACING = 80;
     private const double V_SPACING = 20;
+    private const double REDIRECT_GAP = 20;
 
     private bool _isPanning;
     private bool _panMoved;
@@ -94,6 +95,7 @@ public partial class MainWindow : Window
     private int _dragNodeId = -1;
     private Point _dragStartCanvasPos;
     private Point _dragNodeStartPos;
+    private DateTime _dragStartTime;
     private readonly Dictionary<int, TextBlock> _nodeLabels = new();
     private readonly Dictionary<int, Border> _nodeInputBgs = new();
     public readonly Dictionary<int, string> CustomNodeCloneMap = new();
@@ -239,6 +241,7 @@ public partial class MainWindow : Window
                         _outputPath = settings.OutputPath;
 
                     chkShowLines.IsChecked = settings.ShowLines;
+                    chkShowOrphanRedirects.IsChecked = settings.ShowOrphanRedirects;
                     _savedCameraPos = settings.CameraPosition;
                     _savedCameraTarget = settings.CameraTarget;
 
@@ -298,6 +301,7 @@ public partial class MainWindow : Window
             ContentPath = _contentPath,
             OutputPath = _outputPath,
             ShowLines = chkShowLines.IsChecked == true,
+            ShowOrphanRedirects = chkShowOrphanRedirects.IsChecked == true,
             CameraPosition = _savedCameraPos,
             CameraTarget = _savedCameraTarget
         };
@@ -743,8 +747,6 @@ public partial class MainWindow : Window
 
     private static readonly Color EdgeDefaultColor = Color.FromRgb(0x89, 0xb4, 0xfa);
     private static readonly Color EdgeStanceDim = Color.FromRgb(0x58, 0x5b, 0x70);
-    private static readonly Color EdgeStanceHighlight = Color.FromRgb(0x8a, 0x8d, 0xa0);
-    private static readonly Color EdgeConflictColor = Color.FromRgb(0xff, 0x44, 0x44);
     private static readonly Dictionary<string, Color> EdgeColorByInput = new(StringComparer.OrdinalIgnoreCase)
     {
         ["LMB"] = Color.FromRgb(0xa6, 0xe3, 0xa1),
@@ -773,9 +775,10 @@ public partial class MainWindow : Window
         EdgeStanceDimBrush.Freeze();
     }
 
-    private struct EdgeVisuals
+    private class EdgeVisuals
     {
         public System.Windows.Shapes.Path Path;
+        public System.Windows.Shapes.Path HitPath;
         public System.Windows.Shapes.Polygon Arrow;
         public bool IsConnected;
         public bool IsConflict;
@@ -820,7 +823,6 @@ public partial class MainWindow : Window
             _selectedNodeId = -1;
         }
         nodeInfoPanel.Visibility = Visibility.Collapsed;
-        RedrawEdgesOnly();
     }
 
     private void UpdateNodeInfoPanel(ComboNode node)
@@ -828,16 +830,6 @@ public partial class MainWindow : Window
         nodeInfoPanel.Visibility = Visibility.Visible;
         bool isEnemy = !string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase);
         mainCharInputPanel.Visibility = isEnemy ? Visibility.Collapsed : Visibility.Visible;
-        enemyConditionPanel.Visibility = isEnemy ? Visibility.Visible : Visibility.Collapsed;
-        if (isEnemy)
-        {
-            // show condition stored in DirectionLabel
-            var cond = node.DirectionLabel ?? "";
-            bool found = false;
-            for (int i=0;i<cmbNodeCondition.Items.Count;i++)
-                if ((cmbNodeCondition.Items[i] as ComboBoxItem)?.Content?.ToString()==cond) { cmbNodeCondition.SelectedIndex=i; found=true; break; }
-            if (!found) cmbNodeCondition.SelectedIndex = 0;
-        }
 
         var incomingEdge = _comboGraph?.Edges.FirstOrDefault(e => e.ToNodeId == node.Id && !string.IsNullOrEmpty(e.InputName));
         if (incomingEdge != null)
@@ -854,6 +846,26 @@ public partial class MainWindow : Window
         else
         {
             cmbNodeInput.SelectedIndex = -1;
+        }
+
+        if (node.IsRedirect && _comboGraph != null)
+        {
+            var incomingRedirectEdge = _comboGraph.Edges.FirstOrDefault(e => e.IsRedirect && e.ToNodeId == node.Id);
+            var fromNode = incomingRedirectEdge != null
+                ? _comboGraph.Nodes.FirstOrDefault(n => n.Id == incomingRedirectEdge.FromNodeId)
+                : null;
+            var targetNode = node.ResolvedRedirectNodeId >= 0
+                ? _comboGraph.Nodes.FirstOrDefault(n => n.Id == node.ResolvedRedirectNodeId)
+                : null;
+            txtRedirectFrom.Text = $"From: {fromNode?.DisplayName ?? "?"}";
+            txtRedirectTo.Text = $"To: {targetNode?.DisplayName ?? "?"} (redirect)";
+            txtRedirectInput.Text = incomingRedirectEdge != null ? $"Input: {incomingRedirectEdge.InputName}" : "Input: Redirect";
+            txtRedirectCondition.Text = "Condition: None";
+            redirectInfoPanel.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            redirectInfoPanel.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -905,7 +917,6 @@ public partial class MainWindow : Window
             border.BorderBrush = SelectedNodeBorderBrush;
             border.Background = SelectedNodeBg;
         }
-        RedrawEdgesOnly();
         UpdateNodeInfoPanel(node);
     }
 
@@ -1220,6 +1231,16 @@ public partial class MainWindow : Window
                 $"window.setSkeletonVisible({(chkShowLines.IsChecked == true ? "true" : "false")})");
         if (_initialized)
             SaveSettings();
+    }
+
+    private void ShowOrphanRedirects_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_initialized && _comboGraph != null)
+        {
+            SaveSettings();
+            LayoutComboGraph();
+            RenderComboGraph();
+        }
     }
 
     private void ShowFailed_Changed(object sender, RoutedEventArgs e)
@@ -1879,22 +1900,30 @@ public partial class MainWindow : Window
         foreach (var node in _comboGraph.Nodes)
             node.Depth = -1;
 
+        var attackNodes = _comboGraph.Nodes.Where(n => !n.IsRedirect).ToList();
+        var redirectNodes = _comboGraph.Nodes.Where(n => n.IsRedirect).ToList();
+
+        if (chkShowOrphanRedirects.IsChecked != true)
+        {
+            var redirectIdsWithIncoming = new HashSet<int>(
+                _comboGraph.Edges.Where(e => e.IsRedirect).Select(e => e.ToNodeId));
+            redirectNodes = redirectNodes.Where(n => redirectIdsWithIncoming.Contains(n.Id)).ToList();
+        }
+
+        bool hasRedirects = redirectNodes.Count > 0;
+
         var incoming = new Dictionary<int, int>();
-        var incomingFrom = new Dictionary<int, List<int>>();
         var outgoing = new Dictionary<int, List<int>>();
         foreach (var node in _comboGraph.Nodes)
         {
             incoming[node.Id] = 0;
-            incomingFrom[node.Id] = new List<int>();
             outgoing[node.Id] = new List<int>();
         }
         foreach (var edge in _comboGraph.Edges)
         {
+            if (edge.IsRedirect) continue;
             if (incoming.ContainsKey(edge.ToNodeId))
-            {
                 incoming[edge.ToNodeId]++;
-                incomingFrom[edge.ToNodeId].Add(edge.FromNodeId);
-            }
             if (outgoing.ContainsKey(edge.FromNodeId))
                 outgoing[edge.FromNodeId].Add(edge.ToNodeId);
         }
@@ -1903,7 +1932,7 @@ public partial class MainWindow : Window
         var inDegree = new Dictionary<int, int>(incoming);
 
         var queue = new Queue<int>();
-        foreach (var node in _comboGraph.Nodes)
+        foreach (var node in attackNodes)
         {
             if (inDegree[node.Id] == 0)
             {
@@ -1930,13 +1959,13 @@ public partial class MainWindow : Window
             }
         }
 
-        foreach (var node in _comboGraph.Nodes)
+        foreach (var node in attackNodes)
         {
             node.Depth = depth.TryGetValue(node.Id, out var d) ? d : 0;
         }
 
         var forwardDepth = new Dictionary<int, int>();
-        foreach (var node in _comboGraph.Nodes.OrderByDescending(n => n.Depth))
+        foreach (var node in attackNodes.OrderByDescending(n => n.Depth))
         {
             var maxChild = 0;
             foreach (var childId in outgoing[node.Id])
@@ -1947,11 +1976,11 @@ public partial class MainWindow : Window
             forwardDepth[node.Id] = maxChild + 1;
         }
 
-        var maxDepth = _comboGraph.Nodes.Max(n => n.Depth);
+        var maxDepth = attackNodes.Count > 0 ? attackNodes.Max(n => n.Depth) : 0;
         var columns = new List<List<ComboNode>>();
         for (int d = 0; d <= maxDepth; d++)
         {
-            var col = _comboGraph.Nodes
+            var col = attackNodes
                 .Where(n => n.Depth == d)
                 .OrderByDescending(n => forwardDepth.GetValueOrDefault(n.Id, 1))
                 .ThenBy(n => n.DisplayName)
@@ -1974,8 +2003,153 @@ public partial class MainWindow : Window
             }
         }
 
+        if (hasRedirects)
+        {
+            var incomingRedirectEdge = new Dictionary<int, ComboEdge>();
+            foreach (var edge in _comboGraph.Edges)
+            {
+                if (edge.IsRedirect && !incomingRedirectEdge.ContainsKey(edge.ToNodeId))
+                    incomingRedirectEdge[edge.ToNodeId] = edge;
+            }
+
+            var redirectsByParent = new Dictionary<int, List<ComboNode>>();
+            foreach (var rn in redirectNodes)
+            {
+                if (!incomingRedirectEdge.TryGetValue(rn.Id, out var edge)) continue;
+                if (!redirectsByParent.TryGetValue(edge.FromNodeId, out var list))
+                {
+                    list = new List<ComboNode>();
+                    redirectsByParent[edge.FromNodeId] = list;
+                }
+                list.Add(rn);
+            }
+
+            foreach (var kvp in redirectsByParent)
+            {
+                kvp.Value.Sort((a, b) => string.Compare(a.DisplayName, b.DisplayName, StringComparison.Ordinal));
+            }
+
+            var leafNodes = attackNodes
+                .Where(n => outgoing[n.Id].Count == 0)
+                .OrderBy(n => n.DisplayName)
+                .ToList();
+
+            double backboneRightX = attackNodes
+                .Where(n => outgoing[n.Id].Count > 0 && _nodePositions.ContainsKey(n.Id))
+                .Select(n => _nodePositions[n.Id].X)
+                .DefaultIfEmpty(30)
+                .Max() + NODE_WIDTH + H_SPACING;
+
+            if (leafNodes.Count > 0)
+            {
+                int mid = (leafNodes.Count + 1) / 2;
+                var group1 = leafNodes.Take(mid).ToList();
+                var group2 = leafNodes.Skip(mid).ToList();
+
+                double leafColWidth = NODE_WIDTH + REDIRECT_GAP + NODE_WIDTH + H_SPACING;
+
+                double col1X = backboneRightX;
+                double col1Y = 30;
+                foreach (var leaf in group1)
+                {
+                    _nodePositions[leaf.Id] = new Point(col1X, col1Y);
+                    double redirectX = col1X + NODE_WIDTH + REDIRECT_GAP;
+
+                    if (redirectsByParent.TryGetValue(leaf.Id, out var leafRedirects))
+                    {
+                        for (int i = 0; i < leafRedirects.Count; i++)
+                        {
+                            double ry = col1Y + i * (NODE_HEIGHT + V_SPACING);
+                            _nodePositions[leafRedirects[i].Id] = new Point(redirectX, ry);
+                        }
+                        col1Y += Math.Max(leafRedirects.Count, 1) * (NODE_HEIGHT + V_SPACING) + V_SPACING;
+                    }
+                    else
+                    {
+                        col1Y += NODE_HEIGHT + V_SPACING;
+                    }
+                }
+
+                double col2X = col1X + leafColWidth;
+                double col2Y = 30;
+                foreach (var leaf in group2)
+                {
+                    _nodePositions[leaf.Id] = new Point(col2X, col2Y);
+                    double redirectX = col2X + NODE_WIDTH + REDIRECT_GAP;
+
+                    if (redirectsByParent.TryGetValue(leaf.Id, out var leafRedirects))
+                    {
+                        for (int i = 0; i < leafRedirects.Count; i++)
+                        {
+                            double ry = col2Y + i * (NODE_HEIGHT + V_SPACING);
+                            _nodePositions[leafRedirects[i].Id] = new Point(redirectX, ry);
+                        }
+                        col2Y += Math.Max(leafRedirects.Count, 1) * (NODE_HEIGHT + V_SPACING) + V_SPACING;
+                    }
+                    else
+                    {
+                        col2Y += NODE_HEIGHT + V_SPACING;
+                    }
+                }
+            }
+
+            foreach (var rn in redirectNodes)
+            {
+                if (!_nodePositions.ContainsKey(rn.Id))
+                {
+                    _nodePositions[rn.Id] = new Point(backboneRightX, 30);
+                }
+            }
+        }
+
+        ResolveNodeOverlaps();
+
         foreach (var kvp in customPositions)
             _nodePositions[kvp.Key] = kvp.Value;
+    }
+
+    private void ResolveNodeOverlaps()
+    {
+        if (_comboGraph == null) return;
+
+        var settled = new List<(int id, double x, double y, double right, double bottom)>();
+
+        var sorted = _comboGraph.Nodes
+            .Where(n => _nodePositions.ContainsKey(n.Id))
+            .OrderBy(n => _nodePositions[n.Id].X)
+            .ThenBy(n => _nodePositions[n.Id].Y)
+            .ToList();
+
+        foreach (var node in sorted)
+        {
+            var pos = _nodePositions[node.Id];
+            double x = pos.X;
+            double y = pos.Y;
+            double w = NODE_WIDTH;
+            double h = NODE_HEIGHT;
+
+            bool shifted = true;
+            int iterations = 0;
+            while (shifted && iterations < 50)
+            {
+                shifted = false;
+                double r = x + w;
+                double b = y + h;
+                foreach (var s in settled)
+                {
+                    if (x < s.right && r > s.x && y < s.bottom && b > s.y)
+                    {
+                        x = s.right + REDIRECT_GAP;
+                        shifted = true;
+                        break;
+                    }
+                }
+                iterations++;
+            }
+
+            _nodePositions[node.Id] = new Point(x, y);
+            settled.Add((node.Id, x, y, x + w, y + h));
+        }
     }
 
     private void RenderComboGraph()
@@ -2055,14 +2229,29 @@ public partial class MainWindow : Window
             figure.Segments.Add(new BezierSegment(cp1, cp2, toPoint, isStroked: true));
             pathGeom.Figures.Add(figure);
 
+            bool hasMultipleBranches = siblingCount > 1;
+            double thickness = isStanceEdge ? 1.5 : (hasMultipleBranches ? 2 : 2);
+
             var path = new System.Windows.Shapes.Path
             {
                 Stroke = color,
-                StrokeThickness = isStanceEdge ? 1.5 : 2,
-                Data = pathGeom
+                StrokeThickness = thickness,
+                Data = pathGeom,
+                StrokeDashArray = edge.IsRedirect ? new DoubleCollection { 4, 2 } : null,
+                Opacity = edge.IsRedirect ? 0.55 : 1.0
             };
             path.Tag = edge;
             comboCanvas.Children.Add(path);
+
+            var hitPath = new System.Windows.Shapes.Path
+            {
+                Stroke = new SolidColorBrush(Color.FromArgb(1, 0, 0, 0)),
+                StrokeThickness = Math.Max(thickness, 14),
+                Data = pathGeom
+            };
+            hitPath.Tag = edge;
+            Canvas.SetZIndex(hitPath, -1);
+            comboCanvas.Children.Add(hitPath);
 
             System.Windows.Shapes.Polygon? arrow = null;
             var arrowSize = 6;
@@ -2086,32 +2275,10 @@ public partial class MainWindow : Window
                 comboCanvas.Children.Add(arrow);
             }
 
-            string edgeLabel = "";
-            if (!string.IsNullOrEmpty(edge.ConditionName) && !string.IsNullOrEmpty(edge.ConditionResult))
-                edgeLabel = $"{edge.ConditionName}? {edge.ConditionResult}";
-            else if (!string.IsNullOrEmpty(edge.InputName) && !string.IsNullOrEmpty(edge.ConditionName))
-                edgeLabel = $"{edge.InputName} {edge.ConditionName}";
-
-            if (!string.IsNullOrEmpty(edgeLabel))
-            {
-                double mx = (fromPoint.X + 3 * cp1.X + 3 * cp2.X + toPoint.X) / 8;
-                double my = (fromPoint.Y + 3 * cp1.Y + 3 * cp2.Y + toPoint.Y) / 8;
-                var edgeLabelBlock = new TextBlock
-                {
-                    Text = edgeLabel,
-                    FontSize = 9,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0xcd, 0xcd, 0xcd)),
-                    IsHitTestVisible = false
-                };
-                Canvas.SetLeft(edgeLabelBlock, mx - 30);
-                Canvas.SetTop(edgeLabelBlock, my - 7);
-                Canvas.SetZIndex(edgeLabelBlock, 3);
-                comboCanvas.Children.Add(edgeLabelBlock);
-            }
-
             _edgeVisuals[edge] = new EdgeVisuals
             {
                 Path = path,
+                HitPath = hitPath,
                 Arrow = arrow,
                 IsConnected = false,
                 IsConflict = conflictEdges.Contains(edge),
@@ -2138,7 +2305,8 @@ public partial class MainWindow : Window
                 BorderThickness = new Thickness(2),
                 Background = nodeBg,
                 CornerRadius = new CornerRadius(4),
-                Tag = node
+                Tag = node,
+                Opacity = node.IsRedirect ? 0.55 : 1.0
             };
             border.MouseLeftButtonDown += ComboNode_Click;
             border.PreviewMouseLeftButtonDown += Node_PreviewMouseLeftButtonDown;
@@ -2244,86 +2412,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RedrawEdgesOnly()
-    {
-        if (comboCanvas == null || _comboGraph == null) return;
-
-        foreach (var kvp in _edgeVisuals)
-        {
-            var edge = kvp.Key;
-            var vis = kvp.Value;
-            bool isStance = edge.FromNodeId == -1;
-            bool isConnected = _selectedNodeId >= 0
-                && (edge.FromNodeId == _selectedNodeId || edge.ToNodeId == _selectedNodeId);
-
-            Color finalColor;
-            double thickness;
-            int zIndex = 0;
-
-            if (vis.IsConflict)
-            {
-                finalColor = EdgeConflictColor;
-                thickness = 3;
-                zIndex = 2;
-            }
-            else if (isConnected && _selectedNodeId >= 0)
-            {
-                Color baseColor = isStance
-                    ? EdgeStanceDim
-                    : (EdgeColorByInput.TryGetValue(edge.InputName, out var c) ? c : EdgeDefaultColor);
-                finalColor = isStance ? EdgeStanceHighlight : baseColor;
-                thickness = 3.5;
-                zIndex = 1;
-
-                if (vis.Glow == null || vis.Glow.Color != finalColor)
-                {
-                    vis.Glow = new System.Windows.Media.Effects.DropShadowEffect
-                    {
-                        Color = finalColor,
-                        BlurRadius = 8,
-                        ShadowDepth = 0,
-                        Opacity = 0.8
-                    };
-                }
-            }
-            else if (_selectedNodeId >= 0)
-            {
-                Color baseColor = isStance
-                    ? EdgeStanceDim
-                    : (EdgeColorByInput.TryGetValue(edge.InputName, out var c) ? c : EdgeDefaultColor);
-                finalColor = Color.FromArgb(0x30, baseColor.R, baseColor.G, baseColor.B);
-                thickness = 1.5;
-            }
-            else
-            {
-                Color baseColor = isStance
-                    ? EdgeStanceDim
-                    : (EdgeColorByInput.TryGetValue(edge.InputName, out var c) ? c : EdgeDefaultColor);
-                finalColor = baseColor;
-                thickness = isStance ? 1.5 : 2;
-            }
-
-            var brush = new SolidColorBrush(finalColor);
-            if (vis.Path != null)
-            {
-                vis.Path.Stroke = brush;
-                vis.Path.StrokeThickness = thickness;
-                vis.Path.Effect = isConnected && _selectedNodeId >= 0 ? vis.Glow : null;
-                if (vis.LastZIndex != zIndex)
-                {
-                    Panel.SetZIndex(vis.Path, zIndex);
-                    vis.LastZIndex = zIndex;
-                }
-            }
-            if (vis.Arrow != null)
-            {
-                vis.Arrow.Fill = brush;
-                if (vis.LastZIndex != zIndex)
-                    Panel.SetZIndex(vis.Arrow, zIndex);
-            }
-        }
-    }
-
     private void UpdateEdgesForNode(int nodeId)
     {
         if (_comboGraph == null) return;
@@ -2351,6 +2439,7 @@ public partial class MainWindow : Window
             figure.Segments.Add(new BezierSegment(cp1, cp2, toPoint, isStroked: true));
             pathGeom.Figures.Add(figure);
             if (vis.Path != null) vis.Path.Data = pathGeom;
+            if (vis.HitPath != null) vis.HitPath.Data = pathGeom;
             if (vis.Arrow != null)
             {
                 double tanX = toPoint.X - cp2.X;
@@ -2375,6 +2464,10 @@ public partial class MainWindow : Window
 
     private void ComboGraphBorder_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
+        var source = e.OriginalSource as DependencyObject;
+        if (source != null && !IsDescendantOf(source, comboCanvas))
+            return;
+
         if (sender is Border border)
         {
             var hwnd = new WindowInteropHelper(this).Handle;
@@ -2385,19 +2478,22 @@ public partial class MainWindow : Window
 
     private void ComboBorder_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Delete && _selectedNodeId >= 0 && _comboGraph != null)
+        if (e.Key == Key.Delete && _comboGraph != null)
         {
-            var node = _comboGraph.Nodes.FirstOrDefault(n => n.Id == _selectedNodeId);
-            if (node == null || node.IsRoot || node.TreeIndex >= 0) return;
+            if (_selectedNodeId >= 0)
+            {
+                var node = _comboGraph.Nodes.FirstOrDefault(n => n.Id == _selectedNodeId);
+                if (node == null || node.IsRoot || node.TreeIndex >= 0) return;
 
-            _comboGraph.Edges.RemoveAll(ed => ed.FromNodeId == node.Id || ed.ToNodeId == node.Id);
-            _comboGraph.Nodes.Remove(node);
-            _nodePositions.Remove(node.Id);
-            _nodeBorders.Remove(node.Id);
-            ClearNodeSelection();
-            RenderComboGraph();
-            txtStatus.Text = $"Deleted node: {node.DisplayName}";
-            e.Handled = true;
+                _comboGraph.Edges.RemoveAll(ed => ed.FromNodeId == node.Id || ed.ToNodeId == node.Id);
+                _comboGraph.Nodes.Remove(node);
+                _nodePositions.Remove(node.Id);
+                _nodeBorders.Remove(node.Id);
+                ClearNodeSelection();
+                RenderComboGraph();
+                txtStatus.Text = $"Deleted node: {node.DisplayName}";
+                e.Handled = true;
+            }
         }
     }
 
@@ -2430,6 +2526,7 @@ public partial class MainWindow : Window
 
     private void ComboCanvas_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        _canvasHitNode = false;
         var hit = VisualTreeHelper.HitTest(comboCanvas, e.GetPosition(comboCanvas));
         if (hit != null)
         {
@@ -2444,7 +2541,6 @@ public partial class MainWindow : Window
                 visual = VisualTreeHelper.GetParent(visual);
             }
         }
-        _canvasHitNode = false;
     }
 
     private void ComboCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -2463,8 +2559,7 @@ public partial class MainWindow : Window
     {
         if (_dragCandidate && !_isDraggingNode && _dragNodeId >= 0)
         {
-            var cur2 = e.GetPosition(comboCanvas);
-            if (Math.Abs(cur2.X - _dragStartCanvasPos.X) > 3 || Math.Abs(cur2.Y - _dragStartCanvasPos.Y) > 3)
+            if ((DateTime.UtcNow - _dragStartTime).TotalMilliseconds > 500)
             {
                 _isDraggingNode = true;
                 comboCanvas.CaptureMouse();
@@ -2538,7 +2633,6 @@ public partial class MainWindow : Window
         {
             _dragCandidate = false;
             _dragNodeId = -1;
-            // click without drag — let ComboNode_Click handle selection, don't swallow
         }
         if (_connectFromNodeId >= 0)
         {
@@ -2726,6 +2820,7 @@ public partial class MainWindow : Window
             _dragNodeId = node.Id;
             _dragStartCanvasPos = e.GetPosition(comboCanvas);
             _dragNodeStartPos = _nodePositions.TryGetValue(node.Id, out var p) ? p : new Point(Canvas.GetLeft(border), Canvas.GetTop(border));
+            _dragStartTime = DateTime.UtcNow;
             e.Handled = false;
         }
     }
@@ -2739,29 +2834,70 @@ public partial class MainWindow : Window
         var toNode = _comboGraph.Nodes.FirstOrDefault(n => n.Id == targetNodeId);
         if (fromNode == null || toNode == null) { CancelConnection(); return; }
 
-        var existingEdges = _comboGraph.Edges.Where(e => e.FromNodeId == _connectFromNodeId).ToList();
-        var inputCounts = existingEdges.GroupBy(e => e.InputName)
-            .Where(g => !string.IsNullOrEmpty(g.Key))
-            .ToDictionary(g => g.Key, g => g.Count());
-        var conflictInput = inputCounts.FirstOrDefault(kvp => kvp.Value >= 2).Key;
+        string defaultInput = "LMB";
+        bool isRedirect = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
 
-        if (!string.IsNullOrEmpty(conflictInput))
+        if (isRedirect)
         {
-            ShowToast($"Input conflict: '{conflictInput}' already has {inputCounts[conflictInput]} edges from this node. Consider using a different input.");
+            int newId = _comboGraph.Nodes.Count > 0 ? _comboGraph.Nodes.Max(n => n.Id) + 1 : 0;
+            var redirectNode = new ComboNode
+            {
+                Id = newId,
+                TreeIndex = -1,
+                Name = "",
+                AnimPath = "",
+                DefaultAnimPath = "",
+                DefaultDBPath = "",
+                DisplayName = "\u2197 " + toNode.DisplayName,
+                IsRoot = false,
+                InputLabel = "",
+                DirectionLabel = "",
+                VanillaAnimPath = "",
+                RedirectTargetId = toNode.TreeIndex,
+                IsRedirect = true
+            };
+            _comboGraph.Nodes.Add(redirectNode);
+
+            if (_nodePositions.TryGetValue(toNode.Id, out var toPos))
+                _nodePositions[redirectNode.Id] = new Point(toPos.X + NODE_WIDTH + REDIRECT_GAP, toPos.Y);
+            else
+                _nodePositions[redirectNode.Id] = new Point(30, 30);
+
+            var newEdge = new ComboEdge
+            {
+                FromNodeId = _connectFromNodeId,
+                ToNodeId = redirectNode.Id,
+                InputName = defaultInput,
+                IsRedirect = true
+            };
+            _comboGraph.Edges.Add(newEdge);
+            RenderComboGraph();
+            txtStatus.Text = $"Created redirect: {fromNode.DisplayName} -> {redirectNode.DisplayName} [{defaultInput}]";
+        }
+        else
+        {
+            var existingEdges = _comboGraph.Edges.Where(e => e.FromNodeId == _connectFromNodeId).ToList();
+            var inputCounts = existingEdges.GroupBy(e => e.InputName)
+                .Where(g => !string.IsNullOrEmpty(g.Key))
+                .ToDictionary(g => g.Key, g => g.Count());
+            var conflictInput = inputCounts.FirstOrDefault(kvp => kvp.Value >= 2).Key;
+
+            if (!string.IsNullOrEmpty(conflictInput))
+            {
+                ShowToast($"Input conflict: '{conflictInput}' already has {inputCounts[conflictInput]} edges from this node. Consider using a different input.");
+            }
+
+            var newEdge = new ComboEdge
+            {
+                FromNodeId = _connectFromNodeId,
+                ToNodeId = targetNodeId,
+                InputName = defaultInput
+            };
+            _comboGraph.Edges.Add(newEdge);
+            RenderComboGraph();
+            txtStatus.Text = $"Connected: {fromNode.DisplayName} -> {toNode.DisplayName} [{defaultInput}]";
         }
 
-        string defaultInput = "LMB";
-        var newEdge = new ComboEdge
-        {
-            FromNodeId = _connectFromNodeId,
-            ToNodeId = targetNodeId,
-            InputName = defaultInput
-        };
-        _comboGraph.Edges.Add(newEdge);
-
-        RenderComboGraph();
-
-        txtStatus.Text = $"Connected: {fromNode.DisplayName} -> {toNode.DisplayName} [{defaultInput}]";
         CancelConnection();
     }
 
@@ -3170,6 +3306,21 @@ public partial class MainWindow : Window
 
             if (isDoubleClick)
             {
+                if (node.IsRedirect && node.ResolvedRedirectNodeId >= 0 && _comboGraph != null)
+                {
+                    var targetNode = _comboGraph.Nodes.FirstOrDefault(n => n.Id == node.ResolvedRedirectNodeId);
+                    if (targetNode != null && _nodeBorders.TryGetValue(targetNode.Id, out var targetBorder) && _nodePositions.TryGetValue(targetNode.Id, out var targetPos))
+                    {
+                        _dragCandidate = false;
+                        _dragNodeId = -1;
+                        SelectNode(targetBorder, targetNode);
+                        _comboTranslate.X = -targetPos.X + 300;
+                        _comboTranslate.Y = -targetPos.Y + 200;
+                        return;
+                    }
+                }
+                _dragCandidate = false;
+                _dragNodeId = -1;
                 await FindCardInLibrary(node.AnimPath);
                 return;
             }
@@ -3449,25 +3600,6 @@ public partial class MainWindow : Window
                 card.BorderThickness = new Thickness(2);
             }
             unitWrapPanel.Children.Add(card);
-        }
-    }
-
-    private void NodeCondition_Changed(object sender, SelectionChangedEventArgs e)
-    {
-        if (cmbNodeCondition.SelectedItem is ComboBoxItem cbi && cbi.Content?.ToString() == "Custom...")
-            txtNodeConditionX.IsEnabled = true;
-        else
-            txtNodeConditionX.IsEnabled = false;
-        // persist condition to selected node's ConditionLabel if needed
-        if (_selectedNodeId >= 0 && _comboGraph != null)
-        {
-            var node = _comboGraph.Nodes.FirstOrDefault(n=>n.Id==_selectedNodeId);
-            if (node != null && string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase)==false)
-            {
-                var sel = (cmbNodeCondition.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "";
-                if (sel == "Custom...") sel = $"Custom {txtNodeConditionX.Text}";
-                node.DirectionLabel = sel; // repurpose DirectionLabel as Condition storage for enemy
-            }
         }
     }
 
@@ -3780,7 +3912,38 @@ public partial class MainWindow : Window
                 var move = e.Data.GetData(typeof(MoveInfo)) as MoveInfo;
                 if (move != null)
                 {
-                    if (node.Name == "MainChar_Stance" && !string.IsNullOrEmpty(move.Character)
+                    if (chkShowOrphanRedirects.IsChecked == true && !node.IsRedirect)
+                    {
+                        int newId = _comboGraph.Nodes.Count > 0 ? _comboGraph.Nodes.Max(n => n.Id) + 1 : 0;
+                        var redirectNode = new ComboNode
+                        {
+                            Id = newId,
+                            TreeIndex = -1,
+                            Name = "",
+                            AnimPath = "",
+                            DefaultAnimPath = "",
+                            DefaultDBPath = "",
+                            DisplayName = "\u2197 " + node.DisplayName,
+                            IsRoot = false,
+                            InputLabel = "",
+                            DirectionLabel = "",
+                            VanillaAnimPath = "",
+                            RedirectTargetId = node.TreeIndex,
+                            IsRedirect = true
+                        };
+                        _comboGraph.Nodes.Add(redirectNode);
+
+                        if (_nodePositions.TryGetValue(node.Id, out var nodePos))
+                            _nodePositions[redirectNode.Id] = new Point(nodePos.X + NODE_WIDTH + REDIRECT_GAP, nodePos.Y);
+                        else
+                            _nodePositions[redirectNode.Id] = new Point(30, 30);
+
+                        RenderComboGraph();
+                        if (_nodeBorders.TryGetValue(redirectNode.Id, out var newBorder))
+                            PlayFusionAnimation(newBorder);
+                        txtStatus.Text = $"Created redirect to {node.DisplayName}";
+                    }
+                    else if (node.Name == "MainChar_Stance" && !string.IsNullOrEmpty(move.Character)
                         && _stanceMap.ContainsKey(move.Character))
                     {
                         node.AnimPath = move.FullPath;
@@ -3815,15 +3978,16 @@ public partial class MainWindow : Window
                 }
             }
             e.Handled = true;
+            }
         }
     }
-}
 
 public class Settings
 {
     public string ContentPath { get; set; } = "";
     public string OutputPath { get; set; } = "";
     public bool ShowLines { get; set; } = true;
+    public bool ShowOrphanRedirects { get; set; } = false;
     public double[]? CameraPosition { get; set; }
     public double[]? CameraTarget { get; set; }
 }

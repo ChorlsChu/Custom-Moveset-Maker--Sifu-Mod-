@@ -128,6 +128,9 @@ public class ComboNode
     public string InputLabel { get; set; } = "";
     public string DirectionLabel { get; set; } = "";
     public string VanillaAnimPath { get; set; } = "";
+    public int RedirectTargetId { get; set; } = -1;
+    public int ResolvedRedirectNodeId { get; set; } = -1;
+    public bool IsRedirect { get; set; }
 }
 
 public class ComboEdge
@@ -135,9 +138,7 @@ public class ComboEdge
     public int FromNodeId { get; set; }
     public int ToNodeId { get; set; }
     public string InputName { get; set; } = "";
-    public string ConditionName { get; set; } = "";
-    public string ConditionResult { get; set; } = "";
-    public float Probability { get; set; } = 100;
+    public bool IsRedirect { get; set; }
 }
 
 public class ComboGraph
@@ -224,6 +225,9 @@ public class AnimationParser : IDisposable
     private DefaultFileProvider? _provider;
     private string _gameRootPath = "";
     private string _contentPath = "";
+    private string ContentDir => _contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase)
+        ? _contentPath
+        : Path.Combine(_contentPath, "Content");
     public bool IsLoaded => _provider != null;
     public Dictionary<string, string> AnimToDbPath { get; } = new();
     public Dictionary<string, (float hitFrame, int buildupFrame)> AnimToTiming { get; } = new();
@@ -323,7 +327,7 @@ public class AnimationParser : IDisposable
     public List<MoveInfo> ScanAnimations()
     {
         var moves = new List<MoveInfo>();
-        var animsPath = Path.Combine(_contentPath, "Animations");
+        var animsPath = Path.Combine(ContentDir, "Animations");
         if (!Directory.Exists(animsPath)) return moves;
 
         foreach (var characterDir in Directory.GetDirectories(animsPath))
@@ -353,7 +357,7 @@ public class AnimationParser : IDisposable
     public List<MoveInfo> ScanGetUpAnims()
     {
         var moves = new List<MoveInfo>();
-        var animsPath = Path.Combine(_contentPath, "Animations");
+        var animsPath = Path.Combine(ContentDir, "Animations");
         if (!Directory.Exists(animsPath)) return moves;
 
         var getUpFiles = new (string character, string relDir, string fileName)[]
@@ -385,7 +389,7 @@ public class AnimationParser : IDisposable
     public List<MoveInfo> ScanStanceAnims()
     {
         var moves = new List<MoveInfo>();
-        var animsPath = Path.Combine(_contentPath, "Animations");
+        var animsPath = Path.Combine(ContentDir, "Animations");
         if (!Directory.Exists(animsPath)) return moves;
 
         foreach (var characterDir in Directory.GetDirectories(animsPath))
@@ -453,7 +457,7 @@ public class AnimationParser : IDisposable
         AnimToDbPath.Clear();
         if (_provider == null) return;
 
-        var dbPath = Path.Combine(_contentPath, "DB");
+        var dbPath = Path.Combine(ContentDir, "DB");
         if (!Directory.Exists(dbPath)) return;
 
         foreach (var charDir in Directory.GetDirectories(Path.Combine(dbPath, "AI", "Archetypes")))
@@ -809,7 +813,7 @@ public class AnimationParser : IDisposable
             return null;
         }
 
-        var vanillaDir = Path.Combine(_contentPath, "DB", "_MainChar", "Combos");
+        var vanillaDir = Path.Combine(ContentDir, "DB", "_MainChar", "Combos");
         var vanillaUasset = Path.Combine(vanillaDir, "MainChar_ComboTree.uasset");
         var vanillaUexp = Path.Combine(vanillaDir, "MainChar_ComboTree.uexp");
 
@@ -901,7 +905,32 @@ public class AnimationParser : IDisposable
 
             LogDebug($"[COMBO] Parsed {rawNodes.Count} raw nodes from {allNodeStructs.Count} tree nodes");
 
+            if (!isMainChar)
+            {
+                LogDebug("[REDIRECT DEBUG] === RAW NODES ===");
+                for (int i = 0; i < allNodeStructs.Count; i++)
+                {
+                    if (!treeIndexToNodeIds.TryGetValue(i, out var nids)) continue;
+                    foreach (var nid in nids)
+                    {
+                        var rn = rawNodes.FirstOrDefault(n => n.Id == nid);
+                        if (rn == null) continue;
+                        LogDebug($"[REDIRECT DEBUG] TreeIdx={i} | Id={rn.Id} | Name={rn.Name} | Redirect={rn.RedirectTargetId} | DisplayName={rn.DisplayName}");
+                    }
+                }
+            }
+
+            if (isMainChar)
+            {
+                foreach (var n in rawNodes) { n.RedirectTargetId = -1; }
+            }
+            else
+            {
+                foreach (var n in rawNodes) { if (n.RedirectTargetId >= 0) n.IsRedirect = true; }
+            }
+
             var rawEdges = new List<ComboEdge>();
+            var redirectNodeIds = new HashSet<int>(rawNodes.Where(n => n.RedirectTargetId >= 0).Select(n => n.Id));
             for (int ti = 0; ti < allNodeStructs.Count; ti++)
             {
                 var nodeData = allNodeStructs[ti];
@@ -915,6 +944,7 @@ public class AnimationParser : IDisposable
                     continue;
 
                 var sourceIds = treeIndexToNodeIds[ti];
+                if (sourceIds.Any(id => redirectNodeIds.Contains(id))) continue;
                 foreach (var elem in tArr.Value.Properties)
                 {
                     if (elem is not StructProperty elemStruct ||
@@ -940,8 +970,11 @@ public class AnimationParser : IDisposable
                             if (targetTreeIndex >= 0 && targetTreeIndex < allNodeStructs.Count &&
                                 treeIndexToNodeIds.ContainsKey(targetTreeIndex))
                             {
-                                var (condName, condResult, prob) = ExtractConditionInfo(elemData, targetKey);
                                 var targetIds = treeIndexToNodeIds[targetTreeIndex];
+                                var srcName = rawNodes.FirstOrDefault(n => n.Id == sourceIds.FirstOrDefault())?.Name ?? "?";
+                                var tgtName = rawNodes.FirstOrDefault(n => n.Id == targetIds.FirstOrDefault())?.Name ?? "?";
+                                if (!isMainChar)
+                                    LogDebug($"[REDIRECT DEBUG] Transition: srcTreeIdx={ti}({srcName}) → tgtTreeIdx={targetTreeIndex}({tgtName}) input={inputName}");
                                 foreach (var srcId in sourceIds)
                                 {
                                     foreach (var tgtId in targetIds)
@@ -950,10 +983,7 @@ public class AnimationParser : IDisposable
                                         {
                                             FromNodeId = srcId,
                                             ToNodeId = tgtId,
-                                            InputName = inputName,
-                                            ConditionName = condName,
-                                            ConditionResult = condResult,
-                                            Probability = prob
+                                            InputName = inputName
                                         });
                                     }
                                 }
@@ -965,13 +995,17 @@ public class AnimationParser : IDisposable
 
             LogDebug($"[COMBO] Parsed {rawEdges.Count} raw edges");
 
-            var conduitIds = new HashSet<int>(
-                rawNodes.Where(n => string.IsNullOrEmpty(n.AnimPath) && !n.IsRoot).Select(n => n.Id));
+            rawEdges = rawEdges.GroupBy(e => (e.FromNodeId, e.ToNodeId))
+                .Select(g => g.First()).ToList();
+            LogDebug($"[COMBO] After dedup: {rawEdges.Count} raw edges");
 
-            var remap = new Dictionary<int, List<int>>();
+            var conduitIds = new HashSet<int>(
+                rawNodes.Where(n => string.IsNullOrEmpty(n.AnimPath) && !n.IsRoot && n.RedirectTargetId < 0).Select(n => n.Id));
+
+            var conduitEdges = new Dictionary<int, List<ComboEdge>>();
             foreach (var cid in conduitIds)
             {
-                var targets = new List<int>();
+                var targets = new List<ComboEdge>();
                 var visited = new HashSet<int>();
                 var queue = new Queue<int>();
                 queue.Enqueue(cid);
@@ -984,10 +1018,14 @@ public class AnimationParser : IDisposable
                         if (conduitIds.Contains(e.ToNodeId))
                             queue.Enqueue(e.ToNodeId);
                         else
-                            targets.Add(e.ToNodeId);
+                            targets.Add(new ComboEdge
+                            {
+                                ToNodeId = e.ToNodeId,
+                                InputName = e.InputName
+                            });
                     }
                 }
-                remap[cid] = targets.Distinct().ToList();
+                conduitEdges[cid] = targets;
             }
 
             var finalEdges = new List<ComboEdge>();
@@ -997,15 +1035,15 @@ public class AnimationParser : IDisposable
                 var toIsConduit = conduitIds.Contains(edge.ToNodeId);
                 if (fromIsConduit) continue;
 
-                if (toIsConduit && remap.TryGetValue(edge.ToNodeId, out var targets))
+                if (toIsConduit && conduitEdges.TryGetValue(edge.ToNodeId, out var remapTargets))
                 {
-                    foreach (var targetId in targets)
+                    foreach (var remapTarget in remapTargets)
                     {
                         finalEdges.Add(new ComboEdge
                         {
                             FromNodeId = edge.FromNodeId,
-                            ToNodeId = targetId,
-                            InputName = edge.InputName
+                            ToNodeId = remapTarget.ToNodeId,
+                            InputName = string.IsNullOrEmpty(edge.InputName) ? remapTarget.InputName : edge.InputName
                         });
                     }
                 }
@@ -1031,6 +1069,28 @@ public class AnimationParser : IDisposable
             var graph = new ComboGraph { WeaponName = isMainChar ? "BareHands" : weaponName };
             graph.Nodes.AddRange(keptNodes);
 
+            if (!isMainChar)
+            {
+                foreach (var node in graph.Nodes)
+                {
+                    if (node.RedirectTargetId < 0) continue;
+                    if (!treeIndexToNodeIds.TryGetValue(node.RedirectTargetId, out var targetOrigIds)) continue;
+                    foreach (var origTargetId in targetOrigIds)
+                    {
+                        if (oldToNew.TryGetValue(origTargetId, out var newTargetId))
+                        {
+                            var targetNode = graph.Nodes.FirstOrDefault(n => n.Id == newTargetId);
+                            if (targetNode != null)
+                            {
+                                node.DisplayName = "↗ " + targetNode.DisplayName;
+                                node.ResolvedRedirectNodeId = newTargetId;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
             foreach (var edge in finalEdges)
             {
                 if (oldToNew.TryGetValue(edge.FromNodeId, out var newFrom) &&
@@ -1046,6 +1106,47 @@ public class AnimationParser : IDisposable
             }
 
             LogDebug($"[COMBO] Final: {graph.Nodes.Count} nodes, {graph.Edges.Count} edges (removed {conduitIds.Count} conduits)");
+
+            if (!isMainChar)
+            {
+                int redirectEdges = 0;
+                foreach (var edge in graph.Edges)
+                {
+                    var targetNode = graph.Nodes.FirstOrDefault(n => n.Id == edge.ToNodeId);
+                    if (targetNode != null && targetNode.IsRedirect)
+                    {
+                        edge.IsRedirect = true;
+                        redirectEdges++;
+                    }
+                }
+                LogDebug($"[COMBO] Marked {redirectEdges} edges as redirect (incoming to redirect nodes)");
+
+                var seenRedirectTargets = new HashSet<(int fromId, int resolvedTargetId)>();
+                var edgesToRemove = new List<ComboEdge>();
+                foreach (var edge in graph.Edges.Where(e => e.IsRedirect))
+                {
+                    var toNode = graph.Nodes.FirstOrDefault(n => n.Id == edge.ToNodeId);
+                    if (toNode == null) continue;
+                    var key = (edge.FromNodeId, toNode.ResolvedRedirectNodeId);
+                    if (!seenRedirectTargets.Add(key))
+                        edgesToRemove.Add(edge);
+                }
+                foreach (var e in edgesToRemove)
+                    graph.Edges.Remove(e);
+                LogDebug($"[COMBO] Removed {edgesToRemove.Count} duplicate redirect edges (same source → same resolved target)");
+
+                LogDebug("[REDIRECT DEBUG] === GRAPH NODES (redirect) ===");
+                foreach (var n in graph.Nodes.Where(n => n.IsRedirect))
+                    LogDebug($"[REDIRECT DEBUG] Node Id={n.Id} TreeIdx={n.TreeIndex} ResolvedTarget={n.ResolvedRedirectNodeId} DisplayName={n.DisplayName}");
+
+                LogDebug("[REDIRECT DEBUG] === GRAPH EDGES (redirect) ===");
+                foreach (var e in graph.Edges.Where(e => e.IsRedirect))
+                {
+                    var fn = graph.Nodes.FirstOrDefault(n => n.Id == e.FromNodeId);
+                    var tn = graph.Nodes.FirstOrDefault(n => n.Id == e.ToNodeId);
+                    LogDebug($"[REDIRECT DEBUG] Edge From={e.FromNodeId}({fn?.DisplayName}) → To={e.ToNodeId}({tn?.DisplayName})");
+                }
+            }
 
             var delayAnimNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (isMainChar)
@@ -1230,7 +1331,12 @@ public class AnimationParser : IDisposable
             .ToList();
         bool showDirLabels = distinctDirs.Count > 1;
 
-        if (attacks.Count == 0)
+        int redirectTarget = -1;
+        var redirectProp = nodeStruct.Properties.FirstOrDefault(p => p.Name.Text == "m_NodeRedirect");
+        if (redirectProp?.Tag is IntProperty redirectInt && redirectInt.Value >= 0)
+            redirectTarget = redirectInt.Value;
+
+        if (attacks.Count == 0 || redirectTarget >= 0)
         {
             return new List<ComboNode>
             {
@@ -1244,7 +1350,8 @@ public class AnimationParser : IDisposable
                     DefaultDBPath = "",
                     DisplayName = baseDisplayName,
                     IsRoot = isRoot,
-                    DirectionLabel = ""
+                    DirectionLabel = "",
+                    RedirectTargetId = redirectTarget
                 }
             };
         }
@@ -1269,7 +1376,8 @@ public class AnimationParser : IDisposable
                 SourceDBPath = db,
                 DisplayName = displayName,
                 IsRoot = isRoot,
-                DirectionLabel = dir
+                DirectionLabel = dir,
+                RedirectTargetId = redirectTarget
             });
         }
 
@@ -1301,111 +1409,7 @@ public class AnimationParser : IDisposable
         return "";
     }
 
-    private static readonly Dictionary<string, string> ConditionNameMap = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["ComboAIConditionMCDomination"] = "Player Dominating",
-        ["BP_AICondition_FullLifeCheck_C"] = "Full HP",
-        ["ComboTransitionConditionLastAttackHit"] = "Last Attack Hit",
-        ["ComboTransitionConditionAILastAttackGuardType"] = "Guard Type",
-        ["ComboTransitionConditionTargetDistance"] = "Distance",
-        ["BP_AICondition_BackObstacleCheck_C"] = "Back Obstacle",
-        ["BP_IsTargetKnockedDownComboCondition_C"] = "Target Knocked Down",
-        ["BP_IsTargetDizziedComboCondition_C"] = "Target Dizzied",
-        ["BP_IsTargetPushedComboCondition_C"] = "Target Pushed",
-        ["BP_TargetIsParryVictim_C"] = "Parry Victim",
-        ["BP_TargetPlaysOrder_C"] = "Target Plays Order",
-        ["BP_IsNotEasyMod_C"] = "Not Easy Mode",
-    };
 
-    private static readonly Dictionary<string, Dictionary<byte, string>> ConditionResultMap = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["ComboAIConditionMCDomination"] = new() { [0] = "No", [1] = "Yes" },
-        ["BP_AICondition_FullLifeCheck_C"] = new() { [0] = "No", [1] = "Yes" },
-        ["ComboTransitionConditionLastAttackHit"] = new() { [0] = "Miss", [1] = "Hit" },
-        ["ComboTransitionConditionAILastAttackGuardType"] = new() { [0] = "Unblocked", [1] = "Blocked", [2] = "Parried", [3] = "Dodged" },
-        ["ComboTransitionConditionTargetDistance"] = new() { [0] = "Close", [1] = "Far" },
-        ["BP_AICondition_BackObstacleCheck_C"] = new() { [0] = "No", [1] = "Yes" },
-        ["BP_IsTargetKnockedDownComboCondition_C"] = new() { [0] = "No", [1] = "Yes" },
-        ["BP_IsTargetDizziedComboCondition_C"] = new() { [0] = "No", [1] = "Yes" },
-        ["BP_IsTargetPushedComboCondition_C"] = new() { [0] = "No", [1] = "Yes" },
-        ["BP_TargetIsParryVictim_C"] = new() { [0] = "No", [1] = "Yes" },
-        ["BP_TargetPlaysOrder_C"] = new() { [0] = "No", [1] = "Yes" },
-        ["BP_IsNotEasyMod_C"] = new() { [0] = "Easy", [1] = "Normal+" },
-    };
-
-    private (string conditionName, string conditionResult, float probability) ExtractConditionInfo(
-        FStructFallback transitionData, byte targetKey)
-    {
-        var conditionProp = transitionData.Properties.FirstOrDefault(p => p.Name.Text == "m_ConditionInstance");
-        var probProp = transitionData.Properties.FirstOrDefault(p => p.Name.Text == "m_fProbability");
-        float probability = 100;
-        if (probProp?.Tag is FloatProperty fp)
-            probability = fp.Value;
-
-        if (targetKey == 255)
-            return ("", "", probability);
-
-        if (conditionProp?.Tag is ObjectProperty objProp && objProp.Value != null)
-        {
-            var objText = objProp.Value.ToString() ?? "";
-            var className = objText;
-            var apostropheIdx = objText.IndexOf('\'');
-            if (apostropheIdx >= 0)
-            {
-                var afterApostrophe = objText[(apostropheIdx + 1)..];
-                var slashIdx = afterApostrophe.LastIndexOf('/');
-                var dotIdx = afterApostrophe.LastIndexOf('.');
-                if (slashIdx >= 0 && dotIdx > slashIdx)
-                {
-                    var path = afterApostrophe[(slashIdx + 1)..dotIdx];
-                    var lastUnderscore = path.LastIndexOf('_');
-                    if (lastUnderscore > 0)
-                    {
-                        var clsName = path[..lastUnderscore];
-                        var lastDot = clsName.LastIndexOf('.');
-                        if (lastDot >= 0) clsName = clsName[(lastDot + 1)..];
-                        className = clsName;
-                    }
-                }
-            }
-            else
-            {
-                var slashIdx = objText.LastIndexOf('/');
-                var dotIdx = objText.LastIndexOf('.');
-                if (slashIdx >= 0 && dotIdx > slashIdx)
-                {
-                    var path = objText[(slashIdx + 1)..dotIdx];
-                    var lastUnderscore = path.LastIndexOf('_');
-                    if (lastUnderscore > 0)
-                    {
-                        var clsName = path[..lastUnderscore];
-                        var lastDot = clsName.LastIndexOf('.');
-                        if (lastDot >= 0) clsName = clsName[(lastDot + 1)..];
-                        className = clsName;
-                    }
-                }
-            }
-
-            ConditionNameMap.TryGetValue(className, out var condName);
-            if (string.IsNullOrEmpty(condName))
-            {
-                var niceName = className.Replace("ComboAICondition", "").Replace("ComboTransitionCondition", "")
-                    .Replace("BP_AICondition_", "").Replace("_C", "").Replace("BP_", "");
-                condName = niceName;
-            }
-
-            ConditionResultMap.TryGetValue(className, out var resultMap);
-            string result = "";
-            if (resultMap != null && resultMap.TryGetValue(targetKey, out var r))
-                result = r;
-            else
-                result = $"Branch {targetKey}";
-
-            return (condName, result, probability);
-        }
-
-        return ("", $"Branch {targetKey}", probability);
-    }
 
     private static readonly Dictionary<string, string> AnimFallbacks = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -1749,7 +1753,7 @@ public class AnimationParser : IDisposable
     {
         try
         {
-            var charactersDir = Path.Combine(_contentPath, "Characters");
+            var charactersDir = Path.Combine(ContentDir, "Characters");
             if (!Directory.Exists(charactersDir)) return null;
 
             var searchPatterns = new[]
@@ -1802,8 +1806,7 @@ public class AnimationParser : IDisposable
     {
         try
         {
-            var contentDir = _contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase) ? _contentPath : Path.Combine(_contentPath, "Content");
-            var attacksDir = Path.Combine(contentDir, "DB", "AI", "Archetypes", arch, "Attacks");
+            var attacksDir = Path.Combine(ContentDir, "DB", "AI", "Archetypes", arch, "Attacks");
             if (!Directory.Exists(attacksDir)) return null;
             var files = Directory.GetFiles(attacksDir, "*.uasset", SearchOption.TopDirectoryOnly)
                 .Where(f=>!Path.GetFileName(f).Contains("HitBoxData", StringComparison.OrdinalIgnoreCase)).ToList();
@@ -1817,7 +1820,7 @@ public class AnimationParser : IDisposable
             var rows = new List<(string name, string anim)>();
             foreach (var f in files.Distinct())
             {
-                var rel = f.Substring(contentDir.Length).TrimStart('\\','/').Replace('\\','/');
+                var rel = f.Substring(ContentDir.Length).TrimStart('\\','/').Replace('\\','/');
                 rel = rel.Replace(".uasset","");
                 var gamePath = "Game/" + rel;
                 var anim = ResolveAnimationFromDB(gamePath);

@@ -355,6 +355,12 @@
                                 <Button Name="btnResetMode" Content="Reset Node Mode" Style="{StaticResource DarkButton}"
                                         Click="ToggleResetMode_Click" FontSize="11" Padding="8,3" Margin="8,0,0,0"
                                         Visibility="Collapsed"/>
+                                <CheckBox Name="chkShowOrphanRedirects" Content="Show Orphan Redirect Nodes"
+                                          Foreground="#6c7086" FontSize="11"
+                                          VerticalAlignment="Center" Margin="12,0,0,0"
+                                          IsChecked="False"
+                                          Checked="ShowOrphanRedirects_Changed"
+                                          Unchecked="ShowOrphanRedirects_Changed"/>
                                 <TextBlock Name="txtComboInfo" Text="" Foreground="#6c7086" FontSize="11"
                                            HorizontalAlignment="Right" VerticalAlignment="Center"/>
                             </DockPanel>
@@ -432,22 +438,23 @@
                                                 <ComboBoxItem Content="Q"/>
                                             </ComboBox>
                                         </StackPanel>
-                                        <StackPanel Name="enemyConditionPanel" Visibility="Collapsed">
-                                            <TextBlock Text="Condition:" Foreground="#6c7086" FontSize="10"
-                                                       Margin="0,8,0,2"/>
-                                            <ComboBox Name="cmbNodeCondition" Width="140" FontSize="10" Style="{StaticResource DarkComboBox}" SelectionChanged="NodeCondition_Changed">
-                                                <ComboBoxItem Content="Starter"/>
-                                                <ComboBoxItem Content="Counter (HasJustParried)"/>
-                                                <ComboBoxItem Content="Distance &lt; 150"/>
-                                                <ComboBoxItem Content="Distance &lt; 200"/>
-                                                <ComboBoxItem Content="Distance &lt; 300"/>
-                                                <ComboBoxItem Content="Distance &lt; 500"/>
-                                                <ComboBoxItem Content="Distance &gt; 700"/>
-                                                <ComboBoxItem Content="Custom..."/>
-                                            </ComboBox>
-                                            <TextBox Name="txtNodeConditionX" Width="60" FontSize="10" Margin="0,4,0,0" IsEnabled="False" Text="3000" ToolTip="Custom distance"/>
-                                            <TextBlock Text="Pool: Counter vs Starter determined by canvas linear chain" Foreground="#6c7086" FontSize="9" Margin="0,8,0,0" TextWrapping="Wrap"/>
-                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Name="redirectInfoPanel" Visibility="Collapsed"
+                                        Background="#1e1e2e" CornerRadius="4" Padding="8" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <TextBlock Text="Transition Info" FontWeight="Bold"
+                                                   Foreground="#fab387" FontSize="12" Margin="0,0,0,6"/>
+                                        <TextBlock Name="txtRedirectFrom" Text="From: -" Foreground="#cdd6f4"
+                                                   FontSize="11" TextWrapping="Wrap"/>
+                                        <TextBlock Name="txtRedirectTo" Text="To: -" Foreground="#cdd6f4"
+                                                   FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                        <Border Height="1" Background="#313244" Margin="0,8"/>
+                                        <TextBlock Name="txtRedirectInput" Text="Input: -" Foreground="#6c7086"
+                                                   FontSize="11" Margin="0,0,0,4"/>
+                                        <TextBlock Name="txtRedirectCondition" Text="Condition: None" Foreground="#6c7086"
+                                                   FontSize="11"/>
                                     </StackPanel>
                                 </Border>
 
