@@ -47,6 +47,8 @@ public partial class MainWindow : Window
 {
     private AnimationParser _parser = new();
     private List<MoveInfo> _allMoves = [];
+    private static readonly string TempCustomMovesRoot =
+        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TempCustomMoves");
     private List<MoveInfo> _allLocomotion = [];
     private string _settingsPath;
     private string _contentPath = "";
@@ -59,7 +61,6 @@ public partial class MainWindow : Window
     private const double INPUT_HEIGHT = 22;
     private const double H_SPACING = 80;
     private const double V_SPACING = 20;
-    private const double REDIRECT_GAP = 20;
 
     private bool _isPanning;
     private bool _panMoved;
@@ -84,11 +85,11 @@ public partial class MainWindow : Window
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern bool GetCursorPos(out System.Drawing.Point lpPoint);
 
-    private int _connectFromNodeId = -1;
-    private System.Windows.Shapes.Line? _connectLine;
-    private static readonly SolidColorBrush ConnectDotFill = new(Color.FromRgb(0x58, 0x5b, 0x70));
-    private static readonly SolidColorBrush ConnectDotStroke = new(Color.FromRgb(0x6c, 0x70, 0x86));
-    private static readonly SolidColorBrush ConnectLineBrush = new(Color.FromArgb(0x80, 0xcd, 0xd6, 0xf4));
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr SetCapture(IntPtr hWnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool ReleaseCapture();
 
     private bool _isDraggingNode;
     private bool _dragCandidate;
@@ -98,17 +99,27 @@ public partial class MainWindow : Window
     private DateTime _dragStartTime;
     private readonly Dictionary<int, TextBlock> _nodeLabels = new();
     private readonly Dictionary<int, Border> _nodeInputBgs = new();
-    public readonly Dictionary<int, string> CustomNodeCloneMap = new();
 
     private ComboGraph? _vanillaGraph;
     private ComboGraph? _moddedGraph;
     private Dictionary<int, (string vanilla, string modded)> _nodeDiffs = new();
     private bool _isModLoaded = false;
+
+    private const int TabOther = 0;
+    private const int TabCustom = 1;
+    private const int TabVanilla = 2;
+    private const int TabStances = 3;
     private bool _isResetMode = false;
+    private bool _isRetargetMode = false;
+    private ComboNode? _retargetSourceNode = null;
     private ComboGraph? _originalVanillaComboGraph;
     private string _activeStance = "MainChar";
     private string? _activeVariant;
-    private List<MoveInfo> _comboTreeMoves = new();
+    private string? _activeWeapon;
+    private readonly Dictionary<string, List<MoveInfo>> _mainCharWeaponMoves = new();
+    private Dictionary<string, UnitCacheEntry> _unitCaches = new();
+    private UnitProperties? _currentUnitProps;
+    private UnitProperties? _unitPropsDefaults;
 
     private readonly record struct StanceEntry(string MovementDb, string? Transition, string DisplayAnim);
     private readonly Dictionary<string, StanceEntry> _stanceMap = new(StringComparer.OrdinalIgnoreCase)
@@ -241,7 +252,6 @@ public partial class MainWindow : Window
                         _outputPath = settings.OutputPath;
 
                     chkShowLines.IsChecked = settings.ShowLines;
-                    chkShowOrphanRedirects.IsChecked = settings.ShowOrphanRedirects;
                     _savedCameraPos = settings.CameraPosition;
                     _savedCameraTarget = settings.CameraTarget;
 
@@ -281,6 +291,11 @@ public partial class MainWindow : Window
         if (wizard.ShowDialog() == true && !string.IsNullOrEmpty(wizard.SelectedContentPath))
         {
             _contentPath = wizard.SelectedContentPath;
+            if (string.IsNullOrEmpty(_outputPath) || !Directory.Exists(_outputPath))
+            {
+                _outputPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods");
+                Directory.CreateDirectory(_outputPath);
+            }
             SaveSettings();
             await InitializeParserAsync();
             return new Settings { ContentPath = _contentPath, OutputPath = _outputPath };
@@ -301,7 +316,6 @@ public partial class MainWindow : Window
             ContentPath = _contentPath,
             OutputPath = _outputPath,
             ShowLines = chkShowLines.IsChecked == true,
-            ShowOrphanRedirects = chkShowOrphanRedirects.IsChecked == true,
             CameraPosition = _savedCameraPos,
             CameraTarget = _savedCameraTarget
         };
@@ -363,9 +377,15 @@ public partial class MainWindow : Window
             });
             _allLocomotion = locoResult;
 
+            DeleteTempCustomMoves();
             UpdateLoading($"Building library ({_allMoves.Count} moves)...", "");
+            await Task.Run(BuildMainCharLibraryMoves);
+            await Task.Run(() =>
+            {
+                _parser.MountCustomIntoProvider(TempCustomMovesRoot);
+                RegisterCustomMoves();
+            });
             BuildTree(_allMoves);
-            PopulateCharacterDropdown();
 
             UpdateLoading("Loading combo graph...", "Parsing MainChar combo tree...");
             await LoadComboGraphAsync();
@@ -381,6 +401,7 @@ public partial class MainWindow : Window
         finally
         {
             loadingOverlay.Visibility = Visibility.Collapsed;
+            SetWebViewVisible(true);
         }
     }
 
@@ -388,18 +409,23 @@ public partial class MainWindow : Window
     {
         txtSettingsContentPath.Text = _contentPath;
         txtSettingsOutputPath.Text = string.IsNullOrEmpty(_outputPath) ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods") : _outputPath;
+        SetWebViewVisible(false);
         settingsOverlay.Visibility = Visibility.Visible;
     }
 
     private void SettingsOverlay_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         if (e.OriginalSource == settingsOverlay)
+        {
             settingsOverlay.Visibility = Visibility.Collapsed;
+            SetWebViewVisible(true);
+        }
     }
 
     private void CancelSettings_Click(object sender, RoutedEventArgs e)
     {
         settingsOverlay.Visibility = Visibility.Collapsed;
+        SetWebViewVisible(true);
     }
 
     private async void ResetSettings_Click(object sender, RoutedEventArgs e)
@@ -420,6 +446,7 @@ public partial class MainWindow : Window
         txtSettingsOutputPath.Text = _outputPath;
         SaveSettings();
         settingsOverlay.Visibility = Visibility.Collapsed;
+        SetWebViewVisible(true);
         txtStatus.Text = "Settings reset — No vanilla game files found";
         ShowToast("Settings reset — browse pak file to extract needed files");
         try { _parser?.Dispose(); } catch {}
@@ -460,8 +487,9 @@ public partial class MainWindow : Window
         _contentPath = newContent;
         _outputPath = newOutput;
         SaveSettings();
-        try { _parser?.Dispose(); var cDir = _contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase) ? _contentPath : Path.Combine(_contentPath, "Content"); var fresh = new AnimationParser(); fresh.Initialize(_contentPath, cDir); _parser = fresh; } catch (Exception ex) { ErrorLog.Write("SETTINGS", ex); }
+        try { _parser?.Dispose(); var cDir = _contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase) ? _contentPath : Path.Combine(_contentPath, "Content"); var fresh = new AnimationParser(); fresh.Initialize(_contentPath, cDir); fresh.MountCustomIntoProvider(TempCustomMovesRoot); _parser = fresh; } catch (Exception ex) { ErrorLog.Write("SETTINGS", ex); }
         settingsOverlay.Visibility = Visibility.Collapsed;
+        SetWebViewVisible(true);
         txtStatus.Text = "Settings saved — provider re-initialized";
     }
 
@@ -506,6 +534,7 @@ public partial class MainWindow : Window
 
             _contentPath = selectedPath;
             SaveSettings();
+            SetWebViewVisible(false);
             loadingOverlay.Visibility = Visibility.Visible;
             await InitializeParserAsync();
         }
@@ -516,12 +545,6 @@ public partial class MainWindow : Window
         if (!_initialized) return;
         _searchDebounceTimer.Stop();
         _searchDebounceTimer.Start();
-    }
-
-    private void Filter_Changed(object sender, SelectionChangedEventArgs e)
-    {
-        if (!_initialized) return;
-        FilterMoves();
     }
 
     private void TabChanged(object sender, SelectionChangedEventArgs e)
@@ -535,52 +558,36 @@ public partial class MainWindow : Window
         if (_allMoves == null || _allMoves.Count == 0) return;
 
         var searchText = txtSearch.Text.ToLower();
-        var filterIndex = cmbFilter.SelectedIndex;
 
         var filtered = _allMoves.FindAll(m =>
         {
             bool matchesSearch = string.IsNullOrEmpty(searchText) ||
                                  m.DisplayName.ToLower().Contains(searchText) ||
                                  m.FullPath.ToLower().Contains(searchText) ||
-                                 m.Character.ToLower().Contains(searchText);
+                                 m.Character.ToLower().Contains(searchText) ||
+                                 m.Category.ToLower().Contains(searchText);
 
-            bool matchesFilter = filterIndex switch
-            {
-                0 => true,
-                1 => m.Character == "MainChar",
-                2 => m.Character == "Grunt",
-                3 => m.Character == "FireDisciple",
-                4 => m.Character == "FlashKick",
-                5 => m.Character == "BigGuy",
-                6 => m.Character == "BodyGuard",
-                7 => m.Character == "Fajar",
-                8 => m.Character == "Fengjie",
-                9 => m.Character == "Kuroki",
-                10 => m.Character == "Sean",
-                11 => m.Character == "Yang",
-                12 => m.Character == "Sifu",
-                13 => m.Character == "Servant",
-                14 => m.Character is "Fajar" or "Sean" or "Kuroki" or "Yang" or "Fengjie",
-                _ => true
-            };
-
-            return matchesSearch && matchesFilter;
+            return matchesSearch;
         });
 
-        var vanillaMoves = filtered.Where(m => m.IsUsed && (chkShowFailed.IsChecked == true || m.IsValid) && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
-        var unusedMoves = filtered.Where(m => !m.IsUsed && (chkShowFailed.IsChecked == true || m.IsValid) && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
+        bool IsCustom(MoveInfo m) => string.Equals(m.Category, "Custom", StringComparison.OrdinalIgnoreCase);
+        var customMoves = filtered.Where(m => IsCustom(m) && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
+        var vanillaMoves = filtered.Where(m => !IsCustom(m) && m.IsUsed && m.IsValid && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
+        var unusedMoves = filtered.Where(m => !IsCustom(m) && !m.IsUsed && m.IsValid && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
 
-        bool useAccordion = string.IsNullOrEmpty(searchText) && filterIndex == 0;
+        bool useAccordion = string.IsNullOrEmpty(searchText);
 
         if (useAccordion)
         {
             listVanilla.ItemsSource = BuildAccordionList(vanillaMoves);
-            listUnused.ItemsSource = BuildAccordionList(unusedMoves);
+            listUnused.ItemsSource = BuildAccordionList(unusedMoves, includeComboTreeMoves: false);
+            listCustom.ItemsSource = BuildAccordionList(customMoves, includeComboTreeMoves: false);
         }
         else
         {
             listVanilla.ItemsSource = vanillaMoves;
             listUnused.ItemsSource = unusedMoves;
+            listCustom.ItemsSource = customMoves;
         }
 
         var filteredLoco = _allLocomotion.FindAll(m =>
@@ -593,51 +600,83 @@ public partial class MainWindow : Window
         listLoco.ItemsSource = filteredLoco;
 
         tabHeaderVanilla.Text = $"Vanilla ({vanillaMoves.Count})";
-        tabHeaderUnused.Text = $"Unused ({unusedMoves.Count})";
-        tabHeaderLoco.Text = $"Locomotion ({filteredLoco.Count})";
-        txtMoveCount.Text = $"{vanillaMoves.Count} vanilla / {unusedMoves.Count} unused / {filteredLoco.Count} locomotion";
+        tabHeaderUnused.Text = $"Other ({unusedMoves.Count})";
+        tabHeaderLoco.Text = $"Stances ({filteredLoco.Count})";
+        tabHeaderCustom.Text = $"Custom ({customMoves.Count})";
+        txtMoveCount.Text = $"{vanillaMoves.Count} vanilla / {unusedMoves.Count} other / {filteredLoco.Count} stances / {customMoves.Count} custom";
     }
 
-    private List<object> BuildAccordionList(List<MoveInfo> moves)
+    private static readonly string[] MainCharWeaponOrder = ["BareHands", "Bat", "Staff", "Knife"];
+
+    private void BuildMainCharLibraryMoves()
+    {
+        _mainCharWeaponMoves.Clear();
+        var trees = new (string label, string comboPath, string weaponTag)[]
+        {
+            ("BareHands", "Game/DB/_MainChar/Combos/MainChar_ComboTree", "MainChar_Barehands"),
+            ("Bat", "Game/DB/_MainChar/Combos/Attacks/Weapons/Bats/MainChar_Bats_ComboTree", "MainChar_Bat"),
+            ("Staff", "Game/DB/_MainChar/Combos/Attacks/Weapons/Staff/MainChar_Staff_ComboTree", "MainChar_Staff"),
+            ("Knife", "Game/DB/_MainChar/Combos/Attacks/Weapons/Blades/MainChar_Blades_ComboTree", "MainChar_Blade"),
+        };
+
+        foreach (var (label, comboPath, weaponTag) in trees)
+        {
+            var graph = _parser.LoadComboTreeFromPath(comboPath, weaponTag);
+            if (graph == null) continue;
+
+            var list = new List<MoveInfo>();
+            foreach (var node in graph.Nodes.Where(n => !n.IsRoot && !string.IsNullOrEmpty(n.DefaultAnimPath)))
+            {
+                var match = _allMoves.FirstOrDefault(m => m.FullPath == node.DefaultAnimPath);
+                if (match != null && !list.Contains(match))
+                    list.Add(match);
+            }
+            if (list.Count > 0)
+                _mainCharWeaponMoves[label] = list;
+        }
+
+        ErrorLog.Write("LIBRARY", new Exception(
+            $"MainChar library: {string.Join(", ", _mainCharWeaponMoves.Select(kv => $"{kv.Key}={kv.Value.Count}"))}"));
+    }
+
+    private List<object> BuildAccordionList(List<MoveInfo> moves, bool includeComboTreeMoves = true)
     {
         var result = new List<object>();
 
-        if (_comboTreeMoves.Count > 0)
+        if (includeComboTreeMoves && _mainCharWeaponMoves.Count > 0)
         {
             var mainCharExpanded = _expandedEnemies.Contains("MainChar");
             result.Add(new GroupHeader
             {
                 Name = "MainChar",
                 Level = 1,
-                Count = _comboTreeMoves.Count,
-                Subtitle = "Default moves from your combo graph",
+                Count = _mainCharWeaponMoves.Values.Sum(v => v.Count),
+                Subtitle = "Default moves from your combo graphs",
                 IsExpanded = mainCharExpanded
             });
 
             if (mainCharExpanded)
             {
-                var categoryGroups = _comboTreeMoves
-                    .GroupBy(m => string.IsNullOrEmpty(m.Category) ? "Other" : m.Category)
-                    .OrderBy(g => g.Key);
-
-                foreach (var catGroup in categoryGroups)
+                foreach (var label in MainCharWeaponOrder)
                 {
-                    var catKey = $"MainChar|{catGroup.Key}";
-                    var catExpanded = _expandedWeapons.TryGetValue("MainChar", out var wSet)
-                        && wSet.Contains(catGroup.Key);
+                    if (!_mainCharWeaponMoves.TryGetValue(label, out var weaponMoves))
+                        continue;
+
+                    var expanded = _expandedWeapons.TryGetValue("MainChar", out var wSet)
+                        && wSet.Contains(label);
 
                     result.Add(new GroupHeader
                     {
-                        Name = catGroup.Key,
+                        Name = label,
                         Level = 2,
-                        Count = catGroup.Count(),
-                        IsExpanded = catExpanded,
+                        Count = weaponMoves.Count,
+                        IsExpanded = expanded,
                         ParentName = "MainChar"
                     });
 
-                    if (catExpanded)
+                    if (expanded)
                     {
-                        result.AddRange(catGroup.Cast<object>());
+                        result.AddRange(weaponMoves.Cast<object>());
                     }
                 }
             }
@@ -692,18 +731,22 @@ public partial class MainWindow : Window
 
     private void BuildTree(List<MoveInfo> moves)
     {
-        var vanillaMoves = moves.Where(m => m.IsUsed && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
-        var unusedMoves = moves.Where(m => !m.IsUsed && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
+        bool IsCustom(MoveInfo m) => string.Equals(m.Category, "Custom", StringComparison.OrdinalIgnoreCase);
+        var customMoves = moves.Where(m => IsCustom(m) && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
+        var vanillaMoves = moves.Where(m => !IsCustom(m) && m.IsUsed && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
+        var unusedMoves = moves.Where(m => !IsCustom(m) && !m.IsUsed && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
 
         listVanilla.ItemsSource = BuildAccordionList(vanillaMoves);
-        listUnused.ItemsSource = BuildAccordionList(unusedMoves);
+        listUnused.ItemsSource = BuildAccordionList(unusedMoves, includeComboTreeMoves: false);
+        listCustom.ItemsSource = BuildAccordionList(customMoves, includeComboTreeMoves: false);
 
         listLoco.ItemsSource = _allLocomotion;
 
         tabHeaderVanilla.Text = $"Vanilla ({vanillaMoves.Count})";
-        tabHeaderUnused.Text = $"Unused ({unusedMoves.Count})";
-        tabHeaderLoco.Text = $"Locomotion ({_allLocomotion.Count})";
-        txtMoveCount.Text = $"{vanillaMoves.Count} vanilla / {unusedMoves.Count} unused / {_allLocomotion.Count} locomotion";
+        tabHeaderUnused.Text = $"Other ({unusedMoves.Count})";
+        tabHeaderLoco.Text = $"Stances ({_allLocomotion.Count})";
+        tabHeaderCustom.Text = $"Custom ({customMoves.Count})";
+        txtMoveCount.Text = $"{vanillaMoves.Count} vanilla / {unusedMoves.Count} other / {_allLocomotion.Count} stances / {customMoves.Count} custom";
     }
 
     private static List<object> BuildGroupedList(List<MoveInfo> moves)
@@ -744,6 +787,8 @@ public partial class MainWindow : Window
     private static readonly SolidColorBrush SelectedGreenBg = new(Color.FromArgb(0x80, 0xa6, 0xe3, 0xa1));
     private static readonly SolidColorBrush SelectedOrangeBorder = new(Color.FromRgb(0xfa, 0xb3, 0x87));
     private static readonly SolidColorBrush SelectedOrangeBg = new(Color.FromArgb(0x80, 0xfa, 0xb3, 0x87));
+    private static readonly SolidColorBrush SelectedRedirectBorder = new(Color.FromArgb(0x80, 0x89, 0xb4, 0x86));
+    private static readonly SolidColorBrush SelectedRedirectBg = new(Color.FromArgb(0x30, 0x89, 0xb4, 0x86));
 
     private static readonly Color EdgeDefaultColor = Color.FromRgb(0x89, 0xb4, 0xfa);
     private static readonly Color EdgeStanceDim = Color.FromRgb(0x58, 0x5b, 0x70);
@@ -822,71 +867,8 @@ public partial class MainWindow : Window
             }
             _selectedNodeId = -1;
         }
-        nodeInfoPanel.Visibility = Visibility.Collapsed;
     }
 
-    private void UpdateNodeInfoPanel(ComboNode node)
-    {
-        nodeInfoPanel.Visibility = Visibility.Visible;
-        bool isEnemy = !string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase);
-        mainCharInputPanel.Visibility = isEnemy ? Visibility.Collapsed : Visibility.Visible;
-
-        var incomingEdge = _comboGraph?.Edges.FirstOrDefault(e => e.ToNodeId == node.Id && !string.IsNullOrEmpty(e.InputName));
-        if (incomingEdge != null)
-        {
-            for (int i = 0; i < cmbNodeInput.Items.Count; i++)
-            {
-                if (cmbNodeInput.Items[i] is ComboBoxItem item && item.Content?.ToString() == incomingEdge.InputName)
-                {
-                    cmbNodeInput.SelectedIndex = i;
-                    break;
-                }
-            }
-        }
-        else
-        {
-            cmbNodeInput.SelectedIndex = -1;
-        }
-
-        if (node.IsRedirect && _comboGraph != null)
-        {
-            var incomingRedirectEdge = _comboGraph.Edges.FirstOrDefault(e => e.IsRedirect && e.ToNodeId == node.Id);
-            var fromNode = incomingRedirectEdge != null
-                ? _comboGraph.Nodes.FirstOrDefault(n => n.Id == incomingRedirectEdge.FromNodeId)
-                : null;
-            var targetNode = node.ResolvedRedirectNodeId >= 0
-                ? _comboGraph.Nodes.FirstOrDefault(n => n.Id == node.ResolvedRedirectNodeId)
-                : null;
-            txtRedirectFrom.Text = $"From: {fromNode?.DisplayName ?? "?"}";
-            txtRedirectTo.Text = $"To: {targetNode?.DisplayName ?? "?"} (redirect)";
-            txtRedirectInput.Text = incomingRedirectEdge != null ? $"Input: {incomingRedirectEdge.InputName}" : "Input: Redirect";
-            txtRedirectCondition.Text = "Condition: None";
-            redirectInfoPanel.Visibility = Visibility.Visible;
-        }
-        else
-        {
-            redirectInfoPanel.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private void CmbNodeInput_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_selectedNodeId < 0 || _comboGraph == null) return;
-        if (cmbNodeInput.SelectedItem is not ComboBoxItem item) return;
-
-        var newInput = item.Content?.ToString() ?? "";
-        var incomingEdge = _comboGraph.Edges.FirstOrDefault(e => e.ToNodeId == _selectedNodeId && !string.IsNullOrEmpty(e.InputName));
-        if (incomingEdge != null)
-        {
-            incomingEdge.InputName = newInput;
-            RenderComboGraph();
-            if (_nodeBorders.TryGetValue(_selectedNodeId, out var border) && _comboGraph.Nodes.FirstOrDefault(n => n.Id == _selectedNodeId) is ComboNode node)
-            {
-                SelectNode(border, node);
-            }
-            txtStatus.Text = $"Updated input: {newInput}";
-        }
-    }
 
     private void SelectNode(Border border, ComboNode node)
     {
@@ -912,12 +894,16 @@ public partial class MainWindow : Window
             border.BorderBrush = SelectedOrangeBorder;
             border.Background = SelectedOrangeBg;
         }
+        else if (node.IsRedirect)
+        {
+            border.BorderBrush = SelectedRedirectBorder;
+            border.Background = SelectedRedirectBg;
+        }
         else
         {
             border.BorderBrush = SelectedNodeBorderBrush;
             border.Background = SelectedNodeBg;
         }
-        UpdateNodeInfoPanel(node);
     }
 
     private async void MoveCard_Click(object sender, MouseButtonEventArgs e)
@@ -1094,6 +1080,13 @@ public partial class MainWindow : Window
             var data = await System.Threading.Tasks.Task.Run(() =>
                 _parser.LoadAnimation(gamePath));
 
+            if (data == null && Directory.Exists(TempCustomMovesRoot))
+            {
+                try { _parser.MountCustomIntoProvider(TempCustomMovesRoot); } catch { }
+                data = await System.Threading.Tasks.Task.Run(() =>
+                    _parser.LoadAnimation(gamePath));
+            }
+
             if (data == null)
             {
                 var nullMsg = $"Animation returned no data for: {gamePath}";
@@ -1213,17 +1206,6 @@ public partial class MainWindow : Window
         catch { }
     }
 
-    private void PopulateCharacterDropdown()
-    {
-        cmbCharacter.Items.Clear();
-        cmbCharacter.Items.Add(new ComboBoxItem { Content = "None", Tag = "" });
-        foreach (var character in _parser.GetAvailableCharacters())
-        {
-            cmbCharacter.Items.Add(new ComboBoxItem { Content = character, Tag = character });
-        }
-        cmbCharacter.SelectedIndex = 0;
-    }
-
     private void ChkShowLines_Changed(object sender, RoutedEventArgs e)
     {
         if (webView?.CoreWebView2 != null)
@@ -1233,36 +1215,14 @@ public partial class MainWindow : Window
             SaveSettings();
     }
 
-    private void ShowOrphanRedirects_Changed(object sender, RoutedEventArgs e)
+    private void ResetCamera_Click(object sender, RoutedEventArgs e)
     {
-        if (_initialized && _comboGraph != null)
+        if (webView?.CoreWebView2 != null)
         {
-            SaveSettings();
-            LayoutComboGraph();
-            RenderComboGraph();
+            webView.CoreWebView2.ExecuteScriptAsync("window.resetCamera()");
+            _savedCameraPos = null;
+            _savedCameraTarget = null;
         }
-    }
-
-    private void ShowFailed_Changed(object sender, RoutedEventArgs e)
-    {
-        if (_initialized)
-            FilterMoves();
-    }
-
-    private async void Character_Changed(object sender, SelectionChangedEventArgs e)
-    {
-        if (!_initialized) return;
-        if (cmbCharacter.SelectedItem is not ComboBoxItem item) return;
-
-        var character = item.Tag?.ToString() ?? "";
-        if (string.IsNullOrEmpty(character))
-        {
-            await webView.CoreWebView2.ExecuteScriptAsync("window.clearMesh()");
-            return;
-        }
-
-        txtStatus.Text = $"Loading mesh for {character}...";
-        await LoadMeshAsync(character);
     }
 
     private async System.Threading.Tasks.Task LoadMeshAsync(string character)
@@ -1289,6 +1249,90 @@ public partial class MainWindow : Window
         }
     }
 
+    private string GetUnitCacheKey()
+    {
+        var arch = _activeStance?.Split('|')[0] ?? "MainChar";
+        var parts = new List<string> { arch };
+        if (!string.IsNullOrEmpty(_activeVariant)) parts.Add(_activeVariant);
+        if (!string.IsNullOrEmpty(_activeWeapon)) parts.Add(_activeWeapon);
+        return string.Join("|", parts);
+    }
+
+    private Dictionary<string, Dictionary<int, Point>> CaptureAllUnitPositions()
+    {
+        var snapshot = new Dictionary<string, Dictionary<int, Point>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kvp in _unitCaches)
+        {
+            if (kvp.Value?.Positions != null)
+                snapshot[kvp.Key] = new Dictionary<int, Point>(kvp.Value.Positions);
+        }
+
+        if (_comboGraph != null && !string.IsNullOrEmpty(_activeStance))
+        {
+            var key = GetUnitCacheKey();
+            snapshot[key] = new Dictionary<int, Point>(_nodePositions);
+        }
+
+        return snapshot;
+    }
+
+    private static Dictionary<int, Point> BuildPositionsForGraph(
+        string unitKey,
+        ComboGraph? graph,
+        Dictionary<string, Dictionary<int, Point>>? snapshot)
+    {
+        var result = new Dictionary<int, Point>();
+        if (graph?.Nodes == null) return result;
+
+        Dictionary<int, Point>? source = null;
+        if (snapshot != null && !snapshot.TryGetValue(unitKey, out source))
+            source = null;
+
+        if (source == null) return result;
+
+        foreach (var node in graph.Nodes)
+        {
+            if (source.TryGetValue(node.Id, out var pt))
+                result[node.Id] = pt;
+        }
+
+        return result;
+    }
+
+    private void SaveCurrentUnitToCache()
+    {
+        if (_comboGraph == null || string.IsNullOrEmpty(_activeStance)) return;
+        var key = GetUnitCacheKey();
+        _unitCaches[key] = new UnitCacheEntry
+        {
+            Graph = _comboGraph,
+            Positions = new Dictionary<int, Point>(_nodePositions),
+            ActiveVariant = _activeVariant,
+            ActiveWeapon = _activeWeapon,
+            Props = _currentUnitProps
+        };
+    }
+
+    private bool TryRestoreUnitFromCache(string key)
+    {
+        if (!_unitCaches.TryGetValue(key, out var cached)) return false;
+        _comboGraph = cached.Graph;
+        _nodePositions = new Dictionary<int, Point>(cached.Positions);
+        _activeVariant = cached.ActiveVariant;
+        _activeWeapon = cached.ActiveWeapon;
+        _currentUnitProps = cached.Props;
+        _activeStance = key.Contains('|') ? key.Split('|')[0] : key;
+        txtComboInfo.Text = $"{key} - {_comboGraph.WeaponName} ({_comboGraph.Nodes.Count} nodes, {_comboGraph.Edges.Count} edges)";
+        if (_comboGraph.Nodes.Count > 0 &&
+            _comboGraph.Nodes.Any(n => !_nodePositions.ContainsKey(n.Id)))
+        {
+            LayoutComboGraph();
+        }
+        RenderComboGraph();
+        txtStatus.Text = $"Restored cached state for {key}";
+        return true;
+    }
+
     private void SaveProject_Click(object sender, RoutedEventArgs e)
     {
         if (_comboGraph == null)
@@ -1296,6 +1340,8 @@ public partial class MainWindow : Window
             txtStatus.Text = "No combo graph loaded";
             return;
         }
+
+        SaveCurrentUnitToCache();
 
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
@@ -1309,8 +1355,8 @@ public partial class MainWindow : Window
             try
             {
                 var project = new EditorProject { Name = Path.GetFileNameWithoutExtension(dialog.FileName) };
-                ProjectManager.Save(project, _comboGraph, dialog.FileName);
-                txtStatus.Text = $"Saved project: {dialog.FileName}";
+                ProjectManager.SaveWithCaches(project, _unitCaches, _activeStance, _activeVariant, dialog.FileName);
+                txtStatus.Text = $"Saved project: {dialog.FileName} ({_unitCaches.Count} units)";
             }
             catch (Exception ex)
             {
@@ -1319,14 +1365,8 @@ public partial class MainWindow : Window
         }
     }
 
-    private void LoadProject_Click(object sender, RoutedEventArgs e)
+    private async void LoadProject_Click(object sender, RoutedEventArgs e)
     {
-        if (_comboGraph == null)
-        {
-            txtStatus.Text = "No combo graph loaded";
-            return;
-        }
-
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
             Filter = "Sifu Edit Files (*.sifu-edit)|*.sifu-edit|JSON Files (*.json)|*.json|All Files (*.*)|*.*",
@@ -1337,7 +1377,83 @@ public partial class MainWindow : Window
         {
             try
             {
-                var (project, swaps) = ProjectManager.Load(dialog.FileName);
+                var (project, swaps, savedEdges, savedPositions, customNodes, redirectMods) = ProjectManager.Load(dialog.FileName);
+
+                var loadedCaches = ProjectManager.LoadUnitCaches(project);
+                if (loadedCaches != null)
+                    _unitCaches = loadedCaches;
+
+                string savedStance = project.ActiveStance ?? "MainChar";
+                string? savedVariant = project.ActiveVariant;
+
+                bool stanceMatches = string.Equals(_activeStance, savedStance, StringComparison.OrdinalIgnoreCase);
+                bool variantMatches = string.Equals(_activeVariant, savedVariant, StringComparison.OrdinalIgnoreCase);
+
+                if (!stanceMatches || (!variantMatches && savedVariant != null))
+                {
+                    if (string.Equals(savedStance, "MainChar", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await SwitchStanceAsync(savedStance);
+                    }
+                    else
+                    {
+                        SetStanceSelection(savedStance);
+                        _activeStance = savedStance;
+                        _activeWeapon = null;
+            UpdateVariantButtonVisibility();
+            UpdateWeaponButtonVisibility();
+            btnUnitProperties.Visibility = _activeStance == "MainChar" ? Visibility.Collapsed : Visibility.Visible;
+                        if (!string.IsNullOrEmpty(savedVariant))
+                        {
+                            await LoadVariantComboGraphAsync(savedVariant);
+                        }
+                        else
+                        {
+                            await LoadArchetypeGraphAsync(savedStance);
+                        }
+                    }
+                }
+
+                if (_comboGraph == null)
+                {
+                    txtStatus.Text = "Failed to load graph for project";
+                    return;
+                }
+
+                foreach (var sc in customNodes)
+                {
+                    if (_comboGraph.Nodes.Any(n => n.Id == sc.Id)) continue;
+                    var newNode = new ComboNode
+                    {
+                        Id = sc.Id,
+                        TreeIndex = -1,
+                        Name = "",
+                        AnimPath = sc.AnimPath,
+                        DefaultAnimPath = "",
+                        DefaultDBPath = "",
+                        DisplayName = sc.DisplayName,
+                        IsRoot = false,
+                        Depth = 0,
+                        InputLabel = "",
+                        DirectionLabel = "",
+                        VanillaAnimPath = ""
+                    };
+                    _comboGraph.Nodes.Add(newNode);
+                }
+
+                int maxId = _comboGraph.Nodes.Count > 0 ? _comboGraph.Nodes.Max(n => n.Id) : -1;
+                foreach (var edge in savedEdges)
+                {
+                    if (_comboGraph.Edges.Any(e => e.FromNodeId == edge.FromNodeId && e.ToNodeId == edge.ToNodeId && e.InputName == edge.InputName))
+                        continue;
+                    var realEdge = new ComboEdge
+                    {
+                        FromNodeId = edge.FromNodeId,
+                        ToNodeId = edge.ToNodeId,
+                        InputName = edge.InputName
+                    };
+                    _comboGraph.Edges.Add(realEdge);
+                }
 
                 foreach (var node in _comboGraph.Nodes)
                 {
@@ -1348,12 +1464,50 @@ public partial class MainWindow : Window
                             node.SourceDBPath = srcDb;
                         var matchedMove = _allMoves.FirstOrDefault(m => m.FullPath == animPath);
                         if (matchedMove != null)
-                            node.DisplayName = matchedMove.DisplayName;
+                        {
+                            node.ImportedDisplayName = matchedMove.DisplayName;
+                            var vanillaPath = !string.IsNullOrEmpty(node.VanillaAnimPath)
+                                ? node.VanillaAnimPath
+                                : node.DefaultAnimPath;
+                            if (!string.IsNullOrEmpty(vanillaPath) &&
+                                !string.Equals(animPath, vanillaPath, StringComparison.OrdinalIgnoreCase))
+                                node.IsImportedFromMod = true;
+                        }
                     }
                 }
 
+                foreach (var kvp in redirectMods)
+                {
+                    if (int.TryParse(kvp.Key, out int nodeId))
+                    {
+                        var redirectNode = _comboGraph.Nodes.FirstOrDefault(n => n.Id == nodeId && n.IsRedirect);
+                        var targetNode = _comboGraph.Nodes.FirstOrDefault(n => n.Id == kvp.Value);
+                        if (redirectNode != null && targetNode != null)
+                        {
+                            var oldEdge = _comboGraph.Edges.FirstOrDefault(e => e.FromNodeId == nodeId && e.IsRedirect);
+                            if (oldEdge != null) _comboGraph.Edges.Remove(oldEdge);
+                            _comboGraph.Edges.Add(new ComboEdge
+                            {
+                                FromNodeId = nodeId,
+                                ToNodeId = kvp.Value,
+                                InputName = oldEdge?.InputName ?? "",
+                                IsRedirect = true
+                            });
+                            redirectNode.ResolvedRedirectNodeId = kvp.Value;
+                        }
+                    }
+                }
+
+
+                if (savedPositions.Count > 0)
+                {
+                    foreach (var kvp in savedPositions)
+                        _nodePositions[kvp.Key] = kvp.Value;
+                }
+
+                LayoutComboGraph();
                 RenderComboGraph();
-                txtStatus.Text = $"Loaded project: {project.Name} ({swaps.Count} swaps)";
+                txtStatus.Text = $"Loaded project: {project.Name} ({swaps.Count} swaps, {savedEdges.Count} edges, {customNodes.Count} custom nodes)";
             }
             catch (Exception ex)
             {
@@ -1367,6 +1521,39 @@ public partial class MainWindow : Window
         if (_comboGraph == null)
         {
             txtStatus.Text = "No combo graph loaded";
+            return;
+        }
+
+        SaveCurrentUnitToCache();
+
+        bool hasMultiUnitChanges = _unitCaches.Count > 1 && _unitCaches.Values.Any(c =>
+            {
+                var modified = c.Graph.Nodes.Any(n => !n.IsRoot && !string.IsNullOrEmpty(n.AnimPath)
+                    && (n.TreeIndex == -1 || n.AnimPath != n.DefaultAnimPath
+                        || (!string.IsNullOrEmpty(n.VanillaAnimPath) && n.AnimPath != n.VanillaAnimPath)));
+                var hasRetargets = c.Graph.RedirectOriginalTargets.Any(rd =>
+                {
+                    var node = c.Graph.Nodes.FirstOrDefault(n => n.Id == rd.Key);
+                    return node != null && node.ResolvedRedirectNodeId >= 0 && node.ResolvedRedirectNodeId != rd.Value;
+                });
+                bool hasUnitProps = c.Props != null && UnitPropertiesManager.HasChanges(_contentPath, c.ActiveVariant ?? "", c.Props);
+                return modified || hasRetargets || hasUnitProps;
+            });
+
+        if (hasMultiUnitChanges)
+        {
+            var referenceModDirPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Template");
+            var multiDialog = new ExportDialog(
+                _unitCaches,
+                _contentPath,
+                _outputPath,
+                _parser.AnimToDbPath,
+                referenceModDirPath,
+                _parser.AnimToTiming)
+            {
+                Owner = this,
+            };
+            multiDialog.ShowDialog();
             return;
         }
 
@@ -1399,9 +1586,18 @@ public partial class MainWindow : Window
                     || (!string.IsNullOrEmpty(n.VanillaAnimPath) && n.AnimPath != n.VanillaAnimPath)))
             .ToList();
 
-        if (modified.Count == 0 && !stanceChanged)
+        bool hasRetargets = _comboGraph.RedirectOriginalTargets.Any(kvp =>
         {
-            txtStatus.Text = "No changes to export. Drag animations onto combo nodes first.";
+            var node = _comboGraph.Nodes.FirstOrDefault(n => n.Id == kvp.Key);
+            return node != null && node.ResolvedRedirectNodeId >= 0 && node.ResolvedRedirectNodeId != kvp.Value;
+        });
+
+        bool hasUnitProps = _currentUnitProps != null && _activeVariant != null
+            && UnitPropertiesManager.HasChanges(_contentPath, _activeVariant, _currentUnitProps);
+
+        if (modified.Count == 0 && !stanceChanged && !hasRetargets && !hasUnitProps)
+        {
+            txtStatus.Text = "No changes to export. Drag animations onto combo nodes first, or connect existing nodes.";
             return;
         }
 
@@ -1420,6 +1616,15 @@ public partial class MainWindow : Window
         if (_activeVariant != null && !string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase))
             enemyComboPath = ResolveComboFilePath(_activeVariant);
 
+        string? mainCharComboPath = null;
+        var mainArch = _activeStance?.Split('|')[0] ?? "MainChar";
+        if (string.Equals(mainArch, "MainChar", StringComparison.OrdinalIgnoreCase))
+        {
+            var weaponTag = string.IsNullOrEmpty(_activeWeapon) ? "MainChar_Barehands" : _activeWeapon;
+            mainCharComboPath = ResolveWeaponComboPath("MainChar", weaponTag, weaponTag)
+                ?? "Game/DB/_MainChar/Combos/MainChar_ComboTree";
+        }
+
         var dialog = new ExportDialog(
             modified,
             _contentPath,
@@ -1430,9 +1635,11 @@ public partial class MainWindow : Window
             charBaseMovementDBPath,
             referenceModDir,
             _comboGraph,
-            CustomNodeCloneMap,
             enemyComboPath,
-            _parser.AnimToTiming)
+            _parser.AnimToTiming,
+            _currentUnitProps,
+            _activeVariant,
+            mainCharComboPath)
         {
             Owner = this,
         };
@@ -1450,6 +1657,29 @@ public partial class MainWindow : Window
 
         if (fileDialog.ShowDialog() != true) return;
 
+        var positionSnapshot = CaptureAllUnitPositions();
+        Dictionary<string, UnitCacheEntry>? fullCacheSnapshot = null;
+
+        if (ProjectHasExistingChanges())
+        {
+            var choiceDialog = new ImportChoiceDialog { Owner = this };
+            choiceDialog.ShowDialog();
+            switch (choiceDialog.Choice)
+            {
+                case ImportChoice.Cancel:
+                    return;
+                case ImportChoice.Fresh:
+                    fullCacheSnapshot = new Dictionary<string, UnitCacheEntry>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var kvp in _unitCaches)
+                        fullCacheSnapshot[kvp.Key] = kvp.Value;
+                    await ResetProjectToVanillaAsync("Import — start fresh");
+                    break;
+                case ImportChoice.Merge:
+                default:
+                    break;
+            }
+        }
+
         var pakPath = fileDialog.FileName;
         var importTempRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ImportTemp");
         var stagingDir = Path.Combine(importTempRoot, "a", "b", "c");
@@ -1466,13 +1696,19 @@ public partial class MainWindow : Window
             var unrealPakPath = Setup.ContentExtractor.FindUnrealPak();
             if (unrealPakPath == null)
             {
-                importDialog.ShowError("UnrealPak not found. Cannot extract mod pak.");
+                importDialog.ShowError("UnrealPak not found. Cannot extract mod pak.",
+                    "Missing: UnrealPak executable");
                 return;
             }
 
             await Task.Run(() =>
             {
                 void UI(Action a) => Dispatcher.Invoke(a);
+                void Fail(string message, string? detail = null)
+                {
+                    ErrorLog.Write("IMPORT", new Exception($"FAIL: {message}\n{detail}"));
+                    UI(() => importDialog.ShowError(message, detail));
+                }
 
                 // Step 1: Clean and create staging dir
                 UI(() => { importDialog.UpdateStep(1, "active"); importDialog.SetCurrentAction("Preparing temp folder..."); importDialog.SetProgress(5); });
@@ -1531,25 +1767,100 @@ public partial class MainWindow : Window
                 if (!string.IsNullOrWhiteSpace(stderr))
                     ErrorLog.Write("IMPORT", new Exception($"UnrealPak stderr: {stderr.Trim()}"));
 
+                if (process.ExitCode != 0)
+                {
+                    var errLines = string.Join("\n", (stderr + "\n" + stdout)
+                        .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                        .Where(l => l.Contains("Error", StringComparison.OrdinalIgnoreCase)
+                                 || l.Contains("Failed", StringComparison.OrdinalIgnoreCase)
+                                 || l.Contains("Warning", StringComparison.OrdinalIgnoreCase))
+                        .Take(6));
+                    if (string.IsNullOrWhiteSpace(errLines))
+                        errLines = string.IsNullOrWhiteSpace(stderr) ? stdout.Trim() : stderr.Trim();
+                    Fail($"Failed to extract pak (UnrealPak exit {process.ExitCode}).",
+                        string.IsNullOrWhiteSpace(errLines) ? null : errLines);
+                    return;
+                }
+
                 UI(() => importDialog.SetProgress(30));
                 UI(() => { importDialog.UpdateStep(1, "done"); });
 
-                // Step 2: Search for combo tree and stance files
-                UI(() => { importDialog.UpdateStep(2, "active"); importDialog.SetCurrentAction("Searching for files..."); importDialog.SetProgress(35); });
+                // Step 2: Discover combo trees + stance + unit properties
+                UI(() => { importDialog.UpdateStep(2, "active"); importDialog.SetCurrentAction("Finding combo trees / unit props..."); importDialog.SetProgress(35); });
 
                 var allExtracted = Directory.GetFiles(importTempRoot, "*", SearchOption.AllDirectories);
                 ErrorLog.Write("IMPORT", new Exception($"Extracted {allExtracted.Length} files to {importTempRoot}"));
                 foreach (var f in allExtracted)
                     ErrorLog.Write("IMPORT", new Exception($"  {Path.GetRelativePath(importTempRoot, f)}"));
 
-                var comboTreeFiles = Directory.GetFiles(importTempRoot, "MainChar_ComboTree.uasset", SearchOption.AllDirectories);
-                bool hasComboTree = comboTreeFiles.Length > 0;
-                string? comboTreeDir = null;
-                if (hasComboTree)
+                var extractedUassets = Directory.GetFiles(importTempRoot, "*.uasset", SearchOption.AllDirectories);
+                var extractedBasenames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var f in extractedUassets)
+                    extractedBasenames.TryAdd(Path.GetFileNameWithoutExtension(f), f);
+
+                var comboCatalog = BuildImportComboCatalog();
+                var discoveredTrees = new List<(string path, ImportComboEntry entry)>();
+                foreach (var f in extractedUassets)
                 {
-                    comboTreeDir = Path.GetDirectoryName(comboTreeFiles[0])!;
-                    ErrorLog.Write("IMPORT", new Exception($"Found combo tree at: {comboTreeFiles[0]}"));
+                    var baseName = Path.GetFileNameWithoutExtension(f);
+                    if (comboCatalog.TryGetValue(baseName, out var entry))
+                        discoveredTrees.Add((f, entry));
                 }
+                foreach (var (path, entry) in discoveredTrees)
+                    ErrorLog.Write("IMPORT", new Exception($"Discovered combo tree: {Path.GetFileName(path)} → {entry.UnitKey} ({entry.GamePath})"));
+                bool hasComboTree = discoveredTrees.Count > 0;
+
+                // Unit properties candidates (ArchetypeDB / ContextualDefense by basename)
+                var importedProps = new Dictionary<string, UnitProperties>(StringComparer.OrdinalIgnoreCase);
+                var propsFilesFound = new List<string>();
+                try
+                {
+                    foreach (var variantTag in UnitPropertiesManager.AllVariantTags)
+                    {
+                        string? archFile = null;
+                        string? defFile = null;
+                        var archPath = UnitPropertiesManager.ResolveArchetypePath(variantTag);
+                        var defPath = UnitPropertiesManager.ResolveContextDefensePath(variantTag);
+                        if (archPath != null)
+                        {
+                            var archBase = Path.GetFileNameWithoutExtension(archPath);
+                            if (extractedBasenames.TryGetValue(archBase, out archFile))
+                                propsFilesFound.Add(archFile);
+                        }
+                        if (defPath != null)
+                        {
+                            var defBase = Path.GetFileNameWithoutExtension(defPath);
+                            if (extractedBasenames.TryGetValue(defBase, out defFile))
+                                propsFilesFound.Add(defFile);
+                        }
+                        if (archFile == null && defFile == null) continue;
+
+                        var props = new UnitProperties();
+                        if (archFile != null)
+                            UnitPropertiesManager.MergeInto(props, UnitPropertiesManager.ReadArchetypeAsset(archFile));
+                        if (defFile != null)
+                            UnitPropertiesManager.MergeInto(props, UnitPropertiesManager.ReadDefenseAsset(defFile));
+
+                        if (!UnitPropertiesManager.HasAnyValue(props))
+                        {
+                            ErrorLog.Write("IMPORT", new Exception($"Unit props candidate {variantTag}: no readable fields"));
+                            continue;
+                        }
+
+                        importedProps[variantTag] = props;
+                        ErrorLog.Write("IMPORT", new Exception(
+                            $"Unit props candidate {variantTag}: arch={(archFile != null ? Path.GetFileName(archFile) : "-")} " +
+                            $"def={(defFile != null ? Path.GetFileName(defFile) : "-")} " +
+                            $"H={props.Health} S={props.Structure} M={props.MemoryLimit} Hits={props.HitsCount} Flush={props.MemoryFlushLimit}"));
+                    }
+                }
+                catch (Exception propEx)
+                {
+                    ErrorLog.Write("IMPORT", propEx);
+                    Fail("Found candidate files but failed to read unit properties.", propEx.Message);
+                    return;
+                }
+
                 UI(() => { importDialog.UpdateStep(2, "done"); importDialog.SetProgress(40); });
 
                 // Step 3: Detect stance from BP_TransitionAnimRequest
@@ -1579,62 +1890,98 @@ public partial class MainWindow : Window
                 var detectedStanceLocal = detectedStance;
                 UI(() => { importDialog.UpdateStep(3, "done"); importDialog.SetProgress(44); });
 
-                if (!hasComboTree && detectedStance == null)
-                    throw new Exception("This pak does not contain a combo tree or stance files.");
-
-                ComboGraph? moddedGraph = null;
-                Dictionary<int, (string vanilla, string modded)>? nodeDiffs = null;
-
-                if (hasComboTree && comboTreeDir != null)
+                if (!hasComboTree && detectedStance == null && importedProps.Count == 0)
                 {
-                    // Step 4: Parse modded tree
+                    var foundList = extractedUassets
+                        .Select(f => Path.GetRelativePath(importTempRoot, f))
+                        .Take(8)
+                        .ToList();
+                    var foundPart = foundList.Count > 0
+                        ? "Found: " + string.Join(", ", foundList) + (extractedUassets.Length > foundList.Count ? ", …" : "")
+                        : "Found: (no .uasset files)";
+                    var missing = new List<string>();
+                    if (!hasComboTree) missing.Add("combo tree");
+                    if (detectedStance == null) missing.Add("stance");
+                    if (importedProps.Count == 0) missing.Add("unit properties");
+                    Fail("This pak does not contain a combo tree, stance, or unit properties.",
+                        foundPart + "\nMissing: " + string.Join(", ", missing));
+                    return;
+                }
+
+                var importedUnits = new List<(string unitKey, ComboGraph graph, int moves, int retargets, ImportComboEntry entry)>();
+                var treeMismatches = new List<string>();
+
+                if (hasComboTree)
+                {
+                    // Step 4: Parse modded combo nodes (UAssetAPI)
                     UI(() => { importDialog.UpdateStep(4, "active"); importDialog.SetCurrentAction("Parsing modded animations..."); importDialog.SetProgress(45); });
-                    moddedGraph = _parser.LoadModdedComboTree(comboTreeDir);
-                    if (moddedGraph == null)
-                        throw new Exception("Failed to parse modded combo tree.");
+                    var moddedByUnit = new Dictionary<string, List<ModdedComboNodeInfo>>(StringComparer.OrdinalIgnoreCase);
+                    int parseIdx = 0;
+                    foreach (var (path, entry) in discoveredTrees)
+                    {
+                        parseIdx++;
+                        var pct = 45 + (int)(25.0 * parseIdx / discoveredTrees.Count);
+                        UI(() => importDialog.SetCurrentAction($"Parsing {Path.GetFileName(path)}..."));
+                        var nodes = _parser.ReadModdedComboNodes(path);
+                        if (nodes.Count == 0)
+                        {
+                            ErrorLog.Write("IMPORT", new Exception($"No nodes parsed from {path}"));
+                            continue;
+                        }
+                        moddedByUnit[entry.UnitKey] = nodes;
+                        UI(() => importDialog.SetProgress(pct));
+                    }
+                    if (hasComboTree && moddedByUnit.Count == 0)
+                    {
+                        var names = string.Join(", ", discoveredTrees.Select(t => Path.GetFileName(t.path)).Take(8));
+                        Fail("Could not parse modded combo tree(s).",
+                            "Found combo file(s): " + names + "\nMissing: readable m_Nodes data");
+                        return;
+                    }
                     UI(() => { importDialog.UpdateStep(4, "done"); importDialog.SetProgress(70); });
 
-                    // Step 5: Compare with vanilla
+                    // Step 5: Compare with vanilla graphs
                     UI(() => { importDialog.UpdateStep(5, "active"); importDialog.SetCurrentAction("Comparing with vanilla..."); importDialog.SetProgress(75); });
 
-                    var localModded = moddedGraph;
-                    nodeDiffs = new Dictionary<int, (string, string)>();
+                    string? overlayContentRoot = FindContentRootUnder(importTempRoot);
+                    if (overlayContentRoot != null)
+                        _parser.SetOverlayProvider(_parser.CreateOverlayProvider(overlayContentRoot));
 
-                    UI(() =>
+                    int cmpIdx = 0;
+                    foreach (var (path, entry) in discoveredTrees)
                     {
-                        _moddedGraph = localModded;
-                        _vanillaGraph = _originalVanillaComboGraph ?? _comboGraph;
+                        cmpIdx++;
+                        if (!moddedByUnit.TryGetValue(entry.UnitKey, out var moddedNodes)) continue;
+                        var pct = 75 + (int)(15.0 * cmpIdx / discoveredTrees.Count);
+                        UI(() => importDialog.SetCurrentAction($"Comparing {entry.UnitKey}..."));
 
-                        var vanillaByName = _vanillaGraph?.Nodes
-                            .Where(n => n.TreeIndex >= 0)
-                            .GroupBy(n => n.Name)
-                            .ToDictionary(g => g.Key, g => g.ToList()) ?? new();
-
-                        var moddedNameIdx = new Dictionary<string, int>();
-                        foreach (var modNode in localModded.Nodes.Where(n => n.TreeIndex >= 0))
+                        var vanilla = _parser.LoadComboTreeFromPath(entry.GamePath, entry.WeaponName);
+                        if (vanilla == null)
                         {
-                            if (!moddedNameIdx.ContainsKey(modNode.Name))
-                                moddedNameIdx[modNode.Name] = 0;
-                            int idx = moddedNameIdx[modNode.Name]++;
-
-                            if (vanillaByName.TryGetValue(modNode.Name, out var vanillaNodes)
-                                && idx < vanillaNodes.Count)
-                            {
-                                var vanillaNode = vanillaNodes[idx];
-                                modNode.VanillaAnimPath = vanillaNode.AnimPath;
-                                modNode.DisplayName = vanillaNode.DisplayName;
-                                modNode.DirectionLabel = vanillaNode.DirectionLabel;
-                                if (vanillaNode.AnimPath != modNode.AnimPath)
-                                    nodeDiffs[modNode.Id] = (vanillaNode.AnimPath, modNode.AnimPath);
-                            }
-                            else
-                            {
-                                modNode.VanillaAnimPath = modNode.AnimPath;
-                                nodeDiffs[modNode.Id] = ("", modNode.AnimPath);
-                            }
+                            ErrorLog.Write("IMPORT", new Exception($"Vanilla combo not found for {entry.UnitKey} at {entry.GamePath}"));
+                            continue;
                         }
-                    });
 
+                        var (moves, retargets, unmatched) = _parser.ApplyModdedComboToVanilla(vanilla, moddedNodes, entry.WeaponName);
+                        importedUnits.Add((entry.UnitKey, vanilla, moves, retargets, entry));
+                        int vanillaTreeCount = vanilla.Nodes
+                            .Where(n => n.TreeIndex >= 0)
+                            .Select(n => n.TreeIndex)
+                            .Distinct()
+                            .Count();
+                        ErrorLog.Write("IMPORT", new Exception($"Applied {entry.UnitKey}: {moves} move(s), {retargets} retarget(s), {unmatched} unmatched (mod={moddedNodes.Count} vanillaTree={vanillaTreeCount})"));
+                        if (moddedNodes.Count != vanillaTreeCount)
+                            treeMismatches.Add($"{entry.UnitKey}: {moddedNodes.Count} mod node(s) vs {vanillaTreeCount} vanilla");
+                        UI(() => importDialog.SetProgress(pct));
+                    }
+                    if (hasComboTree && importedUnits.Count == 0)
+                    {
+                        var paths = string.Join("\n", discoveredTrees.Select(t => t.entry.GamePath).Take(6));
+                        Fail("Vanilla combo tree not found for imported units.",
+                            "Vanilla path(s):\n" + paths);
+                        return;
+                    }
+                    _parser.SetOverlayProvider(null);
                     UI(() => { importDialog.UpdateStep(5, "done"); importDialog.SetProgress(90); });
                 }
                 else
@@ -1643,67 +1990,385 @@ public partial class MainWindow : Window
                     UI(() => { importDialog.UpdateStep(5, "done"); importDialog.SetProgress(90); });
                 }
 
-                // Step 6: Finalize
+                // Step 6: Finalize — merge caches and activate preferred unit
                 UI(() => { importDialog.UpdateStep(6, "active"); importDialog.SetCurrentAction("Finalizing..."); importDialog.SetProgress(95); });
 
-                var finalModdedGraph = moddedGraph;
-                var finalNodeDiffs = nodeDiffs;
-                bool isStanceOnly = !hasComboTree && detectedStanceLocal != null;
+                var finalImported = importedUnits;
+                bool isStanceOnly = !hasComboTree && detectedStanceLocal != null && importedProps.Count == 0;
+                int totalMoves = finalImported.Sum(u => u.moves);
+                int totalRetargets = finalImported.Sum(u => u.retargets);
+                string? activatedPropsVariant = null;
 
                 UI(() =>
                 {
-                    if (finalModdedGraph != null)
+                    if (finalImported.Count > 0 || importedProps.Count > 0)
+                        SaveCurrentUnitToCache();
+
+                    foreach (var (unitKey, graph, _, _, entry) in finalImported)
                     {
-                        _comboGraph = finalModdedGraph;
-                        _isModLoaded = true;
+                        _unitCaches[unitKey] = new UnitCacheEntry
+                        {
+                            Graph = graph,
+                            Positions = BuildPositionsForGraph(unitKey, graph, positionSnapshot),
+                            ActiveVariant = entry.ActiveVariant,
+                            ActiveWeapon = entry.ActiveWeapon,
+                            Props = _unitCaches.TryGetValue(unitKey, out var prev)
+                                ? prev.Props
+                                : fullCacheSnapshot != null && fullCacheSnapshot.TryGetValue(unitKey, out var old)
+                                    ? old.Props
+                                    : null
+                        };
                     }
 
-                    if (detectedStanceLocal != null && _stanceMap.TryGetValue(detectedStanceLocal, out var stanceEntry))
+                    if (fullCacheSnapshot != null)
                     {
+                        var importedKeys = finalImported
+                            .Select(u => u.unitKey)
+                            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                        foreach (var kvp in fullCacheSnapshot)
+                        {
+                            if (!importedKeys.Contains(kvp.Key) && !_unitCaches.ContainsKey(kvp.Key))
+                                _unitCaches[kvp.Key] = kvp.Value;
+                        }
+                    }
+
+                    foreach (var (unitKey, graph, _, _, entry) in finalImported)
+                    {
+                        if (graph?.Nodes == null) continue;
+                        bool isMc = unitKey.StartsWith("MainChar", StringComparison.OrdinalIgnoreCase);
+                        string character = isMc
+                            ? "MainChar"
+                            : (unitKey.Contains('|') ? unitKey.Split('|')[0] : unitKey);
+                        string weaponLabel;
+                        if (isMc)
+                        {
+                            weaponLabel = entry.ActiveWeapon switch
+                            {
+                                "MainChar_Barehands" => "BareHands",
+                                "MainChar_Bat" => "Bat",
+                                "MainChar_Staff" => "Staff",
+                                "MainChar_Blade" => "Knife",
+                                _ => "BareHands"
+                            };
+                        }
+                        else
+                        {
+                            var segs = unitKey.Split('|');
+                            weaponLabel = segs.Length >= 3
+                                ? AnimationParser.NormalizeWeaponType(segs[2])
+                                : "BareHands";
+                        }
+
+                        foreach (var node in graph.Nodes)
+                        {
+                            if (node.IsRoot || string.IsNullOrEmpty(node.AnimPath)) continue;
+                            var animPath = node.AnimPath;
+                            if (animPath.Contains("/DB/", StringComparison.OrdinalIgnoreCase)) continue;
+                            if (!animPath.Contains("/Animations/", StringComparison.OrdinalIgnoreCase)) continue;
+                            if (_allMoves.Any(m => !string.IsNullOrEmpty(m.FullPath) &&
+                                    m.FullPath.Equals(animPath, StringComparison.OrdinalIgnoreCase)))
+                                continue;
+
+                            _allMoves.Add(new MoveInfo
+                            {
+                                DisplayName = !string.IsNullOrEmpty(node.ImportedDisplayName)
+                                    ? node.ImportedDisplayName
+                                    : string.IsNullOrEmpty(node.DisplayName) ? node.Name : node.DisplayName,
+                                FullPath = animPath,
+                                Character = character,
+                                WeaponType = weaponLabel,
+                                Category = "Custom",
+                                IsUsed = true,
+                                IsValid = true
+                            });
+                        }
+                    }
+                    FilterMoves();
+
+                    foreach (var (variant, props) in importedProps)
+                    {
+                        var arch = GetArchFromVariant(variant);
+                        var unitKey = $"{arch}|{variant}";
+                        if (_unitCaches.TryGetValue(unitKey, out var existing))
+                        {
+                            existing.Props = props;
+                        }
+                        else
+                        {
+                            ComboGraph? graph = null;
+                            try
+                            {
+                                var comboPath = ResolveComboFilePath(variant);
+                                if (comboPath != null)
+                                    graph = _parser.LoadComboTreeFromPath(comboPath, arch);
+                            }
+                            catch (Exception ex)
+                            {
+                                ErrorLog.Write("IMPORT", new Exception($"Props-only vanilla load failed for {variant}: {ex.Message}"));
+                            }
+
+                            _unitCaches[unitKey] = new UnitCacheEntry
+                            {
+                                Graph = graph ?? new ComboGraph(),
+                                Positions = new Dictionary<int, Point>(),
+                                ActiveVariant = variant,
+                                ActiveWeapon = null,
+                                Props = props
+                            };
+                        }
+                        ErrorLog.Write("IMPORT", new Exception($"Unit props applied to {unitKey}"));
+                    }
+
+                    if (finalImported.Count > 0)
+                    {
+                        var preferred = finalImported.FirstOrDefault(u => u.unitKey.StartsWith("MainChar", StringComparison.OrdinalIgnoreCase));
+                        if (preferred.unitKey == null)
+                            preferred = finalImported[0];
+
+                        _comboGraph = preferred.graph;
+                        _activeStance = preferred.entry.UnitKey.Contains('|')
+                            ? preferred.entry.UnitKey.Split('|')[0]
+                            : preferred.entry.UnitKey;
+                        _activeVariant = preferred.entry.ActiveVariant;
+                        _activeWeapon = preferred.entry.ActiveWeapon;
+                        _currentUnitProps = _unitCaches.TryGetValue(preferred.unitKey, out var p) ? p.Props : null;
+                        _nodePositions = _unitCaches.TryGetValue(preferred.unitKey, out var preferredCache)
+                            && preferredCache.Positions != null
+                            ? new Dictionary<int, Point>(preferredCache.Positions)
+                            : BuildPositionsForGraph(preferred.unitKey, preferred.graph, positionSnapshot);
+                        _isModLoaded = true;
+                        _vanillaGraph = null;
+                        _moddedGraph = null;
+                        _nodeDiffs = new();
+
+                        UpdateVariantButtonVisibility();
+                        UpdateWeaponButtonVisibility();
+                        btnUnitProperties.Visibility = _activeStance == "MainChar" ? Visibility.Collapsed : Visibility.Visible;
+
+                        if (!hasComboTree && detectedStanceLocal != null && _stanceMap.ContainsKey(detectedStanceLocal))
+                        {
+                            cmbStance.SelectedItem = detectedStanceLocal;
+                            var stanceNode = _comboGraph.Nodes.FirstOrDefault(n => n.Name == "MainChar_Stance");
+                            if (stanceNode != null)
+                                stanceNode.AnimPath = _stanceMap[detectedStanceLocal].DisplayAnim;
+                        }
+                        else if (_activeStance == "MainChar")
+                        {
+                            cmbStance.SelectedItem = "MainChar";
+                        }
+
+                        txtComboInfo.Text = $"MOD ({_activeStance}): {preferred.graph.WeaponName} ({preferred.graph.Nodes.Count} nodes, {totalMoves} moves, {totalRetargets} retargets, {finalImported.Count} unit(s))";
+                        LayoutComboGraph();
+                        RenderComboGraph();
+                    }
+                    else if (importedProps.Count > 0)
+                    {
+                        var variant = importedProps.Keys.First();
+                        activatedPropsVariant = variant;
+                        var arch = GetArchFromVariant(variant);
+                        var unitKey = $"{arch}|{variant}";
+                        var entry = _unitCaches[unitKey];
+
+                        SaveCurrentUnitToCache();
+                        _comboGraph = entry.Graph ?? new ComboGraph();
+                        _nodePositions = entry.Positions != null
+                            ? new Dictionary<int, Point>(entry.Positions)
+                            : new Dictionary<int, Point>();
+                        _activeStance = arch;
+                        _activeVariant = variant;
+                        _activeWeapon = null;
+                        _currentUnitProps = entry.Props;
+                        _isModLoaded = true;
+                        _vanillaGraph = null;
+                        _moddedGraph = null;
+                        _nodeDiffs = new();
+
+                        UpdateVariantButtonVisibility();
+                        UpdateWeaponButtonVisibility();
+                        btnUnitProperties.Visibility = Visibility.Visible;
+                        txtComboInfo.Text = $"MOD ({arch} {variant}): Unit Properties only ({importedProps.Count})";
+                        LayoutComboGraph();
+                        RenderComboGraph();
+                    }
+                    else if (detectedStanceLocal != null && _stanceMap.TryGetValue(detectedStanceLocal, out var stanceEntry))
+                    {
+                        _isModLoaded = true;
                         var stanceNode = _comboGraph?.Nodes.FirstOrDefault(n => n.Name == "MainChar_Stance");
                         if (stanceNode != null)
-                        {
                             stanceNode.AnimPath = stanceEntry.DisplayAnim;
-                        }
                         _activeStance = detectedStanceLocal;
                         cmbStance.SelectedItem = detectedStanceLocal;
+                        txtComboInfo.Text = $"MOD ({_activeStance}): Stance only";
+                        LayoutComboGraph();
+                        RenderComboGraph();
                     }
-
-                    int changedCount = finalNodeDiffs?.Count ?? 0;
-                    if (finalModdedGraph != null)
-                    {
-                        txtComboInfo.Text = $"MOD ({_activeStance}): {finalModdedGraph.WeaponName} ({finalModdedGraph.Nodes.Count} nodes, {changedCount} changed)";
-                    }
-                    else
-                    {
-                        txtComboInfo.Text = $"MOD ({_activeStance}): Stance only ({changedCount} nodes changed)";
-                    }
-                    LayoutComboGraph();
-                    RenderComboGraph();
                 });
 
                 UI(() => { importDialog.UpdateStep(6, "done"); importDialog.SetProgress(100); });
 
                 Thread.Sleep(200);
 
-                int diffCount = finalNodeDiffs?.Count ?? 0;
-                string weaponInfo = finalModdedGraph?.WeaponName ?? "N/A";
-                var successMsg = isStanceOnly
-                    ? $"Stance: {detectedStanceLocal}"
-                    : detectedStanceLocal != null
-                        ? $"Stance: {detectedStanceLocal}\n{diffCount} nodes changed"
-                        : $"{diffCount} nodes changed";
-                UI(() => importDialog.ShowSuccess(diffCount, weaponInfo, successMsg));
+                string summary;
+                if (finalImported.Count > 0)
+                    summary = $"{totalMoves} move(s), {totalRetargets} retarget(s) across {finalImported.Count} unit tree(s)";
+                else if (importedProps.Count > 0)
+                    summary = $"Unit Properties: {importedProps.Count}";
+                else if (isStanceOnly)
+                    summary = $"Stance: {detectedStanceLocal}";
+                else
+                    summary = "Imported";
+
+                string? details = null;
+                if (detectedStanceLocal != null && !isStanceOnly)
+                    details = $"Stance: {detectedStanceLocal}";
+                if (finalImported.Count > 0)
+                {
+                    var unitList = string.Join(", ", finalImported.Select(u => u.unitKey));
+                    details = details != null ? $"{details}\nUnits: {unitList}" : $"Units: {unitList}";
+                }
+                if (treeMismatches.Count > 0)
+                {
+                    var mismatchLine = "Tree size mismatch:\n  " + string.Join("\n  ", treeMismatches);
+                    details = details != null ? $"{details}\n{mismatchLine}" : mismatchLine;
+                }
+                if (importedProps.Count > 0)
+                {
+                    var propLine = $"Unit Properties: {importedProps.Count}";
+                    details = details != null ? $"{details}\n{propLine}" : propLine;
+                }
+                UI(() => importDialog.ShowSuccess(summary, details));
             });
         }
         catch (Exception ex)
         {
             ErrorLog.Write("IMPORT", ex);
-            importDialog.ShowError(ex.Message);
+            importDialog.ShowError(ex.Message, ex.InnerException?.Message);
         }
         finally
         {
+            try { _parser.SetOverlayProvider(null); } catch { }
+            try
+            {
+                if (Directory.Exists(importTempRoot))
+                {
+                    int harvested = HarvestCustomAnims(importTempRoot);
+                    if (harvested > 0)
+                    {
+                        _parser.MountCustomIntoProvider(TempCustomMovesRoot);
+                        RegisterCustomMoves();
+                        Dispatcher.Invoke(FilterMoves);
+                        ErrorLog.Write("IMPORT", new Exception($"Harvested {harvested} custom anim file(s) → TempCustomMoves"));
+                    }
+                }
+            }
+            catch (Exception hex) { ErrorLog.Write("IMPORT", hex); }
             try { if (Directory.Exists(importTempRoot)) Directory.Delete(importTempRoot, true); } catch { }
+        }
+    }
+
+    private static string? FindContentRootUnder(string root)
+    {
+        try
+        {
+            foreach (var dir in Directory.GetDirectories(root, "Content", SearchOption.AllDirectories))
+            {
+                if (Directory.Exists(Path.Combine(dir, "Animations")) || Directory.Exists(Path.Combine(dir, "DB")))
+                    return dir;
+            }
+            var anims = Directory.GetDirectories(root, "Animations", SearchOption.AllDirectories);
+            if (anims.Length > 0) return Directory.GetParent(anims[0])?.FullName;
+        }
+        catch { }
+        return null;
+    }
+
+    private int HarvestCustomAnims(string extractRoot)
+    {
+        try
+        {
+            var vanillaContent = _contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase)
+                ? _contentPath
+                : Path.Combine(_contentPath, "Content");
+
+            int copied = 0;
+            foreach (var animsDir in Directory.GetDirectories(extractRoot, "Animations", SearchOption.AllDirectories))
+            {
+                var contentRoot = Directory.GetParent(animsDir)?.FullName;
+                if (contentRoot == null) continue;
+
+                foreach (var file in Directory.GetFiles(animsDir, "*", SearchOption.AllDirectories))
+                {
+                    var ext = Path.GetExtension(file).ToLowerInvariant();
+                    if (ext != ".uasset" && ext != ".uexp" && ext != ".ubulk") continue;
+
+                    var rel = Path.GetRelativePath(contentRoot, file);
+                    var vanillaPath = Path.Combine(vanillaContent, rel);
+                    if (File.Exists(vanillaPath)) continue;
+
+                    var dest = Path.Combine(TempCustomMovesRoot, rel);
+                    Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                    File.Copy(file, dest, true);
+                    copied++;
+                }
+            }
+            return copied;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("IMPORT", ex);
+            return 0;
+        }
+    }
+
+    private void RegisterCustomMoves()
+    {
+        if (_allMoves == null || !Directory.Exists(TempCustomMovesRoot)) return;
+
+        var animsRoot = Path.Combine(TempCustomMovesRoot, "Animations");
+        if (!Directory.Exists(animsRoot)) return;
+
+        foreach (var file in Directory.GetFiles(animsRoot, "*.uasset", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(TempCustomMovesRoot, file).Replace('\\', '/');
+            if (rel.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
+                rel = rel[..^".uasset".Length];
+            var gamePath = "Game/" + rel;
+
+            if (_allMoves.Any(m => !string.IsNullOrEmpty(m.FullPath) &&
+                    m.FullPath.Equals(gamePath, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            var parts = rel.Split('/');
+            string character = "Custom";
+            if (parts.Length >= 2)
+            {
+                int idx = parts[0].Equals("Animations", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+                if (idx < parts.Length && parts[idx].Equals("Custom", StringComparison.OrdinalIgnoreCase))
+                    idx++;
+                if (idx < parts.Length) character = parts[idx];
+            }
+
+            string weapon = "BareHands";
+            foreach (var p in parts)
+            {
+                var w = AnimationParser.NormalizeWeaponType(p);
+                if (w is "BareHands" or "Bats" or "Blades" or "Staff" or "MeteorHammer" or "TriStaff")
+                {
+                    weapon = w;
+                    break;
+                }
+            }
+
+            _allMoves.Add(new MoveInfo
+            {
+                DisplayName = Path.GetFileNameWithoutExtension(file),
+                FullPath = gamePath,
+                Character = character,
+                WeaponType = weapon,
+                Category = "Custom",
+                IsUsed = true,
+                IsValid = true
+            });
         }
     }
 
@@ -1860,26 +2525,20 @@ public partial class MainWindow : Window
             txtComboInfo.Text = $"MainChar - {_comboGraph.WeaponName} ({_comboGraph.Nodes.Count} nodes, {_comboGraph.Edges.Count} edges)";
             _comboTranslate.X = 0;
             _comboTranslate.Y = 0;
+            _activeWeapon = "MainChar_Barehands";
+            UpdateWeaponButtonVisibility();
             LayoutComboGraph();
             RenderComboGraph();
             btnExport.IsEnabled = true;
             btnResetMode.Visibility = Visibility.Visible;
+            btnResetAll.Visibility = Visibility.Visible;
+            btnUnitProperties.Visibility = Visibility.Collapsed;
 
             cmbStance.Items.Clear();
             foreach (var key in _stanceMap.Keys)
                 cmbStance.Items.Add(key);
             cmbStance.SelectedItem = _activeStance;
             cmbStance.Visibility = Visibility.Visible;
-
-            _comboTreeMoves.Clear();
-            foreach (var node in _comboGraph.Nodes.Where(n => !n.IsRoot && !string.IsNullOrEmpty(n.DefaultAnimPath)))
-            {
-                var match = _allMoves.FirstOrDefault(m => m.FullPath == node.DefaultAnimPath);
-                if (match != null && !_comboTreeMoves.Contains(match))
-                    _comboTreeMoves.Add(match);
-            }
-            if (_comboTreeMoves.Count > 0)
-                FilterMoves();
         }
         catch (Exception ex)
         {
@@ -1892,47 +2551,97 @@ public partial class MainWindow : Window
     {
         if (_comboGraph == null) return;
 
-        var customPositions = _nodePositions
-            .Where(kvp => _comboGraph.Nodes.Any(n => n.Id == kvp.Key && n.TreeIndex == -1))
-            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        var savedPositions = new Dictionary<int, Point>(_nodePositions);
         _nodePositions.Clear();
 
         foreach (var node in _comboGraph.Nodes)
             node.Depth = -1;
 
-        var attackNodes = _comboGraph.Nodes.Where(n => !n.IsRedirect).ToList();
-        var redirectNodes = _comboGraph.Nodes.Where(n => n.IsRedirect).ToList();
+        LayoutComboGraph_Topological();
 
-        if (chkShowOrphanRedirects.IsChecked != true)
+        var orphanIds = new HashSet<int>(_comboGraph.Nodes
+            .Where(n => n.IsRedirect && (n.ResolvedRedirectNodeId < 0
+                || !_comboGraph.Nodes.Any(x => x.Id == n.ResolvedRedirectNodeId)))
+            .Select(n => n.Id));
+
+        foreach (var kvp in savedPositions)
         {
-            var redirectIdsWithIncoming = new HashSet<int>(
-                _comboGraph.Edges.Where(e => e.IsRedirect).Select(e => e.ToNodeId));
-            redirectNodes = redirectNodes.Where(n => redirectIdsWithIncoming.Contains(n.Id)).ToList();
+            if (!orphanIds.Contains(kvp.Key))
+                _nodePositions[kvp.Key] = kvp.Value;
         }
+    }
 
-        bool hasRedirects = redirectNodes.Count > 0;
+    private void LayoutComboGraph_Topological()
+    {
+        var layoutNodes = _comboGraph!.Nodes.Where(n => !n.IsRedirect).ToList();
+        var layoutIds = new HashSet<int>(layoutNodes.Select(n => n.Id));
 
         var incoming = new Dictionary<int, int>();
         var outgoing = new Dictionary<int, List<int>>();
-        foreach (var node in _comboGraph.Nodes)
+        foreach (var node in layoutNodes)
         {
             incoming[node.Id] = 0;
             outgoing[node.Id] = new List<int>();
         }
         foreach (var edge in _comboGraph.Edges)
         {
-            if (edge.IsRedirect) continue;
+            if (!layoutIds.Contains(edge.FromNodeId) || !layoutIds.Contains(edge.ToNodeId))
+                continue;
             if (incoming.ContainsKey(edge.ToNodeId))
                 incoming[edge.ToNodeId]++;
             if (outgoing.ContainsKey(edge.FromNodeId))
                 outgoing[edge.FromNodeId].Add(edge.ToNodeId);
         }
 
+        var baseDepth = new Dictionary<int, int>();
+        var baseInDegree = new Dictionary<int, int>(incoming);
+        var bfsQueue = new Queue<int>();
+        foreach (var node in layoutNodes)
+        {
+            if (baseInDegree[node.Id] == 0)
+            {
+                baseDepth[node.Id] = 0;
+                bfsQueue.Enqueue(node.Id);
+            }
+        }
+        var bfsProcessed = new HashSet<int>();
+        while (bfsQueue.Count > 0)
+        {
+            var cid = bfsQueue.Dequeue();
+            if (!bfsProcessed.Add(cid)) continue;
+            var cd = baseDepth[cid];
+            foreach (var tid in outgoing[cid])
+            {
+                if (!baseDepth.TryGetValue(tid, out var ed) || ed < cd + 1)
+                    baseDepth[tid] = cd + 1;
+                baseInDegree[tid]--;
+                if (baseInDegree[tid] <= 0)
+                    bfsQueue.Enqueue(tid);
+            }
+        }
+
+        foreach (var edge in _comboGraph.Edges)
+        {
+            if (!layoutIds.Contains(edge.FromNodeId)) continue;
+            var toNode = _comboGraph.Nodes.FirstOrDefault(n => n.Id == edge.ToNodeId);
+            if (toNode?.IsRedirect == true && toNode.ResolvedRedirectNodeId >= 0 && layoutIds.Contains(toNode.ResolvedRedirectNodeId))
+            {
+                var srcDepth = baseDepth.GetValueOrDefault(edge.FromNodeId, 0);
+                var tgtDepth = baseDepth.GetValueOrDefault(toNode.ResolvedRedirectNodeId, 0);
+                if (srcDepth < tgtDepth && !outgoing[edge.FromNodeId].Contains(toNode.ResolvedRedirectNodeId))
+                {
+                    outgoing[edge.FromNodeId].Add(toNode.ResolvedRedirectNodeId);
+                    if (incoming.ContainsKey(toNode.ResolvedRedirectNodeId))
+                        incoming[toNode.ResolvedRedirectNodeId]++;
+                }
+            }
+        }
+
         var depth = new Dictionary<int, int>();
         var inDegree = new Dictionary<int, int>(incoming);
 
         var queue = new Queue<int>();
-        foreach (var node in attackNodes)
+        foreach (var node in layoutNodes)
         {
             if (inDegree[node.Id] == 0)
             {
@@ -1959,13 +2668,32 @@ public partial class MainWindow : Window
             }
         }
 
-        foreach (var node in attackNodes)
+        foreach (var node in layoutNodes)
         {
             node.Depth = depth.TryGetValue(node.Id, out var d) ? d : 0;
         }
 
+        // ── Post-pass: longest-path layering — enforce depth[child] > depth[parent] for every edge ──
+        bool changed = true;
+        while (changed)
+        {
+            changed = false;
+            foreach (var node in layoutNodes.OrderBy(n => n.Depth))
+            {
+                foreach (var childId in outgoing[node.Id])
+                {
+                    var child = layoutNodes.FirstOrDefault(n => n.Id == childId);
+                    if (child != null && child.Depth <= node.Depth)
+                    {
+                        child.Depth = node.Depth + 1;
+                        changed = true;
+                    }
+                }
+            }
+        }
+
         var forwardDepth = new Dictionary<int, int>();
-        foreach (var node in attackNodes.OrderByDescending(n => n.Depth))
+        foreach (var node in layoutNodes.OrderByDescending(n => n.Depth))
         {
             var maxChild = 0;
             foreach (var childId in outgoing[node.Id])
@@ -1976,15 +2704,15 @@ public partial class MainWindow : Window
             forwardDepth[node.Id] = maxChild + 1;
         }
 
-        var maxDepth = attackNodes.Count > 0 ? attackNodes.Max(n => n.Depth) : 0;
+        var maxDepth = layoutNodes.Count > 0 ? layoutNodes.Max(n => n.Depth) : 0;
+        bool isEnemy = !string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase);
         var columns = new List<List<ComboNode>>();
         for (int d = 0; d <= maxDepth; d++)
         {
-            var col = attackNodes
-                .Where(n => n.Depth == d)
-                .OrderByDescending(n => forwardDepth.GetValueOrDefault(n.Id, 1))
-                .ThenBy(n => n.DisplayName)
-                .ToList();
+            var colQuery = layoutNodes.Where(n => n.Depth == d);
+            var col = isEnemy
+                ? colQuery.OrderBy(n => n.TreeIndex).ThenBy(n => n.Id).ToList()
+                : colQuery.OrderByDescending(n => forwardDepth.GetValueOrDefault(n.Id, 1)).ThenBy(n => n.TreeIndex).ThenBy(n => n.Id).ToList();
             columns.Add(col);
         }
 
@@ -2003,152 +2731,155 @@ public partial class MainWindow : Window
             }
         }
 
-        if (hasRedirects)
-        {
-            var incomingRedirectEdge = new Dictionary<int, ComboEdge>();
-            foreach (var edge in _comboGraph.Edges)
-            {
-                if (edge.IsRedirect && !incomingRedirectEdge.ContainsKey(edge.ToNodeId))
-                    incomingRedirectEdge[edge.ToNodeId] = edge;
-            }
-
-            var redirectsByParent = new Dictionary<int, List<ComboNode>>();
-            foreach (var rn in redirectNodes)
-            {
-                if (!incomingRedirectEdge.TryGetValue(rn.Id, out var edge)) continue;
-                if (!redirectsByParent.TryGetValue(edge.FromNodeId, out var list))
-                {
-                    list = new List<ComboNode>();
-                    redirectsByParent[edge.FromNodeId] = list;
-                }
-                list.Add(rn);
-            }
-
-            foreach (var kvp in redirectsByParent)
-            {
-                kvp.Value.Sort((a, b) => string.Compare(a.DisplayName, b.DisplayName, StringComparison.Ordinal));
-            }
-
-            var leafNodes = attackNodes
-                .Where(n => outgoing[n.Id].Count == 0)
-                .OrderBy(n => n.DisplayName)
-                .ToList();
-
-            double backboneRightX = attackNodes
-                .Where(n => outgoing[n.Id].Count > 0 && _nodePositions.ContainsKey(n.Id))
-                .Select(n => _nodePositions[n.Id].X)
-                .DefaultIfEmpty(30)
-                .Max() + NODE_WIDTH + H_SPACING;
-
-            if (leafNodes.Count > 0)
-            {
-                int mid = (leafNodes.Count + 1) / 2;
-                var group1 = leafNodes.Take(mid).ToList();
-                var group2 = leafNodes.Skip(mid).ToList();
-
-                double leafColWidth = NODE_WIDTH + REDIRECT_GAP + NODE_WIDTH + H_SPACING;
-
-                double col1X = backboneRightX;
-                double col1Y = 30;
-                foreach (var leaf in group1)
-                {
-                    _nodePositions[leaf.Id] = new Point(col1X, col1Y);
-                    double redirectX = col1X + NODE_WIDTH + REDIRECT_GAP;
-
-                    if (redirectsByParent.TryGetValue(leaf.Id, out var leafRedirects))
-                    {
-                        for (int i = 0; i < leafRedirects.Count; i++)
-                        {
-                            double ry = col1Y + i * (NODE_HEIGHT + V_SPACING);
-                            _nodePositions[leafRedirects[i].Id] = new Point(redirectX, ry);
-                        }
-                        col1Y += Math.Max(leafRedirects.Count, 1) * (NODE_HEIGHT + V_SPACING) + V_SPACING;
-                    }
-                    else
-                    {
-                        col1Y += NODE_HEIGHT + V_SPACING;
-                    }
-                }
-
-                double col2X = col1X + leafColWidth;
-                double col2Y = 30;
-                foreach (var leaf in group2)
-                {
-                    _nodePositions[leaf.Id] = new Point(col2X, col2Y);
-                    double redirectX = col2X + NODE_WIDTH + REDIRECT_GAP;
-
-                    if (redirectsByParent.TryGetValue(leaf.Id, out var leafRedirects))
-                    {
-                        for (int i = 0; i < leafRedirects.Count; i++)
-                        {
-                            double ry = col2Y + i * (NODE_HEIGHT + V_SPACING);
-                            _nodePositions[leafRedirects[i].Id] = new Point(redirectX, ry);
-                        }
-                        col2Y += Math.Max(leafRedirects.Count, 1) * (NODE_HEIGHT + V_SPACING) + V_SPACING;
-                    }
-                    else
-                    {
-                        col2Y += NODE_HEIGHT + V_SPACING;
-                    }
-                }
-            }
-
-            foreach (var rn in redirectNodes)
-            {
-                if (!_nodePositions.ContainsKey(rn.Id))
-                {
-                    _nodePositions[rn.Id] = new Point(backboneRightX, 30);
-                }
-            }
-        }
-
         ResolveNodeOverlaps();
 
-        foreach (var kvp in customPositions)
-            _nodePositions[kvp.Key] = kvp.Value;
+        var connectedNodeIds = new HashSet<int>();
+        foreach (var edge in _comboGraph.Edges)
+        {
+            connectedNodeIds.Add(edge.FromNodeId);
+            connectedNodeIds.Add(edge.ToNodeId);
+        }
+        var validRedirects = _comboGraph.Nodes.Where(n => n.IsRedirect && n.ResolvedRedirectNodeId >= 0 && connectedNodeIds.Contains(n.Id)).ToList();
+
+        // Build redirect → source (non-redirect parent) map
+        var redirectSources = new Dictionary<int, int>();
+        foreach (var edge in _comboGraph.Edges)
+        {
+            if (edge.IsRedirect) continue;
+            var toNode = _comboGraph.Nodes.FirstOrDefault(n => n.Id == edge.ToNodeId);
+            if (toNode?.IsRedirect == true && !redirectSources.ContainsKey(edge.ToNodeId))
+                redirectSources[edge.ToNodeId] = edge.FromNodeId;
+        }
+
+        // Group redirects by source node for dynamic overflow
+        var redirectsBySource = new Dictionary<int, List<ComboNode>>();
+        foreach (var r in validRedirects)
+        {
+            if (!redirectSources.TryGetValue(r.Id, out var sourceId)) continue;
+            if (!redirectsBySource.TryGetValue(sourceId, out var list))
+            {
+                list = new List<ComboNode>();
+                redirectsBySource[sourceId] = list;
+            }
+            list.Add(r);
+        }
+
+        // Place redirects: first 3 per source in col+1, overflow to col+2
+        foreach (var srcKvp in redirectsBySource)
+        {
+            var sourceId = srcKvp.Key;
+            var redirects = srcKvp.Value;
+            if (!_nodePositions.TryGetValue(sourceId, out var sourcePos)) continue;
+
+            for (int i = 0; i < redirects.Count; i++)
+            {
+                // Sources with >3 redirects: first 3 in col+1, rest in col+2
+                int colOffset = (redirects.Count > 3 && i >= 3) ? 2 : 1;
+                double x = sourcePos.X + colWidth * colOffset;
+                double y = sourcePos.Y;
+
+                // Resolve vertical overlap with existing nodes at this X
+                var existingAtX = _nodePositions.Where(p => Math.Abs(p.Value.X - x) < 1)
+                    .OrderBy(p => p.Value.Y).ToList();
+                bool overlaps = true;
+                while (overlaps)
+                {
+                    overlaps = false;
+                    foreach (var kv in existingAtX)
+                    {
+                        if (Math.Abs(kv.Value.Y - y) < rowHeight - 1)
+                        {
+                            y = kv.Value.Y + rowHeight;
+                            overlaps = true;
+                            break;
+                        }
+                    }
+                }
+
+                _nodePositions[redirects[i].Id] = new Point(x, y);
+            }
+        }
     }
 
     private void ResolveNodeOverlaps()
     {
         if (_comboGraph == null) return;
 
-        var settled = new List<(int id, double x, double y, double right, double bottom)>();
-
-        var sorted = _comboGraph.Nodes
-            .Where(n => _nodePositions.ContainsKey(n.Id))
-            .OrderBy(n => _nodePositions[n.Id].X)
-            .ThenBy(n => _nodePositions[n.Id].Y)
-            .ToList();
-
-        foreach (var node in sorted)
+        // Build parent map for graph-aware Y positioning
+        var parents = new Dictionary<int, List<int>>();
+        foreach (var edge in _comboGraph.Edges)
         {
-            var pos = _nodePositions[node.Id];
-            double x = pos.X;
-            double y = pos.Y;
-            double w = NODE_WIDTH;
-            double h = NODE_HEIGHT;
-
-            bool shifted = true;
-            int iterations = 0;
-            while (shifted && iterations < 50)
+            if (!parents.TryGetValue(edge.ToNodeId, out var list))
             {
-                shifted = false;
-                double r = x + w;
-                double b = y + h;
-                foreach (var s in settled)
+                list = new List<int>();
+                parents[edge.ToNodeId] = list;
+            }
+            list.Add(edge.FromNodeId);
+        }
+
+        // Group nodes by column (same X)
+        var nodesByColumn = new SortedDictionary<double, List<int>>();
+        foreach (var kvp in _nodePositions)
+        {
+            var colX = kvp.Value.X;
+            if (!nodesByColumn.TryGetValue(colX, out var list))
+            {
+                list = new List<int>();
+                nodesByColumn[colX] = list;
+            }
+            list.Add(kvp.Key);
+        }
+
+        double rowHeight = NODE_HEIGHT + V_SPACING;
+
+        // Process columns left to right
+        foreach (var colKvp in nodesByColumn)
+        {
+            var nodeIds = colKvp.Value;
+
+            // Sort by initial Y within column
+            nodeIds.Sort((a, b) => _nodePositions[a].Y.CompareTo(_nodePositions[b].Y));
+
+            // Pull each node toward parent Y average (if parents exist in earlier columns)
+            foreach (var nodeId in nodeIds)
+            {
+                if (!parents.TryGetValue(nodeId, out var parentIds) || parentIds.Count == 0) continue;
+
+                double parentYSum = 0;
+                int parentCount = 0;
+                foreach (var pid in parentIds)
                 {
-                    if (x < s.right && r > s.x && y < s.bottom && b > s.y)
+                    if (_nodePositions.TryGetValue(pid, out var ppos))
                     {
-                        x = s.right + REDIRECT_GAP;
-                        shifted = true;
-                        break;
+                        parentYSum += ppos.Y;
+                        parentCount++;
                     }
                 }
-                iterations++;
+                if (parentCount > 0)
+                {
+                    var pos = _nodePositions[nodeId];
+                    double targetY = parentYSum / parentCount;
+                    double currentY = pos.Y;
+                    // Pull 60% toward parent center, keep minimum of current Y (don't move up past initial)
+                    double newY = currentY + (targetY - currentY) * 0.6;
+                    _nodePositions[nodeId] = new Point(pos.X, Math.Max(currentY, newY));
+                }
             }
 
-            _nodePositions[node.Id] = new Point(x, y);
-            settled.Add((node.Id, x, y, x + w, y + h));
+            // Re-sort after Y adjustment
+            nodeIds.Sort((a, b) => _nodePositions[a].Y.CompareTo(_nodePositions[b].Y));
+
+            // Resolve vertical overlaps within column — push down only
+            for (int i = 1; i < nodeIds.Count; i++)
+            {
+                var prevPos = _nodePositions[nodeIds[i - 1]];
+                var curPos = _nodePositions[nodeIds[i]];
+                double minRequiredY = prevPos.Y + rowHeight;
+                if (curPos.Y < minRequiredY)
+                {
+                    _nodePositions[nodeIds[i]] = new Point(curPos.X, minRequiredY);
+                }
+            }
         }
     }
 
@@ -2161,9 +2892,24 @@ public partial class MainWindow : Window
         _nodeInputBgs.Clear();
         if (_comboGraph == null) return;
 
+        var existingNodeIds = new HashSet<int>(_comboGraph.Nodes.Select(n => n.Id));
+        var nodeIdsWithEdges = new HashSet<int>();
+        foreach (var edge in _comboGraph.Edges)
+        {
+            nodeIdsWithEdges.Add(edge.FromNodeId);
+            nodeIdsWithEdges.Add(edge.ToNodeId);
+        }
+        var orphanRedirectIds = new HashSet<int>(_comboGraph.Nodes
+            .Where(n => n.IsRedirect && (n.ResolvedRedirectNodeId < 0
+                || !existingNodeIds.Contains(n.ResolvedRedirectNodeId)
+                || !nodeIdsWithEdges.Contains(n.Id)))
+            .Select(n => n.Id));
+
         var edgesBySource = new Dictionary<int, List<ComboEdge>>();
         foreach (var edge in _comboGraph.Edges)
         {
+            if (orphanRedirectIds.Contains(edge.FromNodeId) || orphanRedirectIds.Contains(edge.ToNodeId))
+                continue;
             if (!edgesBySource.TryGetValue(edge.FromNodeId, out var list))
             {
                 list = new List<ComboEdge>();
@@ -2174,26 +2920,29 @@ public partial class MainWindow : Window
 
         var conflictEdges = new HashSet<ComboEdge>();
         int conflictCount = 0;
-        foreach (var kvp in edgesBySource)
+        if (!string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase))
         {
-            var byInput = new Dictionary<string, List<ComboEdge>>(StringComparer.OrdinalIgnoreCase);
-            foreach (var e in kvp.Value)
+            foreach (var kvp in edgesBySource)
             {
-                if (string.IsNullOrEmpty(e.InputName)) continue;
-                if (!byInput.TryGetValue(e.InputName, out var list))
+                var byInput = new Dictionary<string, List<ComboEdge>>(StringComparer.OrdinalIgnoreCase);
+                foreach (var e in kvp.Value)
                 {
-                    list = new List<ComboEdge>();
-                    byInput[e.InputName] = list;
+                    if (string.IsNullOrEmpty(e.InputName)) continue;
+                    if (!byInput.TryGetValue(e.InputName, out var list))
+                    {
+                        list = new List<ComboEdge>();
+                        byInput[e.InputName] = list;
+                    }
+                    list.Add(e);
                 }
-                list.Add(e);
-            }
-            foreach (var inputKvp in byInput)
-            {
-                if (inputKvp.Value.Count > 2)
+                foreach (var inputKvp in byInput)
                 {
-                    foreach (var e in inputKvp.Value)
-                        conflictEdges.Add(e);
-                    conflictCount += inputKvp.Value.Count;
+                    if (inputKvp.Value.Count > 2)
+                    {
+                        foreach (var e in inputKvp.Value)
+                            conflictEdges.Add(e);
+                        conflictCount += inputKvp.Value.Count;
+                    }
                 }
             }
         }
@@ -2203,10 +2952,22 @@ public partial class MainWindow : Window
             if (!_nodePositions.TryGetValue(edge.FromNodeId, out var fromPos)) continue;
             if (!_nodePositions.TryGetValue(edge.ToNodeId, out var toPos)) continue;
 
+            if (orphanRedirectIds.Contains(edge.FromNodeId) || orphanRedirectIds.Contains(edge.ToNodeId))
+                continue;
+
+            if (_isRetargetMode && edge.IsRedirect && _retargetSourceNode != null && edge.FromNodeId == _retargetSourceNode.Id)
+                continue;
+
+            if (edge.IsRedirect)
+                continue;
+
             bool isStanceEdge = edge.FromNodeId == -1;
+            bool isIncomingToRedirect = _comboGraph.Nodes.Any(n => n.Id == edge.ToNodeId && n.IsRedirect);
             var color = isStanceEdge
                 ? EdgeStanceDimBrush
                 : (EdgeBrushByInput.TryGetValue(edge.InputName, out var c) ? c : EdgeDefaultBrush);
+            if (isIncomingToRedirect)
+                color = new SolidColorBrush(Color.FromArgb(0x60, 0x6c, 0x70, 0x86));
 
             var siblings = edgesBySource[edge.FromNodeId];
             int siblingIndex = siblings.IndexOf(edge);
@@ -2237,8 +2998,7 @@ public partial class MainWindow : Window
                 Stroke = color,
                 StrokeThickness = thickness,
                 Data = pathGeom,
-                StrokeDashArray = edge.IsRedirect ? new DoubleCollection { 4, 2 } : null,
-                Opacity = edge.IsRedirect ? 0.55 : 1.0
+                StrokeDashArray = isIncomingToRedirect ? new DoubleCollection { 4, 2 } : null
             };
             path.Tag = edge;
             comboCanvas.Children.Add(path);
@@ -2250,6 +3010,7 @@ public partial class MainWindow : Window
                 Data = pathGeom
             };
             hitPath.Tag = edge;
+            hitPath.Cursor = Cursors.Hand;
             Canvas.SetZIndex(hitPath, -1);
             comboCanvas.Children.Add(hitPath);
 
@@ -2292,6 +3053,7 @@ public partial class MainWindow : Window
 
         foreach (var node in _comboGraph.Nodes)
         {
+            if (orphanRedirectIds.Contains(node.Id)) continue;
             if (!_nodePositions.TryGetValue(node.Id, out var pos)) continue;
 
             var nodeColor = GetNodeColor(node);
@@ -2305,17 +3067,20 @@ public partial class MainWindow : Window
                 BorderThickness = new Thickness(2),
                 Background = nodeBg,
                 CornerRadius = new CornerRadius(4),
-                Tag = node,
-                Opacity = node.IsRedirect ? 0.55 : 1.0
+                Tag = node
             };
             border.MouseLeftButtonDown += ComboNode_Click;
             border.PreviewMouseLeftButtonDown += Node_PreviewMouseLeftButtonDown;
-            border.PreviewMouseRightButtonDown += ComboNode_RightClick;
             border.AllowDrop = true;
             border.DragEnter += ComboNode_DragEnter;
             border.DragOver += ComboNode_DragOver;
             border.DragLeave += ComboNode_DragLeave;
             border.Drop += ComboNode_Drop;
+            if (!node.IsRoot)
+            {
+                border.MouseEnter += RetargetNode_MouseEnter;
+                border.MouseLeave += RetargetNode_MouseLeave;
+            }
 
             if (!node.IsRoot)
             {
@@ -2323,6 +3088,15 @@ public partial class MainWindow : Window
                 var resetItem = new MenuItem { Header = "Reset to Vanilla", Tag = node };
                 resetItem.Click += ResetNodeToVanilla_Click;
                 ctxMenu.Items.Add(resetItem);
+
+                if (node.IsRedirect)
+                {
+                    var retargetItem = new MenuItem { Header = "Retarget", Tag = node };
+                    retargetItem.Click += RetargetRedirect_Click;
+                    ctxMenu.Items.Add(retargetItem);
+                }
+
+
                 border.ContextMenu = ctxMenu;
             }
 
@@ -2330,22 +3104,6 @@ public partial class MainWindow : Window
             Canvas.SetTop(border, pos.Y);
             comboCanvas.Children.Add(border);
             _nodeBorders[node.Id] = border;
-
-            var dot = new System.Windows.Shapes.Ellipse
-            {
-                Width = 8,
-                Height = 8,
-                Fill = ConnectDotFill,
-                Stroke = ConnectDotStroke,
-                StrokeThickness = 1,
-                Cursor = Cursors.Cross,
-                Tag = node.Id
-            };
-            dot.PreviewMouseLeftButtonDown += ConnectDot_PreviewMouseLeftButtonDown;
-            Canvas.SetLeft(dot, pos.X + NODE_WIDTH - 4);
-            Canvas.SetTop(dot, pos.Y + NODE_HEIGHT / 2 - 4);
-            Canvas.SetZIndex(dot, 10);
-            comboCanvas.Children.Add(dot);
 
             if (!string.IsNullOrEmpty(node.InputLabel) && !node.IsRoot)
             {
@@ -2373,20 +3131,33 @@ public partial class MainWindow : Window
                 _nodeInputBgs[node.Id] = inputBg;
             }
 
+            var labelText = node.DisplayName.Length > 14 ? node.DisplayName[..14] + ".." : node.DisplayName;
+            if (node.IsRedirect && node.ResolvedRedirectNodeId >= 0 && _comboGraph != null)
+            {
+                var targetNode = _comboGraph.Nodes.FirstOrDefault(n => n.Id == node.ResolvedRedirectNodeId);
+                if (targetNode != null)
+                {
+                    var targetName = targetNode.DisplayName.Length > 10 ? targetNode.DisplayName[..10] + ".." : targetNode.DisplayName;
+                    labelText = $"→ {targetName}";
+                }
+            }
             var label = new TextBlock
             {
-                Text = node.DisplayName.Length > 14 ? node.DisplayName[..14] + ".." : node.DisplayName,
+                Text = labelText,
                 Foreground = Brushes.White,
                 FontSize = 9,
                 TextAlignment = TextAlignment.Center,
                 Width = NODE_WIDTH,
                 TextTrimming = TextTrimming.CharacterEllipsis,
-                IsHitTestVisible = false,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
                 Tag = node.Id
             };
-            Canvas.SetLeft(label, pos.X);
-            Canvas.SetTop(label, pos.Y + (NODE_HEIGHT - 14) / 2);
-            comboCanvas.Children.Add(label);
+            var contentGrid = new Grid();
+            contentGrid.Children.Add(label);
+
+
+            border.Child = contentGrid;
             _nodeLabels[node.Id] = label;
 
             if (node.Id == _selectedNodeId)
@@ -2402,6 +3173,11 @@ public partial class MainWindow : Window
                 {
                     border.BorderBrush = SelectedOrangeBorder;
                     border.Background = SelectedOrangeBg;
+                }
+                else if (node.IsRedirect)
+                {
+                    border.BorderBrush = SelectedRedirectBorder;
+                    border.Background = SelectedRedirectBg;
                 }
                 else
                 {
@@ -2478,6 +3254,15 @@ public partial class MainWindow : Window
 
     private void ComboBorder_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && _isRetargetMode)
+        {
+            ExitRetargetMode();
+            txtStatus.Text = "Retarget cancelled";
+            e.Handled = true;
+            return;
+        }
+
+
         if (e.Key == Key.Delete && _comboGraph != null)
         {
             if (_selectedNodeId >= 0)
@@ -2486,6 +3271,11 @@ public partial class MainWindow : Window
                 if (node == null || node.IsRoot || node.TreeIndex >= 0) return;
 
                 _comboGraph.Edges.RemoveAll(ed => ed.FromNodeId == node.Id || ed.ToNodeId == node.Id);
+                foreach (var n in _comboGraph.Nodes)
+                {
+                    if (n.IsRedirect && n.ResolvedRedirectNodeId == node.Id)
+                        n.ResolvedRedirectNodeId = -1;
+                }
                 _comboGraph.Nodes.Remove(node);
                 _nodePositions.Remove(node.Id);
                 _nodeBorders.Remove(node.Id);
@@ -2550,7 +3340,9 @@ public partial class MainWindow : Window
         _isPanning = true;
         _panMoved = false;
         _panStart = e.GetPosition(this);
-        comboCanvas.CaptureMouse();
+        var hwnd = new WindowInteropHelper(this).Handle;
+        SetCapture(hwnd);
+        comboToolbar.IsHitTestVisible = false;
         PreviewMouseLeftButtonUp += ComboPan_PreviewMouseLeftButtonUp;
         e.Handled = true;
     }
@@ -2559,7 +3351,7 @@ public partial class MainWindow : Window
     {
         if (_dragCandidate && !_isDraggingNode && _dragNodeId >= 0)
         {
-            if ((DateTime.UtcNow - _dragStartTime).TotalMilliseconds > 500)
+            if ((DateTime.UtcNow - _dragStartTime).TotalMilliseconds > 150)
             {
                 _isDraggingNode = true;
                 comboCanvas.CaptureMouse();
@@ -2577,34 +3369,12 @@ public partial class MainWindow : Window
                 Canvas.SetLeft(b, newPos.X);
                 Canvas.SetTop(b, newPos.Y);
             }
-            if (_nodeLabels.TryGetValue(_dragNodeId, out var lbl))
-            {
-                Canvas.SetLeft(lbl, newPos.X);
-                Canvas.SetTop(lbl, newPos.Y + (NODE_HEIGHT - 14) / 2);
-            }
             if (_nodeInputBgs.TryGetValue(_dragNodeId, out var ib))
             {
                 Canvas.SetLeft(ib, newPos.X + 2);
                 Canvas.SetTop(ib, newPos.Y - 10);
             }
             UpdateEdgesForNode(_dragNodeId);
-            for (int i = 0; i < comboCanvas.Children.Count; i++)
-            {
-                if (comboCanvas.Children[i] is System.Windows.Shapes.Ellipse el && el.Tag is int id && id == _dragNodeId)
-                {
-                    Canvas.SetLeft(el, newPos.X + NODE_WIDTH - 4);
-                    Canvas.SetTop(el, newPos.Y + NODE_HEIGHT / 2 - 4);
-                    break;
-                }
-            }
-            e.Handled = true;
-            return;
-        }
-        if (_connectFromNodeId >= 0 && _connectLine != null)
-        {
-            var pos = e.GetPosition(comboCanvas);
-            _connectLine.X2 = pos.X;
-            _connectLine.Y2 = pos.Y;
             e.Handled = true;
             return;
         }
@@ -2633,17 +3403,6 @@ public partial class MainWindow : Window
         {
             _dragCandidate = false;
             _dragNodeId = -1;
-        }
-        if (_connectFromNodeId >= 0)
-        {
-            var pos = e.GetPosition(comboCanvas);
-            int? hitNodeId = HitTestNode(pos);
-            if (hitNodeId.HasValue)
-                FinishConnection(hitNodeId.Value);
-            else
-                CancelConnection();
-            e.Handled = true;
-            return;
         }
         if (!_isPanning) return;
         StopPanning();
@@ -2675,137 +3434,12 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private void ComboCanvas_LostMouseCapture(object sender, MouseEventArgs e)
+    private void ComboCanvas_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (_isPanning) StopPanning();
-    }
-
-    private bool _canvasDragOver;
-
-    private void ComboBorder_DragEnter(object sender, DragEventArgs e)
-    {
-        if (string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase)) { e.Effects = DragDropEffects.None; e.Handled = true; return; }
-        if (e.Data.GetDataPresent(typeof(MoveInfo)) && !IsOverNode(e))
+        if (_isRetargetMode)
         {
-            _canvasDragOver = true;
-            e.Handled = true;
-        }
-    }
-
-    private void ComboBorder_DragOver(object sender, DragEventArgs e)
-    {
-        if (string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase)) { e.Effects = DragDropEffects.None; _canvasDragOver = false; e.Handled = true; return; }
-        if (e.Data.GetDataPresent(typeof(MoveInfo)) && !IsOverNode(e))
-        {
-            e.Effects = DragDropEffects.Copy;
-            _canvasDragOver = true;
-        }
-        else
-        {
-            e.Effects = DragDropEffects.None;
-            _canvasDragOver = false;
-        }
-        e.Handled = true;
-    }
-
-    private void ComboBorder_DragLeave(object sender, DragEventArgs e)
-    {
-        _canvasDragOver = false;
-        e.Handled = true;
-    }
-
-    private void ComboBorder_Drop(object sender, DragEventArgs e)
-    {
-        _canvasDragOver = false;
-        if (string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase))
-        {
-            ShowToast("Custom MainChar nodes disabled — available for enemy/boss graphs");
-            e.Handled = true;
-            return;
-        }
-        if (!e.Data.GetDataPresent(typeof(MoveInfo)) || _comboGraph == null) return;
-
-        var move = e.Data.GetData(typeof(MoveInfo)) as MoveInfo;
-        if (move == null) return;
-
-        var pos = e.GetPosition(comboCanvas);
-        double nodeX = pos.X - NODE_WIDTH / 2;
-        double nodeY = pos.Y - NODE_HEIGHT / 2;
-
-        var newNode = new ComboNode
-        {
-            Id = _comboGraph.Nodes.Count > 0 ? _comboGraph.Nodes.Max(n => n.Id) + 1 : 0,
-            TreeIndex = -1,
-            Name = Path.GetFileNameWithoutExtension(move.FullPath),
-            AnimPath = move.FullPath,
-            DefaultAnimPath = move.FullPath,
-            DefaultDBPath = "",
-            SourceDBPath = _parser.AnimToDbPath.TryGetValue(move.FullPath, out var srcDb) ? srcDb : "",
-            DisplayName = move.DisplayNameClean,
-            IsRoot = false,
-            InputLabel = "",
-            DirectionLabel = "",
-            VanillaAnimPath = ""
-        };
-
-        _comboGraph.Nodes.Add(newNode);
-        _nodePositions[newNode.Id] = new Point(nodeX, nodeY);
-        if (!_parser.AnimToDbPath.ContainsKey(move.FullPath))
-        {
-            CustomNodeCloneMap[newNode.Id] = $"Game/DB/_MainChar/Combos/Attacks/Custom/MainChar_Custom_{newNode.Id}";
-        }
-
-        RenderComboGraph();
-
-        if (_nodeBorders.TryGetValue(newNode.Id, out var newBorder))
-            PlayFusionAnimation(newBorder);
-
-        SelectNode(newBorder, newNode);
-        txtStatus.Text = $"Created node: {move.DisplayNameClean} (drag from dot to connect)";
-        e.Handled = true;
-    }
-
-    private static bool IsOverNode(DragEventArgs e)
-    {
-        var pos = e.GetPosition((IInputElement)e.Source);
-        var hit = VisualTreeHelper.HitTest((Visual)e.Source, pos);
-        if (hit?.VisualHit == null) return false;
-        var ancestor = VisualTreeHelper.GetParent(hit.VisualHit);
-        while (ancestor != null)
-        {
-            if (ancestor is Border b && b.Tag is ComboNode) return true;
-            ancestor = VisualTreeHelper.GetParent(ancestor);
-        }
-        return false;
-    }
-
-    private void ConnectDot_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase)) { ShowToast("Connecting nodes disabled for MainChar"); return; }
-        if (sender is System.Windows.Shapes.Ellipse dot && dot.Tag is int nodeId && _comboGraph != null)
-        {
-            _connectFromNodeId = nodeId;
-            var fromNode = _comboGraph.Nodes.FirstOrDefault(n => n.Id == nodeId);
-            if (fromNode == null) { _connectFromNodeId = -1; return; }
-
-            var fromPos = _nodePositions.TryGetValue(nodeId, out var p) ? p : new Point(0, 0);
-            var startPt = new Point(fromPos.X + NODE_WIDTH, fromPos.Y + NODE_HEIGHT / 2);
-
-            _connectLine = new System.Windows.Shapes.Line
-            {
-                X1 = startPt.X,
-                Y1 = startPt.Y,
-                X2 = startPt.X,
-                Y2 = startPt.Y,
-                Stroke = ConnectLineBrush,
-                StrokeThickness = 2,
-                StrokeDashArray = new DoubleCollection { 4, 2 },
-                IsHitTestVisible = false
-            };
-            Canvas.SetZIndex(_connectLine, 100);
-            comboCanvas.Children.Add(_connectLine);
-
-            comboCanvas.CaptureMouse();
+            ExitRetargetMode();
+            txtStatus.Text = "Retarget cancelled";
             e.Handled = true;
         }
     }
@@ -2814,7 +3448,6 @@ public partial class MainWindow : Window
     {
         if (sender is Border border && border.Tag is ComboNode node)
         {
-            if (e.OriginalSource is System.Windows.Shapes.Ellipse) return;
             _dragCandidate = true;
             _isDraggingNode = false;
             _dragNodeId = node.Id;
@@ -2825,94 +3458,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void FinishConnection(int targetNodeId)
-    {
-        if (_connectFromNodeId < 0 || _comboGraph == null) return;
-        if (_connectFromNodeId == targetNodeId) { CancelConnection(); return; }
-
-        var fromNode = _comboGraph.Nodes.FirstOrDefault(n => n.Id == _connectFromNodeId);
-        var toNode = _comboGraph.Nodes.FirstOrDefault(n => n.Id == targetNodeId);
-        if (fromNode == null || toNode == null) { CancelConnection(); return; }
-
-        string defaultInput = "LMB";
-        bool isRedirect = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
-
-        if (isRedirect)
-        {
-            int newId = _comboGraph.Nodes.Count > 0 ? _comboGraph.Nodes.Max(n => n.Id) + 1 : 0;
-            var redirectNode = new ComboNode
-            {
-                Id = newId,
-                TreeIndex = -1,
-                Name = "",
-                AnimPath = "",
-                DefaultAnimPath = "",
-                DefaultDBPath = "",
-                DisplayName = "\u2197 " + toNode.DisplayName,
-                IsRoot = false,
-                InputLabel = "",
-                DirectionLabel = "",
-                VanillaAnimPath = "",
-                RedirectTargetId = toNode.TreeIndex,
-                IsRedirect = true
-            };
-            _comboGraph.Nodes.Add(redirectNode);
-
-            if (_nodePositions.TryGetValue(toNode.Id, out var toPos))
-                _nodePositions[redirectNode.Id] = new Point(toPos.X + NODE_WIDTH + REDIRECT_GAP, toPos.Y);
-            else
-                _nodePositions[redirectNode.Id] = new Point(30, 30);
-
-            var newEdge = new ComboEdge
-            {
-                FromNodeId = _connectFromNodeId,
-                ToNodeId = redirectNode.Id,
-                InputName = defaultInput,
-                IsRedirect = true
-            };
-            _comboGraph.Edges.Add(newEdge);
-            RenderComboGraph();
-            txtStatus.Text = $"Created redirect: {fromNode.DisplayName} -> {redirectNode.DisplayName} [{defaultInput}]";
-        }
-        else
-        {
-            var existingEdges = _comboGraph.Edges.Where(e => e.FromNodeId == _connectFromNodeId).ToList();
-            var inputCounts = existingEdges.GroupBy(e => e.InputName)
-                .Where(g => !string.IsNullOrEmpty(g.Key))
-                .ToDictionary(g => g.Key, g => g.Count());
-            var conflictInput = inputCounts.FirstOrDefault(kvp => kvp.Value >= 2).Key;
-
-            if (!string.IsNullOrEmpty(conflictInput))
-            {
-                ShowToast($"Input conflict: '{conflictInput}' already has {inputCounts[conflictInput]} edges from this node. Consider using a different input.");
-            }
-
-            var newEdge = new ComboEdge
-            {
-                FromNodeId = _connectFromNodeId,
-                ToNodeId = targetNodeId,
-                InputName = defaultInput
-            };
-            _comboGraph.Edges.Add(newEdge);
-            RenderComboGraph();
-            txtStatus.Text = $"Connected: {fromNode.DisplayName} -> {toNode.DisplayName} [{defaultInput}]";
-        }
-
-        CancelConnection();
-    }
-
-    private void CancelConnection()
-    {
-        if (_connectLine != null)
-        {
-            comboCanvas.Children.Remove(_connectLine);
-            _connectLine = null;
-        }
-        _connectFromNodeId = -1;
-        if (comboCanvas.IsMouseCaptured)
-            comboCanvas.ReleaseMouseCapture();
-    }
-
     private void ComboPan_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         if (_isPanning) StopPanning();
@@ -2921,7 +3466,8 @@ public partial class MainWindow : Window
     private void StopPanning()
     {
         _isPanning = false;
-        comboCanvas.ReleaseMouseCapture();
+        ReleaseCapture();
+        comboToolbar.IsHitTestVisible = true;
         PreviewMouseLeftButtonUp -= ComboPan_PreviewMouseLeftButtonUp;
     }
 
@@ -2946,13 +3492,28 @@ public partial class MainWindow : Window
                         }
                         catch { }
                     }
-                    Dispatcher.BeginInvoke(() => SaveSettings());
+                    Dispatcher.BeginInvoke(() =>
+                    {
+                        SaveSettings();
+                        DeleteTempCustomMoves();
+                    });
                 });
         }
         else
         {
             SaveSettings();
+            DeleteTempCustomMoves();
         }
+    }
+
+    private static void DeleteTempCustomMoves()
+    {
+        try
+        {
+            if (Directory.Exists(TempCustomMovesRoot))
+                Directory.Delete(TempCustomMovesRoot, true);
+        }
+        catch { }
     }
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -3017,6 +3578,8 @@ public partial class MainWindow : Window
 
     private static SolidColorBrush GetNodeColor(ComboNode node)
     {
+        if (node.IsRedirect)
+            return new SolidColorBrush(Color.FromArgb(0x60, 0x6c, 0x70, 0x86));
         if (!string.IsNullOrEmpty(node.VanillaAnimPath) && node.AnimPath != node.VanillaAnimPath)
             return new SolidColorBrush(Color.FromRgb(0xfa, 0xb3, 0x87));
         if (node.AnimPath != node.DefaultAnimPath)
@@ -3028,6 +3591,8 @@ public partial class MainWindow : Window
 
     private static SolidColorBrush GetNodeBackground(ComboNode node)
     {
+        if (node.IsRedirect)
+            return new SolidColorBrush(Color.FromArgb(0x15, 0x6c, 0x70, 0x86));
         if (!string.IsNullOrEmpty(node.VanillaAnimPath) && node.AnimPath != node.VanillaAnimPath)
             return new SolidColorBrush(Color.FromArgb(0x40, 0xfa, 0xb3, 0x87));
         if (node.AnimPath != node.DefaultAnimPath)
@@ -3037,52 +3602,206 @@ public partial class MainWindow : Window
         return new SolidColorBrush(Color.FromArgb(0x40, 0x89, 0xb4, 0xfa));
     }
 
-    private async System.Threading.Tasks.Task FindCardInLibrary(string animPath)
+    private async System.Threading.Tasks.Task FindCardInLibrary(string animPath, ComboNode? sourceNode = null)
     {
         if (string.IsNullOrEmpty(animPath) || (_allMoves.Count == 0 && _allLocomotion.Count == 0)) return;
 
         await System.Threading.Tasks.Task.Delay(100);
 
-        var match = _allMoves.FirstOrDefault(m =>
-            !string.IsNullOrEmpty(m.FullPath) && m.FullPath.Equals(animPath, StringComparison.OrdinalIgnoreCase) && m.IsUsed)
-            ?? _allMoves.FirstOrDefault(m =>
-            !string.IsNullOrEmpty(m.FullPath) && m.FullPath.Equals(animPath, StringComparison.OrdinalIgnoreCase));
+        static bool CardMatches(Border b, string path) =>
+            b.Tag is MoveInfo mi && mi.FullPath != null &&
+            mi.FullPath.Equals(path, StringComparison.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrEmpty(txtSearch.Text))
+        {
+            txtSearch.Text = "";
+            FilterMoves();
+        }
+
+        void ExpandGroups(MoveInfo move)
+        {
+            if (string.IsNullOrEmpty(move.Character)) return;
+            _expandedEnemies.Add(move.Character);
+            if (!_expandedWeapons.TryGetValue(move.Character, out var weapons))
+            {
+                weapons = new HashSet<string>();
+                _expandedWeapons[move.Character] = weapons;
+            }
+            if (!string.IsNullOrEmpty(move.WeaponType))
+                weapons.Add(move.WeaponType);
+        }
+
+        async System.Threading.Tasks.Task<bool> TryHighlightAsync(
+            System.Windows.Controls.ItemsControl list, MoveInfo move, int tabIndex)
+        {
+            tabMoves.SelectedIndex = tabIndex;
+            await System.Threading.Tasks.Task.Delay(50);
+            var border = FindVisualChild<Border>(list, b =>
+                b.Tag is MoveInfo mi && mi.FullPath != null &&
+                mi.FullPath.Equals(move.FullPath, StringComparison.OrdinalIgnoreCase));
+            if (border == null) return false;
+            HighlightCard(border);
+            ScrollToElement(border);
+            txtStatus.Text = $"Found: {move.DisplayNameClean} ({move.Character}/{move.WeaponType})";
+            return true;
+        }
+
+        if (sourceNode is { IsImportedFromMod: true } ||
+            (!string.IsNullOrEmpty(sourceNode?.ImportedDisplayName)))
+        {
+            bool IsCustom(MoveInfo m) =>
+                string.Equals(m.Category, "Custom", StringComparison.OrdinalIgnoreCase);
+
+            var animFile = Path.GetFileNameWithoutExtension(animPath);
+            var nodeNames = new[]
+            {
+                sourceNode.Name,
+                sourceNode.DisplayName,
+                sourceNode.ImportedDisplayName,
+                animFile
+            }.Where(s => !string.IsNullOrEmpty(s)).ToList();
+
+            var customHit =
+                _allMoves.FirstOrDefault(m => IsCustom(m) &&
+                    !string.IsNullOrEmpty(m.FullPath) &&
+                    m.FullPath.Equals(animPath, StringComparison.OrdinalIgnoreCase))
+                ?? _allMoves.FirstOrDefault(m => IsCustom(m) &&
+                    !string.IsNullOrEmpty(m.FullPath) &&
+                    string.Equals(Path.GetFileNameWithoutExtension(m.FullPath), animFile,
+                        StringComparison.OrdinalIgnoreCase))
+                ?? nodeNames.SelectMany(key => _allMoves.Where(m =>
+                    IsCustom(m) &&
+                    (string.Equals(m.DisplayName, key, StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(m.DisplayNameClean, key, StringComparison.OrdinalIgnoreCase) ||
+                     (!string.IsNullOrEmpty(m.FullPath) &&
+                      string.Equals(Path.GetFileNameWithoutExtension(m.FullPath), key,
+                          StringComparison.OrdinalIgnoreCase)))))
+                    .FirstOrDefault();
+
+            if (customHit != null)
+            {
+                ExpandGroups(customHit);
+                FilterMoves();
+                if (await TryHighlightAsync(listCustom, customHit, TabCustom))
+                    return;
+
+                tabMoves.SelectedIndex = TabCustom;
+                txtStatus.Text = $"In library but not visible: {customHit.DisplayNameClean}";
+                return;
+            }
+        }
+
+        var samePath = _allMoves
+            .Where(m => !string.IsNullOrEmpty(m.FullPath) && m.FullPath.Equals(animPath, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var match =
+            samePath.FirstOrDefault(m => string.Equals(m.Category, "Custom", StringComparison.OrdinalIgnoreCase))
+            ?? samePath.FirstOrDefault(m => m.IsUsed)
+            ?? samePath.FirstOrDefault();
 
         if (match != null)
         {
-            if (match.IsUsed)
+            bool inMainCharTree = _mainCharWeaponMoves.Any(kv =>
+                kv.Value.Any(m => m.FullPath != null &&
+                    m.FullPath.Equals(animPath, StringComparison.OrdinalIgnoreCase)));
+
+            int preferredTab;
+            if (string.Equals(match.Category, "Custom", StringComparison.OrdinalIgnoreCase))
             {
-                _expandedEnemies.Add(match.Character);
-                if (!_expandedWeapons.ContainsKey(match.Character))
-                    _expandedWeapons[match.Character] = new HashSet<string>();
-                _expandedWeapons[match.Character].Add(match.WeaponType);
+                ExpandGroups(match);
+                FilterMoves();
+                preferredTab = TabCustom;
+            }
+            else if (inMainCharTree)
+            {
+                _expandedEnemies.Add("MainChar");
+                if (!_expandedWeapons.TryGetValue("MainChar", out var mcWeapons))
+                {
+                    mcWeapons = new HashSet<string>();
+                    _expandedWeapons["MainChar"] = mcWeapons;
+                }
+
+                var weaponLabel = "";
+                foreach (var kv in _mainCharWeaponMoves)
+                {
+                    if (kv.Value.Any(m => m.FullPath != null &&
+                            m.FullPath.Equals(animPath, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        weaponLabel = kv.Key;
+                        break;
+                    }
+                }
+
+                if (string.IsNullOrEmpty(weaponLabel))
+                {
+                    weaponLabel = match.WeaponType switch
+                    {
+                        "Bats" => "Bat",
+                        "Blades" => "Knife",
+                        _ => match.WeaponType
+                    };
+                }
+
+                if (!string.IsNullOrEmpty(weaponLabel))
+                    mcWeapons.Add(weaponLabel);
+
+                FilterMoves();
+                preferredTab = TabVanilla;
             }
             else
             {
-                _expandedEnemies.Add(match.Character);
-                if (!_expandedWeapons.ContainsKey(match.Character))
-                    _expandedWeapons[match.Character] = new HashSet<string>();
-                _expandedWeapons[match.Character].Add(match.WeaponType);
+                ExpandGroups(match);
+                FilterMoves();
+                preferredTab = match.IsUsed ? TabVanilla : TabOther;
             }
-
-            FilterMoves();
-            tabMoves.SelectedIndex = match.IsUsed ? 0 : 1;
 
             await System.Threading.Tasks.Task.Delay(50);
 
-            var targetList = match.IsUsed ? listVanilla : listUnused;
-            var targetBorder = FindVisualChild<Border>(targetList, b =>
+            Border? FindIn(System.Windows.Controls.ItemsControl list) =>
+                FindVisualChild<Border>(list, b => CardMatches(b, animPath));
+
+            var targetBorder = preferredTab switch
             {
-                if (b.Tag is MoveInfo mi)
-                    return mi.FullPath != null && mi.FullPath.Equals(animPath, StringComparison.OrdinalIgnoreCase);
-                return false;
-            });
+                TabVanilla => FindIn(listVanilla),
+                TabOther => FindIn(listUnused),
+                TabCustom => FindIn(listCustom),
+                _ => FindIn(listLoco)
+            };
+            var activeTab = preferredTab;
+
+            if (targetBorder == null)
+            {
+                var candidates = new (System.Windows.Controls.ItemsControl list, int tab)[]
+                {
+                    (listCustom, TabCustom),
+                    (listVanilla, TabVanilla),
+                    (listUnused, TabOther),
+                    (listLoco, TabStances),
+                };
+
+                foreach (var (list, tab) in candidates)
+                {
+                    targetBorder = FindIn(list);
+                    if (targetBorder != null)
+                    {
+                        activeTab = tab;
+                        tabMoves.SelectedIndex = tab;
+                        break;
+                    }
+                }
+            }
 
             if (targetBorder != null)
             {
                 HighlightCard(targetBorder);
                 ScrollToElement(targetBorder);
                 txtStatus.Text = $"Found: {match.DisplayNameClean} ({match.Character}/{match.WeaponType})";
+            }
+            else
+            {
+                tabMoves.SelectedIndex = activeTab;
+                txtStatus.Text = $"In library but not visible: {match.DisplayNameClean}";
             }
             return;
         }
@@ -3092,27 +3811,34 @@ public partial class MainWindow : Window
 
         if (locoMatch != null)
         {
-            tabMoves.SelectedIndex = 2;
+            tabMoves.SelectedIndex = TabStances;
 
             await System.Threading.Tasks.Task.Delay(50);
 
-            var locoBorder = FindVisualChild<Border>(listLoco, b =>
-            {
-                if (b.Tag is MoveInfo mi)
-                    return mi.FullPath != null && mi.FullPath.Equals(animPath, StringComparison.OrdinalIgnoreCase);
-                return false;
-            });
+            var locoBorder = FindVisualChild<Border>(listLoco, b => CardMatches(b, animPath));
 
             if (locoBorder != null)
             {
                 HighlightCard(locoBorder);
                 ScrollToElement(locoBorder);
-                txtStatus.Text = $"Found: {locoMatch.DisplayNameClean} (Locomotion)";
+                txtStatus.Text = $"Found: {locoMatch.DisplayNameClean} (Stances)";
+            }
+            else
+            {
+                txtStatus.Text = $"In library but not visible: {locoMatch.DisplayNameClean}";
             }
             return;
         }
 
-        ShowToast($"Not found in library: {animPath}");
+        ShowToast("Card not found");
+    }
+
+    private string? GetDisplayNameForPath(string animPath)
+    {
+        if (_comboGraph == null || string.IsNullOrEmpty(animPath)) return null;
+        var node = _comboGraph.Nodes.FirstOrDefault(n =>
+            !string.IsNullOrEmpty(n.AnimPath) && n.AnimPath.Equals(animPath, StringComparison.OrdinalIgnoreCase));
+        return node != null && !string.IsNullOrEmpty(node.DisplayName) ? node.DisplayName : null;
     }
 
     private void HighlightCard(Border border)
@@ -3203,10 +3929,17 @@ public partial class MainWindow : Window
         _toastTimer.Start();
     }
 
+    private void SetWebViewVisible(bool visible)
+    {
+        if (webView != null)
+            webView.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private Popup? _previewPopup;
 
     private void ShowPreviewOverlay()
     {
+        SetWebViewVisible(false);
         if (_previewPopup == null)
         {
             var overlay = new Border
@@ -3241,7 +3974,7 @@ public partial class MainWindow : Window
             {
                 Child = overlay,
                 AllowsTransparency = true,
-                PlacementTarget = webView,
+                PlacementTarget = previewAreaGrid,
                 Placement = PlacementMode.Center,
                 StaysOpen = true,
                 IsHitTestVisible = true,
@@ -3258,6 +3991,7 @@ public partial class MainWindow : Window
     {
         if (_previewPopup != null)
             _previewPopup.IsOpen = false;
+        SetWebViewVisible(true);
     }
 
     private static T FindVisualChild<T>(DependencyObject parent, Func<T, bool> predicate) where T : DependencyObject
@@ -3299,6 +4033,15 @@ public partial class MainWindow : Window
     {
         if (sender is Border border && border.Tag is ComboNode node)
         {
+            if (_isRetargetMode)
+            {
+                if (node.Id != _retargetSourceNode?.Id && !node.IsRoot && !node.IsRedirect)
+                    ApplyRetarget(_retargetSourceNode!, node);
+                ExitRetargetMode();
+                RenderComboGraph();
+                return;
+            }
+
             var now = DateTime.UtcNow;
             bool isDoubleClick = node.Id == _lastClickedNodeId && (now - _lastClickTime).TotalMilliseconds < 400;
             _lastClickedNodeId = node.Id;
@@ -3306,22 +4049,61 @@ public partial class MainWindow : Window
 
             if (isDoubleClick)
             {
+                _dragCandidate = false;
+                _dragNodeId = -1;
                 if (node.IsRedirect && node.ResolvedRedirectNodeId >= 0 && _comboGraph != null)
                 {
                     var targetNode = _comboGraph.Nodes.FirstOrDefault(n => n.Id == node.ResolvedRedirectNodeId);
-                    if (targetNode != null && _nodeBorders.TryGetValue(targetNode.Id, out var targetBorder) && _nodePositions.TryGetValue(targetNode.Id, out var targetPos))
+                    if (targetNode != null && _nodeBorders.TryGetValue(targetNode.Id, out var targetBorder))
                     {
-                        _dragCandidate = false;
-                        _dragNodeId = -1;
                         SelectNode(targetBorder, targetNode);
-                        _comboTranslate.X = -targetPos.X + 300;
-                        _comboTranslate.Y = -targetPos.Y + 200;
+                        if (_nodePositions.TryGetValue(targetNode.Id, out var targetPos))
+                        {
+                            var canvasW = comboCanvas.ActualWidth;
+                            var canvasH = comboCanvas.ActualHeight;
+                            _comboTranslate.X = canvasW / 2 - targetPos.X - NODE_WIDTH / 2;
+                            _comboTranslate.Y = canvasH / 2 - targetPos.Y - NODE_HEIGHT / 2;
+                        }
+                        txtStatus.Text = $"Jumped to redirect target: {targetNode.DisplayName}";
+                        if (!string.IsNullOrEmpty(targetNode.AnimPath))
+                        {
+                            txtStatus.Text = $"Loading: {targetNode.DisplayName} ({targetNode.AnimPath})...";
+                            ShowPreviewOverlay();
+                            try
+                            {
+                                string previewChar = "MainChar";
+                                if (!string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase))
+                                    previewChar = _activeStance.Split('|')[0];
+                                else if (targetNode.AnimPath.Contains("/"))
+                                {
+                                    var segs = targetNode.AnimPath.Split('/');
+                                    var idx = Array.FindIndex(segs, s => s.Equals("Animations", StringComparison.OrdinalIgnoreCase));
+                                    if (idx >= 0 && idx + 1 < segs.Length) previewChar = segs[idx + 1];
+                                }
+                                await LoadMeshAsync(previewChar);
+                                await LoadAnimationAsync(targetNode.AnimPath);
+                            }
+                            catch (Exception ex)
+                            {
+                                ErrorLog.Write("REDIRECT_DBLCLK", new Exception($"Node '{targetNode.DisplayName}' (Path={targetNode.AnimPath}): {ex.Message}"));
+                                txtStatus.Text = $"Error loading {targetNode.DisplayName}: {ex.Message}";
+                            }
+                        }
+                        else
+                        {
+                            txtStatus.Text = $"Target '{targetNode.DisplayName}' has no animation path";
+                        }
+                        if (targetNode.Name == "MainChar_Stance")
+                            ShowToast("Combat Stance — not in library");
+                        else
+                            await FindCardInLibrary(targetNode.AnimPath, targetNode);
                         return;
                     }
                 }
-                _dragCandidate = false;
-                _dragNodeId = -1;
-                await FindCardInLibrary(node.AnimPath);
+                if (node.Name == "MainChar_Stance")
+                    ShowToast("Combat Stance — not in library");
+                else
+                    await FindCardInLibrary(node.AnimPath, node);
                 return;
             }
 
@@ -3334,7 +4116,12 @@ public partial class MainWindow : Window
             ClearMoveSelection();
             SelectNode(border, node);
 
-            txtDisplayName.Text = $"Display: {node.DisplayName}";
+            txtDisplayName.Text = node.IsRedirect
+                ? $"Redirect → {(_comboGraph?.Nodes.FirstOrDefault(n => n.Id == node.ResolvedRedirectNodeId)?.DisplayName ?? "?")}"
+                : !string.IsNullOrEmpty(node.ImportedDisplayName) &&
+                  !string.Equals(node.ImportedDisplayName, node.DisplayName, StringComparison.OrdinalIgnoreCase)
+                    ? $"Display: {node.DisplayName} → Changed: {node.ImportedDisplayName}"
+                    : $"Display: {node.DisplayName}";
 
             if (!string.IsNullOrEmpty(node.AnimPath))
             {
@@ -3369,6 +4156,69 @@ public partial class MainWindow : Window
         }
     }
 
+    private void RetargetRedirect_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem mi && mi.Tag is ComboNode redirectNode && redirectNode.IsRedirect)
+        {
+            _isRetargetMode = true;
+            _retargetSourceNode = redirectNode;
+            txtStatus.Text = "Retarget mode: click an attack node to retarget, Escape to cancel";
+        }
+    }
+
+    private void ApplyRetarget(ComboNode redirectNode, ComboNode newTarget)
+    {
+        if (_comboGraph == null) return;
+
+        var oldEdge = _comboGraph.Edges.FirstOrDefault(e => e.FromNodeId == redirectNode.Id && e.IsRedirect);
+        if (oldEdge != null) _comboGraph.Edges.Remove(oldEdge);
+
+        _comboGraph.Edges.Add(new ComboEdge
+        {
+            FromNodeId = redirectNode.Id,
+            ToNodeId = newTarget.Id,
+            InputName = oldEdge?.InputName ?? "",
+            IsRedirect = true
+        });
+
+        redirectNode.ResolvedRedirectNodeId = newTarget.Id;
+
+        RenderComboGraph();
+        txtStatus.Text = $"Retargeted '{redirectNode.DisplayName}' → '{newTarget.DisplayName}'";
+    }
+
+    private void ExitRetargetMode()
+    {
+        _isRetargetMode = false;
+        _retargetSourceNode = null;
+    }
+
+
+    private void RetargetNode_MouseEnter(object sender, MouseEventArgs e)
+    {
+        if (sender is not Border border || border.Tag is not ComboNode node) return;
+        if (_isRetargetMode)
+        {
+            if (node.Id == _retargetSourceNode?.Id || node.IsRedirect) return;
+            border.BorderBrush = new SolidColorBrush(Color.FromRgb(0xa6, 0xe3, 0xa1));
+            border.Background = new SolidColorBrush(Color.FromArgb(0x40, 0xa6, 0xe3, 0xa1));
+        }
+    }
+
+    private void RetargetNode_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (sender is not Border border || border.Tag is not ComboNode node) return;
+        if (_selectedNodeId == node.Id)
+        {
+            SelectNode(border, node);
+        }
+        else
+        {
+            border.BorderBrush = GetNodeColor(node);
+            border.Background = GetNodeBackground(node);
+        }
+    }
+
     private async void CmbStance_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         string stance = "";
@@ -3388,23 +4238,28 @@ public partial class MainWindow : Window
         if (unitPopupBorder.Visibility == Visibility.Visible)
         {
             unitPopupBorder.Visibility = Visibility.Collapsed;
+            SetWebViewVisible(true);
             return;
         }
         PopulateUnitCards();
+        SetWebViewVisible(false);
         unitPopupBorder.Visibility = Visibility.Visible;
     }
 
     private void UnitPopupBackground_Click(object sender, MouseButtonEventArgs e)
     {
         if (e.OriginalSource == unitPopupBorder)
+        {
             unitPopupBorder.Visibility = Visibility.Collapsed;
+            SetWebViewVisible(true);
+        }
     }
 
     private void UpdateVariantButtonVisibility()
     {
-        bool isEnemy = !string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase);
-        btnVariant.Visibility = isEnemy ? Visibility.Visible : Visibility.Collapsed;
-        if (!isEnemy) { _activeVariant = null; variantPopupBorder.Visibility = Visibility.Collapsed; }
+        var hasVariants = GetVariantsForArchetype(_activeStance.Split('|')[0]).Length > 0;
+        btnVariant.Visibility = hasVariants ? Visibility.Visible : Visibility.Collapsed;
+        if (!hasVariants) { _activeVariant = null; variantPopupBorder.Visibility = Visibility.Collapsed; SetWebViewVisible(true); }
     }
 
     private void BtnVariant_Click(object sender, RoutedEventArgs e)
@@ -3412,16 +4267,21 @@ public partial class MainWindow : Window
         if (variantPopupBorder.Visibility == Visibility.Visible)
         {
             variantPopupBorder.Visibility = Visibility.Collapsed;
+            SetWebViewVisible(true);
             return;
         }
         PopulateVariantCards();
+        SetWebViewVisible(false);
         variantPopupBorder.Visibility = Visibility.Visible;
     }
 
     private void VariantPopupBackground_Click(object sender, MouseButtonEventArgs e)
     {
         if (e.OriginalSource == variantPopupBorder)
+        {
             variantPopupBorder.Visibility = Visibility.Collapsed;
+            SetWebViewVisible(true);
+        }
     }
 
     private void PopulateVariantCards()
@@ -3454,6 +4314,7 @@ public partial class MainWindow : Window
             card.MouseLeftButtonDown += async (s, ev) =>
             {
                 variantPopupBorder.Visibility = Visibility.Collapsed;
+                SetWebViewVisible(true);
                 if (variantTag == _activeVariant) return;
                 await LoadVariantComboGraphAsync(variantTag);
             };
@@ -3463,6 +4324,145 @@ public partial class MainWindow : Window
                 card.BorderThickness = new Thickness(2);
             }
             variantWrapPanel.Children.Add(card);
+        }
+    }
+
+    private void UpdateWeaponButtonVisibility()
+    {
+        var arch = _activeStance?.Split('|')[0];
+        if (string.IsNullOrEmpty(arch)) { btnWeaponVariant.Visibility = Visibility.Collapsed; return; }
+        var hasWeapons = GetWeaponVariantsForArchetype(arch).Length > 0;
+        btnWeaponVariant.Visibility = hasWeapons ? Visibility.Visible : Visibility.Collapsed;
+        if (!hasWeapons)
+        {
+            _activeWeapon = null;
+            weaponPopupBorder.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void BtnWeaponVariant_Click(object sender, RoutedEventArgs e)
+    {
+        if (weaponPopupBorder.Visibility == Visibility.Visible)
+        {
+            weaponPopupBorder.Visibility = Visibility.Collapsed;
+            SetWebViewVisible(true);
+            return;
+        }
+        PopulateWeaponCards();
+        SetWebViewVisible(false);
+        weaponPopupBorder.Visibility = Visibility.Visible;
+    }
+
+    private void WeaponPopupBackground_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource == weaponPopupBorder)
+        {
+            weaponPopupBorder.Visibility = Visibility.Collapsed;
+            SetWebViewVisible(true);
+        }
+    }
+
+    private void PopulateWeaponCards()
+    {
+        string arch = _activeStance.Split('|')[0];
+        weaponPopupTitle.Text = $"Select {arch} Weapon";
+        weaponWrapPanel.Children.Clear();
+
+        var weapons = GetWeaponVariantsForArchetype(arch);
+        if (weapons.Length == 0) { weaponPopupTitle.Text = $"No weapons for {arch}"; return; }
+
+        foreach (var (name, tag) in weapons)
+        {
+            var card = new Border
+            {
+                Width = 90, Height = 130, Background = new SolidColorBrush(Color.FromRgb(0x1e,0x1e,0x2e)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0x58,0x5b,0x70)), BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6), Margin = new Thickness(6), Cursor = Cursors.Hand, Tag = tag
+            };
+            var stack = new StackPanel();
+            var imgBorder = new Border{ Height=90, CornerRadius=new CornerRadius(6,6,0,0), Background=new SolidColorBrush(Color.FromRgb(0x31,0x32,0x44)), ClipToBounds=true };
+            var initials = new TextBlock{ Text=name.Substring(0, Math.Min(2, name.Length)).ToUpper(), Foreground=Brushes.White, FontSize=28, FontWeight=FontWeights.Bold, HorizontalAlignment=HorizontalAlignment.Center, VerticalAlignment=VerticalAlignment.Center, Margin=new Thickness(0,28,0,0)};
+            imgBorder.Child = initials;
+            var nameBlock = new Border{ Height=40, Background=new SolidColorBrush(Color.FromRgb(0x31,0x32,0x44)), CornerRadius=new CornerRadius(0,0,6,6), Padding=new Thickness(4)};
+            nameBlock.Child = new TextBlock{ Text=name, Foreground=new SolidColorBrush(Color.FromRgb(0xcd,0xd6,0xf4)), FontSize=10, FontWeight=FontWeights.SemiBold, TextAlignment=TextAlignment.Center, VerticalAlignment=VerticalAlignment.Center, TextWrapping=TextWrapping.Wrap};
+            stack.Children.Add(imgBorder);
+            stack.Children.Add(nameBlock);
+            card.Child = stack;
+            string weaponTag = tag;
+            card.MouseLeftButtonDown += async (s, ev) =>
+            {
+                weaponPopupBorder.Visibility = Visibility.Collapsed;
+                SetWebViewVisible(true);
+                if (weaponTag == _activeWeapon) return;
+                await LoadWeaponComboGraphAsync(weaponTag);
+            };
+            if (tag == _activeWeapon)
+            {
+                card.BorderBrush = new SolidColorBrush(Color.FromRgb(0x89,0xb4,0xfa));
+                card.BorderThickness = new Thickness(2);
+            }
+            weaponWrapPanel.Children.Add(card);
+        }
+    }
+
+    private async Task LoadWeaponComboGraphAsync(string weaponTag)
+    {
+        ClearNodeSelection();
+        string arch = _activeStance.Split('|')[0];
+        string variantForPath = _activeVariant ?? $"{arch}_Base";
+
+        if (arch == "MainChar")
+            variantForPath = weaponTag;
+
+        var comboPath = ResolveWeaponComboPath(arch, variantForPath, weaponTag);
+        if (comboPath == null && weaponTag.Contains("Barehands"))
+            comboPath = ResolveComboFilePath(variantForPath);
+        if (comboPath == null) { txtStatus.Text = $"No weapon combo for {weaponTag}"; return; }
+
+        SaveCurrentUnitToCache();
+        _currentUnitProps = null;
+        _activeWeapon = weaponTag;
+
+        string cacheKey = GetUnitCacheKey();
+        if (TryRestoreUnitFromCache(cacheKey))
+        {
+            UpdateWeaponButtonVisibility();
+            _comboTranslate.X = 0;
+            _comboTranslate.Y = 0;
+            return;
+        }
+
+        graphLoadingText.Text = $"Loading {arch} {weaponTag}...";
+        graphLoadingBorder.Visibility = Visibility.Visible;
+        comboCanvas.IsHitTestVisible = false;
+        try
+        {
+            var graph = await Task.Run(() => _parser.LoadComboTreeFromPath(comboPath, arch == "MainChar" ? weaponTag : arch));
+            if (graph == null || graph.Nodes.Count == 0)
+            {
+                txtStatus.Text = $"{weaponTag}: no combo data at {comboPath}";
+                return;
+            }
+            _comboGraph = graph;
+            _activeWeapon = weaponTag;
+            UpdateWeaponButtonVisibility();
+            txtComboInfo.Text = $"{arch} {weaponTag} - {graph.Nodes.Count} nodes";
+            _comboTranslate.X = 0;
+            _comboTranslate.Y = 0;
+            _nodePositions.Clear();
+            LayoutComboGraph();
+            RenderComboGraph();
+            txtStatus.Text = $"Loaded {arch} {weaponTag} ({graph.Nodes.Count} nodes)";
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("WEAPON", ex);
+            txtStatus.Text = $"Error loading {weaponTag}: {ex.Message}";
+        }
+        finally
+        {
+            graphLoadingBorder.Visibility = Visibility.Collapsed;
+            comboCanvas.IsHitTestVisible = true;
         }
     }
 
@@ -3483,8 +4483,123 @@ public partial class MainWindow : Window
         _ => Array.Empty<(string, string)>()
     };
 
+    private static (string name, string tag)[] GetWeaponVariantsForArchetype(string arch) => arch switch
+    {
+        "MainChar" => new[]{ ("Barehands","MainChar_Barehands"), ("Bat","MainChar_Bat"), ("Staff","MainChar_Staff"), ("Blade","MainChar_Blade") },
+        "Grunt" => new[]{ ("Barehands","Grunt_Barehands"), ("Bat","Grunt_Bat"), ("Blade","Grunt_Blade") },
+        "FireDisciple" => new[]{ ("Barehands","FD_Barehands"), ("Staff","FD_Staff") },
+        _ => Array.Empty<(string, string)>()
+    };
+
+    private static string? ResolveWeaponComboPath(string arch, string variantTag, string weaponTag) => (arch, weaponTag) switch
+    {
+        ("MainChar", "MainChar_Barehands") => "Game/DB/_MainChar/Combos/MainChar_ComboTree",
+        ("MainChar", "MainChar_Bat") => "Game/DB/_MainChar/Combos/Attacks/Weapons/Bats/MainChar_Bats_ComboTree",
+        ("MainChar", "MainChar_Staff") => "Game/DB/_MainChar/Combos/Attacks/Weapons/Staff/MainChar_Staff_ComboTree",
+        ("MainChar", "MainChar_Blade") => "Game/DB/_MainChar/Combos/Attacks/Weapons/Blades/MainChar_Blades_ComboTree",
+        ("Grunt", "Grunt_Bat") => variantTag switch
+        {
+            "Grunt_Advanced" => "Game/DB/AI/Archetypes/Grunt/_Advanced/Grunt_Advanced_BatCombo",
+            "Grunt_Miniboss" => "Game/DB/AI/Archetypes/Grunt/_Miniboss/Grunt_Miniboss_BatCombo",
+            _ => "Game/DB/AI/Archetypes/Grunt/_Base/Grunt_Base_BatCombo"
+        },
+        ("Grunt", "Grunt_Blade") => variantTag switch
+        {
+            "Grunt_Advanced" => "Game/DB/AI/Archetypes/Grunt/_Advanced/Grunt_Advanced_BladeCombo",
+            "Grunt_Miniboss" => "Game/DB/AI/Archetypes/Grunt/_Miniboss/Grunt_Miniboss_BladeCombo",
+            _ => "Game/DB/AI/Archetypes/Grunt/_Base/Grunt_Base_BladeCombo"
+        },
+        ("FireDisciple", "FD_Staff") => variantTag switch
+        {
+            "FD_Advanced" => "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Advanced_StaffCombo",
+            "FD_Miniboss" => "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_MiniBoss_StaffCombo",
+            _ => "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Base_StaffCombo"
+        },
+        _ => null
+    };
+
+    private sealed record ImportComboEntry(
+        string UnitKey,
+        string GamePath,
+        string WeaponName,
+        string? ActiveVariant,
+        string? ActiveWeapon);
+
+    private static Dictionary<string, ImportComboEntry> BuildImportComboCatalog()
+    {
+        var cat = new Dictionary<string, ImportComboEntry>(StringComparer.OrdinalIgnoreCase);
+
+        void MC(string basename, string weaponTag, string gamePath) =>
+            cat[basename] = new ImportComboEntry($"MainChar|{weaponTag}", gamePath, weaponTag, null, weaponTag);
+
+        void EN(string basename, string arch, string variant, string gamePath, string? weapon = null) =>
+            cat[basename] = new ImportComboEntry(
+                weapon != null ? $"{arch}|{variant}|{weapon}" : $"{arch}|{variant}",
+                gamePath, arch, variant, weapon);
+
+        MC("MainChar_ComboTree", "MainChar_Barehands", "Game/DB/_MainChar/Combos/MainChar_ComboTree");
+        MC("MainChar_Bats_ComboTree", "MainChar_Bat", "Game/DB/_MainChar/Combos/Attacks/Weapons/Bats/MainChar_Bats_ComboTree");
+        MC("MainChar_Staff_ComboTree", "MainChar_Staff", "Game/DB/_MainChar/Combos/Attacks/Weapons/Staff/MainChar_Staff_ComboTree");
+        MC("MainChar_Blades_ComboTree", "MainChar_Blade", "Game/DB/_MainChar/Combos/Attacks/Weapons/Blades/MainChar_Blades_ComboTree");
+
+        EN("Yang_P1_Combo", "Yang", "Yang_P1", "Game/DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo");
+        EN("Yang_P2_Combo", "Yang", "Yang_P2", "Game/DB/AI/Archetypes/Yang/_DB/Phase2/Yang_P2_Combo");
+        EN("Yang_P3_Combo", "Yang", "Yang_P3", "Game/DB/AI/Archetypes/Yang/_DB/Phase3/Yang_P3_Combo");
+        EN("Sean_Combo_Phase1", "Sean", "Sean_P1", "Game/DB/AI/Archetypes/Sean/Sean_Combo_Phase1");
+        EN("Sean_Combo_Phase2", "Sean", "Sean_P2", "Game/DB/AI/Archetypes/Sean/Sean_Combo_Phase2");
+        EN("Sean_BurstCombo", "Sean", "Sean_Burst", "Game/DB/AI/Archetypes/Sean/Sean_BurstCombo");
+        EN("Kuroki_ComboPhase1_NEW", "Kuroki", "Kuroki_P1", "Game/DB/AI/Archetypes/Kuroki/Kuroki_ComboPhase1_NEW");
+        EN("Kuroki_ComboPhase2_Shiroizu", "Kuroki", "Kuroki_P2", "Game/DB/AI/Archetypes/Kuroki/Kuroki_ComboPhase2_Shiroizu");
+        EN("Fengjie_Phase1_Combo", "Fengjie", "Fengjie_P1", "Game/DB/AI/Archetypes/Fengjie/Phase1/Fengjie_Phase1_Combo");
+        EN("Fengjie_Phase2_Combo", "Fengjie", "Fengjie_P2", "Game/DB/AI/Archetypes/Fengjie/Phase2/Fengjie_Phase2_Combo");
+        EN("Fajar_Combo_P1", "Fajar", "Fajar_P1", "Game/DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P1");
+        EN("Fajar_Combo_P2", "Fajar", "Fajar_P2", "Game/DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P2");
+        EN("Grunt_Base_Combo", "Grunt", "Grunt_Base", "Game/DB/AI/Archetypes/Grunt/_Base/Grunt_Base_Combo");
+        EN("Grunt_Advanced_Combo", "Grunt", "Grunt_Advanced", "Game/DB/AI/Archetypes/Grunt/_Advanced/Grunt_Advanced_Combo");
+        EN("Grunt_Miniboss_Combo", "Grunt", "Grunt_Miniboss", "Game/DB/AI/Archetypes/Grunt/_Miniboss/Grunt_Miniboss_Combo");
+        EN("BigGuy_Base_Combo", "BigGuy", "BigGuy_Base", "Game/DB/AI/Archetypes/BigGuy/_MainGame/Generic/BigGuy_Base_Combo");
+        EN("BigGuy_Advanced_Combo", "BigGuy", "BigGuy_Advanced", "Game/DB/AI/Archetypes/BigGuy/_MainGame/Generic/BigGuy_Advanced_Combo");
+        EN("BigGuy_Miniboss_Combo", "BigGuy", "BigGuy_Miniboss", "Game/DB/AI/Archetypes/BigGuy/_MainGame/Generic/BigGuy_Miniboss_Combo");
+        EN("Bodyguard_Base_Combo", "BodyGuard", "Bodyguard_Base", "Game/DB/AI/Archetypes/Bodyguard/_Base/Bodyguard_Base_Combo");
+        EN("Bodyguard_Advanced_Combo", "BodyGuard", "Bodyguard_Advanced", "Game/DB/AI/Archetypes/Bodyguard/_Advanced/Bodyguard_Advanced_Combo");
+        EN("Bodyguard_Miniboss_Combo", "BodyGuard", "Bodyguard_Miniboss", "Game/DB/AI/Archetypes/Bodyguard/_Miniboss/Bodyguard_Miniboss_Combo");
+        EN("FlashKick_Base_Combo", "FlashKick", "FlashKick_Base", "Game/DB/AI/Archetypes/FlashKick/_MainGame/Generic/FlashKick_Base_Combo");
+        EN("FlashKick_Advanced_Combo", "FlashKick", "FlashKick_Advanced", "Game/DB/AI/Archetypes/FlashKick/_MainGame/Generic/FlashKick_Advanced_Combo");
+        EN("FlashKick_Miniboss_Combo", "FlashKick", "FlashKick_Miniboss", "Game/DB/AI/Archetypes/FlashKick/_MainGame/Generic/FlashKick_Miniboss_Combo");
+        EN("FireDisciple_Base_Combo", "FireDisciple", "FD_Base", "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Base_Combo");
+        EN("FireDisciple_Advanced_Combo", "FireDisciple", "FD_Advanced", "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Advanced_Combo");
+        EN("FireDisciple_MiniBoss_Combo", "FireDisciple", "FD_Miniboss", "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_MiniBoss_Combo");
+        EN("Grunt_Base_BatCombo", "Grunt", "Grunt_Base", "Game/DB/AI/Archetypes/Grunt/_Base/Grunt_Base_BatCombo", "Grunt_Bat");
+        EN("Grunt_Base_BladeCombo", "Grunt", "Grunt_Base", "Game/DB/AI/Archetypes/Grunt/_Base/Grunt_Base_BladeCombo", "Grunt_Blade");
+        EN("Grunt_Advanced_BatCombo", "Grunt", "Grunt_Advanced", "Game/DB/AI/Archetypes/Grunt/_Advanced/Grunt_Advanced_BatCombo", "Grunt_Bat");
+        EN("Grunt_Advanced_BladeCombo", "Grunt", "Grunt_Advanced", "Game/DB/AI/Archetypes/Grunt/_Advanced/Grunt_Advanced_BladeCombo", "Grunt_Blade");
+        EN("Grunt_Miniboss_BatCombo", "Grunt", "Grunt_Miniboss", "Game/DB/AI/Archetypes/Grunt/_Miniboss/Grunt_Miniboss_BatCombo", "Grunt_Bat");
+        EN("Grunt_Miniboss_BladeCombo", "Grunt", "Grunt_Miniboss", "Game/DB/AI/Archetypes/Grunt/_Miniboss/Grunt_Miniboss_BladeCombo", "Grunt_Blade");
+        EN("FireDisciple_Base_StaffCombo", "FireDisciple", "FD_Base", "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Base_StaffCombo", "FD_Staff");
+        EN("FireDisciple_Advanced_StaffCombo", "FireDisciple", "FD_Advanced", "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Advanced_StaffCombo", "FD_Staff");
+        EN("FireDisciple_MiniBoss_StaffCombo", "FireDisciple", "FD_Miniboss", "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_MiniBoss_StaffCombo", "FD_Staff");
+        EN("Servant_Combo", "Servant", "Servant", "Game/DB/AI/Archetypes/Servant/Servant_Combo");
+        EN("Sifu_Combo", "Sifu", "Sifu", "Game/DB/AI/Archetypes/Sifu/Sifu_Combo");
+
+        return cat;
+    }
+
+    private static string GetArchFromVariant(string variantTag) => variantTag switch
+    {
+        "FD_Base" or "FD_Advanced" or "FD_Miniboss" => "FireDisciple",
+        "Bodyguard_Base" or "Bodyguard_Advanced" or "Bodyguard_Miniboss" => "BodyGuard",
+        "Sifu" => "Sifu",
+        "Servant" => "Servant",
+        _ when variantTag.StartsWith("Bodyguard", StringComparison.OrdinalIgnoreCase) => "BodyGuard",
+        _ => variantTag.Split('_')[0]
+    };
+
     private static string? ResolveComboFilePath(string variantTag) => variantTag switch
     {
+        "MainChar_Barehands" => "Game/DB/_MainChar/Combos/MainChar_ComboTree",
+        "MainChar_Bat" => "Game/DB/_MainChar/Combos/Attacks/Weapons/Bats/MainChar_Bats_ComboTree",
+        "MainChar_Staff" => "Game/DB/_MainChar/Combos/Attacks/Weapons/Staff/MainChar_Staff_ComboTree",
+        "MainChar_Blade" => "Game/DB/_MainChar/Combos/Attacks/Weapons/Blades/MainChar_Blades_ComboTree",
         "Yang_P1" => "Game/DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo",
         "Yang_P2" => "Game/DB/AI/Archetypes/Yang/_DB/Phase2/Yang_P2_Combo",
         "Yang_P3" => "Game/DB/AI/Archetypes/Yang/_DB/Phase3/Yang_P3_Combo",
@@ -3512,6 +4627,15 @@ public partial class MainWindow : Window
         "FD_Base" => "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Base_Combo",
         "FD_Advanced" => "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Advanced_Combo",
         "FD_Miniboss" => "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_MiniBoss_Combo",
+        "Grunt_Base_Bat" => "Game/DB/AI/Archetypes/Grunt/_Base/Grunt_Base_BatCombo",
+        "Grunt_Base_Blade" => "Game/DB/AI/Archetypes/Grunt/_Base/Grunt_Base_BladeCombo",
+        "Grunt_Advanced_Bat" => "Game/DB/AI/Archetypes/Grunt/_Advanced/Grunt_Advanced_BatCombo",
+        "Grunt_Advanced_Blade" => "Game/DB/AI/Archetypes/Grunt/_Advanced/Grunt_Advanced_BladeCombo",
+        "Grunt_Miniboss_Bat" => "Game/DB/AI/Archetypes/Grunt/_Miniboss/Grunt_Miniboss_BatCombo",
+        "Grunt_Miniboss_Blade" => "Game/DB/AI/Archetypes/Grunt/_Miniboss/Grunt_Miniboss_BladeCombo",
+        "FD_Base_Staff" => "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Base_StaffCombo",
+        "FD_Advanced_Staff" => "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Advanced_StaffCombo",
+        "FD_Miniboss_Staff" => "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_MiniBoss_StaffCombo",
         "Servant" => "Game/DB/AI/Archetypes/Servant/Servant_Combo",
         "Sifu" => "Game/DB/AI/Archetypes/Sifu/Sifu_Combo",
         _ => null
@@ -3519,9 +4643,29 @@ public partial class MainWindow : Window
 
     private async Task LoadVariantComboGraphAsync(string variantTag)
     {
+        ClearNodeSelection();
         var comboPath = ResolveComboFilePath(variantTag);
         if (comboPath == null) { txtStatus.Text = $"No combo file for {variantTag}"; return; }
         string arch = _activeStance.Split('|')[0];
+
+        SaveCurrentUnitToCache();
+        _currentUnitProps = null;
+        _activeWeapon = null;
+        _activeVariant = variantTag;
+        _activeStance = arch;
+
+        string cacheKey = GetUnitCacheKey();
+        if (TryRestoreUnitFromCache(cacheKey))
+        {
+            if (!string.IsNullOrEmpty(_activeWeapon) && !GetWeaponVariantsForArchetype(arch).Any(w => w.tag == _activeWeapon))
+                _activeWeapon = null;
+            UpdateVariantButtonVisibility();
+            UpdateWeaponButtonVisibility();
+            _comboTranslate.X = 0;
+            _comboTranslate.Y = 0;
+            return;
+        }
+
         graphLoadingText.Text = $"Loading {arch} {variantTag}...";
         graphLoadingBorder.Visibility = Visibility.Visible;
         comboCanvas.IsHitTestVisible = false;
@@ -3534,13 +4678,17 @@ public partial class MainWindow : Window
                 return;
             }
             _comboGraph = graph;
-            _activeVariant = variantTag;
+            if (!string.IsNullOrEmpty(_activeWeapon) && !GetWeaponVariantsForArchetype(arch).Any(w => w.tag == _activeWeapon))
+                _activeWeapon = null;
+            UpdateWeaponButtonVisibility();
             txtComboInfo.Text = $"{arch} {variantTag} - {graph.Nodes.Count} nodes";
             _comboTranslate.X = 0;
             _comboTranslate.Y = 0;
+            _nodePositions.Clear();
             LayoutComboGraph();
             RenderComboGraph();
             txtStatus.Text = $"Loaded {arch} {variantTag} ({graph.Nodes.Count} nodes)";
+            btnUnitProperties.Visibility = arch == "MainChar" ? Visibility.Collapsed : Visibility.Visible;
         }
         catch (Exception ex)
         {
@@ -3577,7 +4725,9 @@ public partial class MainWindow : Window
             card.Child = stack;
             card.MouseLeftButtonDown += async (s, ev) =>
             {
+                ClearNodeSelection();
                 unitPopupBorder.Visibility = Visibility.Collapsed;
+                SetWebViewVisible(true);
                 string selArch = (string)((Border)s).Tag;
                 if (selArch == _activeStance.Split('|')[0]) return;
                 if (selArch == "MainChar")
@@ -3587,7 +4737,9 @@ public partial class MainWindow : Window
                 else
                 {
                     _activeStance = selArch;
+                    _activeWeapon = null;
                     UpdateVariantButtonVisibility();
+                    UpdateWeaponButtonVisibility();
                     var variants = GetVariantsForArchetype(selArch);
                     if (variants.Length > 0)
                         await LoadVariantComboGraphAsync(variants[0].tag);
@@ -3611,12 +4763,16 @@ public partial class MainWindow : Window
 
     private async Task SwitchStanceAsync(string stance)
     {
+        ClearNodeSelection();
         var contentDir = Path.Combine(_contentPath, "Content");
         if (!Directory.Exists(contentDir))
         {
             ErrorLog.Write("STANCE", new Exception($"Content dir not found: {contentDir}"));
             return;
         }
+
+        SaveCurrentUnitToCache();
+        _currentUnitProps = null;
 
         graphLoadingText.Text = "Loading MainChar...";
         graphLoadingBorder.Visibility = Visibility.Visible;
@@ -3709,29 +4865,44 @@ public partial class MainWindow : Window
             }
 
             _activeStance = stance;
+            _activeWeapon = "MainChar_Barehands";
             UpdateVariantButtonVisibility();
+            UpdateWeaponButtonVisibility();
 
-            var freshParser = new AnimationParser();
-            freshParser.Initialize(_contentPath, contentDir);
-            _parser = freshParser;
-
-            var graph = await Task.Run(() => _parser.LoadMainCharComboTree());
-            if (graph != null)
+            string cacheKey = GetUnitCacheKey();
+            if (!TryRestoreUnitFromCache(cacheKey))
             {
-                _comboGraph = graph;
+                var freshParser = new AnimationParser();
+                freshParser.Initialize(_contentPath, contentDir);
+                freshParser.MountCustomIntoProvider(TempCustomMovesRoot);
+                _parser = freshParser;
 
-                var stanceNode = _comboGraph.Nodes.FirstOrDefault(n => n.Name == "MainChar_Stance");
-                if (stanceNode != null)
+                var graph = await Task.Run(() => _parser.LoadMainCharComboTree());
+                if (graph != null)
                 {
-                    stanceNode.AnimPath = _stanceMap[stance].DisplayAnim;
-                }
+                    _comboGraph = graph;
 
-                txtComboInfo.Text = $"{stance} - {_comboGraph.WeaponName} ({_comboGraph.Nodes.Count} nodes, {_comboGraph.Edges.Count} edges)";
+                    var stanceNode = _comboGraph.Nodes.FirstOrDefault(n => n.Name == "MainChar_Stance");
+                    if (stanceNode != null)
+                    {
+                        stanceNode.AnimPath = _stanceMap[stance].DisplayAnim;
+                    }
+
+                    txtComboInfo.Text = $"{stance} - {_comboGraph.WeaponName} ({_comboGraph.Nodes.Count} nodes, {_comboGraph.Edges.Count} edges)";
+                    _comboTranslate.X = 0;
+                    _comboTranslate.Y = 0;
+                    _nodePositions.Clear();
+                    UpdateWeaponButtonVisibility();
+                    LayoutComboGraph();
+                    RenderComboGraph();
+                    txtStatus.Text = $"Switched to {stance} stance";
+                }
+            }
+            else
+            {
                 _comboTranslate.X = 0;
                 _comboTranslate.Y = 0;
-                LayoutComboGraph();
-                RenderComboGraph();
-                txtStatus.Text = $"Switched to {stance} stance";
+                txtComboInfo.Text = $"{stance} - {_comboGraph.WeaponName} ({_comboGraph.Nodes.Count} nodes, {_comboGraph.Edges.Count} edges)";
             }
         }
         catch (Exception ex)
@@ -3743,7 +4914,7 @@ public partial class MainWindow : Window
         finally
         {
             // re-initialize provider that was disposed at start
-            try { var fresh = new AnimationParser(); var cDir = _contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase) ? _contentPath : Path.Combine(_contentPath, "Content"); fresh.Initialize(_contentPath, cDir); _parser = fresh; } catch { }
+            try { var fresh = new AnimationParser(); var cDir = _contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase) ? _contentPath : Path.Combine(_contentPath, "Content"); fresh.Initialize(_contentPath, cDir); fresh.MountCustomIntoProvider(TempCustomMovesRoot); _parser = fresh; } catch { }
             graphLoadingBorder.Visibility = Visibility.Collapsed;
             comboCanvas.IsHitTestVisible = true;
             btnChangeUnit.IsEnabled = true;
@@ -3770,9 +4941,27 @@ public partial class MainWindow : Window
 
     private async Task LoadArchetypeGraphAsync(string arch)
     {
+        ClearNodeSelection();
         var parts = arch.Split('|');
         string baseArch = parts[0];
         string diff = parts.Length>1 ? parts[1] : "Normal";
+
+        SaveCurrentUnitToCache();
+        _currentUnitProps = null;
+        _activeStance = arch;
+        _activeWeapon = null;
+
+        string cacheKey = GetUnitCacheKey();
+        if (TryRestoreUnitFromCache(cacheKey))
+        {
+            _activeStance = arch;
+            UpdateVariantButtonVisibility();
+            UpdateWeaponButtonVisibility();
+            _comboTranslate.X = 0;
+            _comboTranslate.Y = 0;
+            return;
+        }
+
         graphLoadingText.Text = $"Loading {arch}...";
         graphLoadingBorder.Visibility = Visibility.Visible;
         comboCanvas.IsHitTestVisible = false;
@@ -3785,11 +4974,12 @@ public partial class MainWindow : Window
                 return;
             }
             _comboGraph = graph;
-            _activeStance = arch;
             UpdateVariantButtonVisibility();
+            UpdateWeaponButtonVisibility();
             txtComboInfo.Text = $"{arch} - {graph.Nodes.Count} attacks (DataTable rows)";
             _comboTranslate.X = 0;
             _comboTranslate.Y = 0;
+            _nodePositions.Clear();
             LayoutComboGraph();
             RenderComboGraph();
             txtStatus.Text = $"Loaded {arch} ({graph.Nodes.Count} attacks)";
@@ -3831,15 +5021,55 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ApplyLocalChangeName(ComboNode node, string? newName)
+    {
+        var vanillaPath = !string.IsNullOrEmpty(node.VanillaAnimPath)
+            ? node.VanillaAnimPath
+            : node.DefaultAnimPath;
+        if (!string.IsNullOrEmpty(vanillaPath) &&
+            !string.Equals(node.AnimPath, vanillaPath, StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrEmpty(newName))
+            node.ImportedDisplayName = newName;
+        else
+            node.ImportedDisplayName = "";
+    }
+
     private void ResetNodeToVanilla(ComboNode node)
     {
         var vanillaPath = !string.IsNullOrEmpty(node.VanillaAnimPath)
             ? node.VanillaAnimPath
             : node.DefaultAnimPath;
 
-        if (string.IsNullOrEmpty(vanillaPath)) return;
+        if (!string.IsNullOrEmpty(vanillaPath))
+            node.AnimPath = vanillaPath;
+        node.IsImportedFromMod = false;
+        node.ImportedDisplayName = "";
 
-        node.AnimPath = vanillaPath;
+        if (node.IsRedirect && _comboGraph != null
+            && _comboGraph.RedirectOriginalTargets.TryGetValue(node.Id, out var origTreeIndex))
+        {
+            var origTarget = _comboGraph.Nodes.FirstOrDefault(n => n.TreeIndex == origTreeIndex);
+            if (origTarget != null && node.ResolvedRedirectNodeId != origTarget.Id)
+            {
+                node.ResolvedRedirectNodeId = origTarget.Id;
+
+                var oldEdge = _comboGraph.Edges.FirstOrDefault(e => e.FromNodeId == node.Id && e.IsRedirect);
+                if (oldEdge != null) _comboGraph.Edges.Remove(oldEdge);
+
+                string inputName = oldEdge?.InputName ?? "";
+                if (_comboGraph.Edges.All(e => !(e.FromNodeId == node.Id && e.ToNodeId == origTarget.Id)))
+                {
+                    _comboGraph.Edges.Add(new ComboEdge
+                    {
+                        FromNodeId = node.Id,
+                        ToNodeId = origTarget.Id,
+                        InputName = inputName,
+                        IsRedirect = true
+                    });
+                }
+            }
+        }
+
         RenderComboGraph();
         txtStatus.Text = $"Reset {node.DisplayName} to vanilla";
     }
@@ -3853,11 +5083,88 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ComboNode_RightClick(object sender, MouseButtonEventArgs e)
+    private bool ProjectHasExistingChanges()
     {
-        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) &&
-            sender is Border border && border.Tag is ComboNode node)
+        if (_unitCaches.Count > 0) return true;
+        if (_isModLoaded) return true;
+        if (_allMoves != null && _allMoves.Any(m =>
+                string.Equals(m.Category, "Custom", StringComparison.OrdinalIgnoreCase)))
+            return true;
+        try
         {
+            if (Directory.Exists(TempCustomMovesRoot) &&
+                Directory.EnumerateFileSystemEntries(TempCustomMovesRoot).Any())
+                return true;
+        }
+        catch { }
+        return false;
+    }
+
+    private async System.Threading.Tasks.Task ResetProjectToVanillaAsync(string statusMessage)
+    {
+        _comboGraph = null;
+        _unitCaches.Clear();
+        _currentUnitProps = null;
+        _activeVariant = null;
+        _activeWeapon = null;
+        _isModLoaded = false;
+        _vanillaGraph = null;
+        _moddedGraph = null;
+        _nodeDiffs = new();
+        ClearNodeSelection();
+
+        try { _parser.SetOverlayProvider(null); } catch { }
+
+        DeleteTempCustomMoves();
+
+        if (_allMoves != null)
+            _allMoves.RemoveAll(m => string.Equals(m.Category, "Custom", StringComparison.OrdinalIgnoreCase));
+
+        try
+        {
+            var contentDir = _contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase)
+                ? _contentPath
+                : Path.Combine(_contentPath, "Content");
+            var fresh = new AnimationParser();
+            fresh.Initialize(_contentPath, contentDir);
+            _parser = fresh;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("IMPORT", ex);
+        }
+
+        await SwitchStanceAsync("MainChar");
+        FilterMoves();
+        txtStatus.Text = statusMessage;
+    }
+
+    private async void NewProject_Click(object sender, RoutedEventArgs e)
+    {
+        var result = MessageBox.Show(
+            "Discard all changes and imported mods and reset the project to vanilla?",
+            "New Project", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        if (result != MessageBoxResult.OK) return;
+
+        await ResetProjectToVanillaAsync("New project — reset to vanilla");
+    }
+
+    private void ResetComboCamera_Click(object sender, RoutedEventArgs e)
+    {
+        _comboTranslate.X = 0;
+        _comboTranslate.Y = 0;
+        txtStatus.Text = "Combo graph camera reset";
+    }
+
+    private void ResetAllToVanilla_Click(object sender, RoutedEventArgs e)
+    {
+        if (_comboGraph == null) return;
+
+        int resetCount = 0;
+        foreach (var node in _comboGraph.Nodes)
+        {
+            if (node.IsRoot) continue;
+
             var vanillaPath = !string.IsNullOrEmpty(node.VanillaAnimPath)
                 ? node.VanillaAnimPath
                 : node.DefaultAnimPath;
@@ -3865,11 +5172,43 @@ public partial class MainWindow : Window
             if (!string.IsNullOrEmpty(vanillaPath) && node.AnimPath != vanillaPath)
             {
                 node.AnimPath = vanillaPath;
-                RenderComboGraph();
-                txtStatus.Text = $"Reset {node.DisplayName} to vanilla";
+                node.ImportedDisplayName = "";
+                node.IsImportedFromMod = false;
+                resetCount++;
             }
-            e.Handled = true;
+            else if (node.AnimPath == vanillaPath && !string.IsNullOrEmpty(node.ImportedDisplayName))
+            {
+                node.ImportedDisplayName = "";
+                node.IsImportedFromMod = false;
+            }
+
+            if (node.IsRedirect && _comboGraph.RedirectOriginalTargets.TryGetValue(node.Id, out var origTreeIndex))
+            {
+                var origTarget = _comboGraph.Nodes.FirstOrDefault(n => n.TreeIndex == origTreeIndex);
+                if (origTarget != null && node.ResolvedRedirectNodeId != origTarget.Id)
+                {
+                    node.ResolvedRedirectNodeId = origTarget.Id;
+                    var oldEdge = _comboGraph.Edges.FirstOrDefault(e2 => e2.FromNodeId == node.Id && e2.IsRedirect);
+                    if (oldEdge != null) _comboGraph.Edges.Remove(oldEdge);
+                    if (_comboGraph.Edges.All(e2 => !(e2.FromNodeId == node.Id && e2.ToNodeId == origTarget.Id)))
+                    {
+                        _comboGraph.Edges.Add(new ComboEdge
+                        {
+                            FromNodeId = node.Id,
+                            ToNodeId = origTarget.Id,
+                            InputName = oldEdge?.InputName ?? "",
+                            IsRedirect = true
+                        });
+                    }
+                    resetCount++;
+                }
+            }
         }
+
+        RenderComboGraph();
+        txtStatus.Text = resetCount > 0
+            ? $"Reset {resetCount} nodes to vanilla"
+            : "All nodes already at vanilla";
     }
 
     private void ComboNode_DragEnter(object sender, DragEventArgs e)
@@ -3912,41 +5251,12 @@ public partial class MainWindow : Window
                 var move = e.Data.GetData(typeof(MoveInfo)) as MoveInfo;
                 if (move != null)
                 {
-                    if (chkShowOrphanRedirects.IsChecked == true && !node.IsRedirect)
-                    {
-                        int newId = _comboGraph.Nodes.Count > 0 ? _comboGraph.Nodes.Max(n => n.Id) + 1 : 0;
-                        var redirectNode = new ComboNode
-                        {
-                            Id = newId,
-                            TreeIndex = -1,
-                            Name = "",
-                            AnimPath = "",
-                            DefaultAnimPath = "",
-                            DefaultDBPath = "",
-                            DisplayName = "\u2197 " + node.DisplayName,
-                            IsRoot = false,
-                            InputLabel = "",
-                            DirectionLabel = "",
-                            VanillaAnimPath = "",
-                            RedirectTargetId = node.TreeIndex,
-                            IsRedirect = true
-                        };
-                        _comboGraph.Nodes.Add(redirectNode);
-
-                        if (_nodePositions.TryGetValue(node.Id, out var nodePos))
-                            _nodePositions[redirectNode.Id] = new Point(nodePos.X + NODE_WIDTH + REDIRECT_GAP, nodePos.Y);
-                        else
-                            _nodePositions[redirectNode.Id] = new Point(30, 30);
-
-                        RenderComboGraph();
-                        if (_nodeBorders.TryGetValue(redirectNode.Id, out var newBorder))
-                            PlayFusionAnimation(newBorder);
-                        txtStatus.Text = $"Created redirect to {node.DisplayName}";
-                    }
-                    else if (node.Name == "MainChar_Stance" && !string.IsNullOrEmpty(move.Character)
+                    node.IsImportedFromMod = false;
+                    if (node.Name == "MainChar_Stance" && !string.IsNullOrEmpty(move.Character)
                         && _stanceMap.ContainsKey(move.Character))
                     {
                         node.AnimPath = move.FullPath;
+                        ApplyLocalChangeName(node, move.DisplayName);
                         RenderComboGraph();
                         txtStatus.Text = $"Combat Stance -> {move.Character} ({move.DisplayName})";
                     }
@@ -3957,7 +5267,9 @@ public partial class MainWindow : Window
                             .ToList();
                         foreach (var ln in linkedNodes)
                         {
+                            ln.IsImportedFromMod = false;
                             ln.AnimPath = move.FullPath;
+                            ApplyLocalChangeName(ln, move.DisplayName);
                             if (_parser.AnimToDbPath.TryGetValue(move.FullPath, out var srcDb))
                                 ln.SourceDBPath = srcDb;
                         }
@@ -3967,6 +5279,7 @@ public partial class MainWindow : Window
                     else
                     {
                         node.AnimPath = move.FullPath;
+                        ApplyLocalChangeName(node, move.DisplayName);
                         if (_parser.AnimToDbPath.TryGetValue(move.FullPath, out var srcDb))
                             node.SourceDBPath = srcDb;
                         RenderComboGraph();
@@ -3980,14 +5293,141 @@ public partial class MainWindow : Window
             e.Handled = true;
             }
         }
+
+    #region Unit Properties
+    private void BtnUnitProperties_Click(object sender, RoutedEventArgs e)
+    {
+        if (unitPropsPopupBorder.Visibility == Visibility.Visible)
+        {
+            SaveUnitProperties();
+            unitPropsPopupBorder.Visibility = Visibility.Collapsed;
+            SetWebViewVisible(true);
+            return;
+        }
+        PopulateUnitProperties();
+        SetWebViewVisible(false);
+        unitPropsPopupBorder.Visibility = Visibility.Visible;
     }
+
+    private void UnitPropsPopupBackground_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource == unitPropsPopupBorder)
+        {
+            SaveUnitProperties();
+            unitPropsPopupBorder.Visibility = Visibility.Collapsed;
+            SetWebViewVisible(true);
+        }
+    }
+
+    private void ResetUnitProps_Click(object sender, RoutedEventArgs e)
+    {
+        if (_unitPropsDefaults == null) return;
+        SetUnitPropsUI(_unitPropsDefaults);
+    }
+
+    private static readonly Dictionary<string, (string Title, string Desc, string? Range)> UnitPropsHelp = new()
+    {
+        ["Health"] = ("Health", "Unit's max HP. Depleted by attacks; when reduced to zero, the unit is defeated.", null),
+        ["Structure"] = ("Structure", "Unit's posture/structure bar. When full, the unit is staggered and takes bonus damage. Resets over time.", null),
+        ["MemoryLimit"] = ("Memory Limit", "Rolling observation window (seconds). Hits received within this period count toward the Hits Count threshold. After a defense triggers, the window resets. Longer windows mean old hits stay \"remembered\" longer. With Hits Count = 1, window length rarely matters.", null),
+        ["HitsCount"] = ("Hits Count", "How many hits the enemy must receive within the Memory Limit window before it defends (parry, dodge, or avoid). At 1, the enemy defends on the very first hit. At 3, it \"absorbs\" 3 hits before reacting.", null),
+        ["FlushLimit"] = ("Flush Limit", "Cooldown (seconds) after the enemy defends before it can defend again. Lower = more frequent defense cycles. At 0s, the enemy can defend again instantly. Combine with Hit Count = 0 for constant defense.", null),
+    };
+
+    private void UnitPropsInfo_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn) return;
+        string? key = btn.Tag as string;
+        if (key == null || !UnitPropsHelp.TryGetValue(key, out var info)) return;
+
+        unitPropsInfoTitle.Text = info.Title;
+        unitPropsInfoDesc.Text = info.Desc;
+        if (info.Range != null)
+        {
+            unitPropsInfoRangeValue.Text = info.Range;
+            unitPropsInfoRange.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            unitPropsInfoRange.Visibility = Visibility.Collapsed;
+        }
+
+        unitPropsInfoPopup.Visibility = Visibility.Visible;
+    }
+
+    private void UnitPropsInfoPopup_Click(object sender, MouseButtonEventArgs e)
+    {
+        unitPropsInfoPopup.Visibility = Visibility.Collapsed;
+    }
+
+    private void PopulateUnitProperties()
+    {
+        string arch = _activeStance?.Split('|')[0] ?? "";
+        string variantTag = _activeVariant ?? $"{arch}_Base";
+
+        _currentUnitProps ??= UnitPropertiesManager.Read(_contentPath, variantTag);
+        _unitPropsDefaults = UnitPropertiesManager.Read(_contentPath, variantTag);
+
+        unitPropsTitle.Text = $"Unit Properties \u2014 {variantTag}";
+
+        SetField(txtUnitHealth, _currentUnitProps.Health?.ToString("F1"), _currentUnitProps.Health.HasValue);
+        SetField(txtUnitStructure, _currentUnitProps.Structure?.ToString("F1"), _currentUnitProps.Structure.HasValue);
+        SetField(txtMemoryLimit, _currentUnitProps.MemoryLimit?.ToString("F1"), _currentUnitProps.MemoryLimit.HasValue);
+        SetField(txtHitsCount, _currentUnitProps.HitsCount?.ToString(), _currentUnitProps.HitsCount.HasValue);
+        SetField(txtFlushLimit, _currentUnitProps.MemoryFlushLimit?.ToString("F1"), _currentUnitProps.MemoryFlushLimit.HasValue);
+    }
+
+    private void SaveUnitProperties()
+    {
+        if (_activeStance == "MainChar") return;
+
+        string arch = _activeStance?.Split('|')[0] ?? "";
+        string variantTag = _activeVariant ?? $"{arch}_Base";
+
+        var props = new UnitProperties();
+
+        if (txtUnitHealth.IsEnabled && float.TryParse(txtUnitHealth.Text, out float h)) props.Health = h;
+        if (txtUnitStructure.IsEnabled && float.TryParse(txtUnitStructure.Text, out float s)) props.Structure = s;
+        if (txtMemoryLimit.IsEnabled && float.TryParse(txtMemoryLimit.Text, out float ml)) props.MemoryLimit = ml;
+        if (txtHitsCount.IsEnabled && int.TryParse(txtHitsCount.Text, out int hc)) props.HitsCount = hc;
+        if (txtFlushLimit.IsEnabled && float.TryParse(txtFlushLimit.Text, out float fl)) props.MemoryFlushLimit = fl;
+
+        _currentUnitProps = props;
+        txtStatus.Text = $"Unit properties saved for {variantTag}";
+    }
+
+    private void SetUnitPropsUI(UnitProperties props)
+    {
+        SetField(txtUnitHealth, props.Health?.ToString("F1"), props.Health.HasValue);
+        SetField(txtUnitStructure, props.Structure?.ToString("F1"), props.Structure.HasValue);
+        SetField(txtMemoryLimit, props.MemoryLimit?.ToString("F1"), props.MemoryLimit.HasValue);
+        SetField(txtHitsCount, props.HitsCount?.ToString(), props.HitsCount.HasValue);
+        SetField(txtFlushLimit, props.MemoryFlushLimit?.ToString("F1"), props.MemoryFlushLimit.HasValue);
+    }
+
+    private void SetField(System.Windows.Controls.TextBox tb, string? value, bool available)
+    {
+        if (available && value != null)
+        {
+            tb.Text = value;
+            tb.IsEnabled = true;
+            tb.Foreground = new SolidColorBrush(Color.FromRgb(0xcd, 0xd6, 0xf4));
+        }
+        else
+        {
+            tb.Text = "N/A";
+            tb.IsEnabled = false;
+            tb.Foreground = new SolidColorBrush(Color.FromRgb(0x6c, 0x70, 0x86));
+        }
+    }
+    #endregion
+}
 
 public class Settings
 {
     public string ContentPath { get; set; } = "";
     public string OutputPath { get; set; } = "";
     public bool ShowLines { get; set; } = true;
-    public bool ShowOrphanRedirects { get; set; } = false;
     public double[]? CameraPosition { get; set; }
     public double[]? CameraTarget { get; set; }
 }

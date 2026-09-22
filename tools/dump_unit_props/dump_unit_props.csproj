@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="VerifyRaw.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="UAssetAPI">
+      <HintPath>..\..\bin\Debug\net10.0-windows\UAssetAPI.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\Core\UnitPropertiesManager.cs" Link="UnitPropertiesManager.cs"/>
+  </ItemGroup>
+</Project>

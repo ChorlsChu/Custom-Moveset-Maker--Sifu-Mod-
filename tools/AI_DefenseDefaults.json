@@ -1,0 +1,73 @@
+{
+  "_description": "Vanilla m_fProbability defaults for all Sifu ContextualDefense files",
+  "_note": "m_fProbability is on AIInfluence_TestSequence nodes (defense transition edges). Only some enemies have it.",
+  "m_fProbability": {
+    "Grunt_Adv_ContextualDefense": [0.7],
+    "Grunt_Base_ContextualDefense": [0.7],
+    "Grunt_Miniboss_ContextualDefense_Throwables": [0.5, 0.8, 0.6, 0.8],
+    "Bodyguard_Advanced_ContextualDefense": [0.5, 0.7],
+    "Bodyguard_Base_ContextualDefense": [0.5, 0.7],
+    "Bodyguard_Miniboss_ContextualDefense": [0.5, 0.7],
+    "Bodyguard_ContextualDefense_Throwables": [0.5, 0.5],
+    "Fajar_ContextualDefense_Phase1_Offensive": [0.5],
+    "Fajar_ContextualDefense_Phase2": [0.5],
+    "Kuroki_ContextualDefense": [0.5, 0.5, 0.5],
+    "Yang_P1_Offense_ContextualDefense": [0.5, 0.5],
+    "Yang_P2_ContextualDefense": [0.5, 0.5],
+    "Yang_P3_ContextualDefense": [0.5, 0.5],
+    "Sean_ContextualDefense_Throwables": [0.5]
+  },
+  "_enemies_without_m_fProbability": [
+    "BigGuy (all variants)",
+    "Fengjie (Phase1, Phase2)",
+    "FireDisciple (all 7 variants)",
+    "FlashKick",
+    "Sean (main, not throwables)",
+    "Sifu",
+    "Shiroizu",
+    "Servant",
+    "Tuto"
+  ],
+  "_fireDisciple_defense_notes": "FireDisciple uses ONLY DefenseInfluenceNodeAvoid (no parry/dodge). No m_fProbability at all. Defense is purely trigger-based via m_fMemoryLimit.",
+  "m_fMemoryLimit": {
+    "_description": "Seconds the AI remembers player attack patterns before resetting defense triggers",
+    "Grunt_Adv_ContextualDefense": {
+      "nodes": [
+        {"type": "Parry/Deflect", "m_fMemoryLimit": 5, "m_uiHitsCount": 1, "m_HitTypes": 1, "m_bInverted": true},
+        {"type": "Avoid", "m_fMemoryLimit": 5, "m_uiHitsCount": 1, "m_bAvoided": true},
+        {"type": "Dodge", "m_fMemoryLimit": 5, "m_uiHitsCount": 1, "m_HitTypes": 7, "m_bDodged": true},
+        {"type": "Dodge", "m_fMemoryLimit": 5, "m_uiHitsCount": 1, "m_HitTypes": 7, "m_bDodged": true},
+        {"type": "Parry/Deflect", "m_fMemoryLimit": 5, "m_uiHitsCount": 1, "m_HitTypes": 1, "m_bInverted": true}
+      ]
+    },
+    "Grunt_Base_ContextualDefense": {
+      "nodes": [
+        {"type": "Parry/Deflect", "m_fMemoryLimit": 5, "m_uiHitsCount": 1, "m_HitTypes": 1, "m_bInverted": true},
+        {"type": "Dodge", "m_fMemoryLimit": 5, "m_uiHitsCount": 1, "m_HitTypes": 7, "m_bDodged": true},
+        {"type": "Dodge", "m_fMemoryLimit": 5, "m_uiHitsCount": 1, "m_HitTypes": 7, "m_bDodged": true},
+        {"type": "Parry/Deflect", "m_fMemoryLimit": 2, "m_uiHitsCount": 1, "m_HitTypes": 1, "m_bInverted": true}
+      ]
+    },
+    "Bodyguard_Advanced_ContextualDefense": {
+      "nodes": [
+        {"type": "Avoid", "m_fMemoryLimit": 20, "m_bDodged": true, "m_bAvoided": true},
+        {"type": "Avoid", "m_fMemoryLimit": 10, "m_bDodged": true, "m_bAvoided": true, "m_bInverted": true},
+        {"type": "Avoid", "m_fMemoryLimit": 20, "m_bDodged": true, "m_bAvoided": true},
+        {"type": "Avoid", "m_fMemoryLimit": 10, "m_bDodged": true, "m_bAvoided": true, "m_bInverted": true},
+        {"type": "Avoid", "m_fMemoryLimit": 10, "m_bDodged": true, "m_bAvoided": true, "m_bInverted": true},
+        {"type": "Avoid", "m_fMemoryLimit": 20, "m_bDodged": true, "m_bAvoided": true},
+        {"type": "Avoid", "m_fMemoryLimit": 20, "m_bDodged": true, "m_bAvoided": true}
+      ]
+    },
+    "FireDisciple_Adv_ContextualDefense": {
+      "nodes": [
+        {"type": "Avoid", "m_fMemoryLimit": 20, "m_uiHitsCount": 1, "m_bAvoided": true}
+      ]
+    },
+    "FireDisciple_Base_ContextualDefense": {
+      "nodes": [
+        {"type": "Avoid", "m_fMemoryLimit": 30, "m_uiHitsCount": 1, "m_bAvoided": true}
+      ]
+    }
+  }
+}

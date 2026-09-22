@@ -39,10 +39,10 @@ public partial class ImportDialog : Window
 
         var (symbol, color) = state switch
         {
-            "active" => ("\u23F3", "#89b4fa"),
-            "done" => ("\u2713", "#a6e3a1"),
-            "error" => ("\u2717", "#f38ba8"),
-            _ => ("\u25CB", "#6c7086")
+            "active" => ("⏳", "#89b4fa"),
+            "done" => ("✓", "#a6e3a1"),
+            "error" => ("✗", "#f38ba8"),
+            _ => ("○", "#6c7086")
         };
 
         var label = stepControl.Text[(stepControl.Text.IndexOf(' ') + 1)..];
@@ -53,28 +53,41 @@ public partial class ImportDialog : Window
     public void SetCurrentAction(string text)
     {
         txtCurrentAction.Text = text;
+        txtCurrentAction.Foreground = MakeBrush("#6c7086");
+        txtErrorDetail.Visibility = Visibility.Collapsed;
+        txtErrorDetail.Text = "";
     }
 
-    public void ShowSuccess(int changedCount, string weaponName, string? extraInfo = null)
+    public void ShowSuccess(string summary, string? details = null)
     {
         panelLoading.Visibility = Visibility.Collapsed;
         panelComplete.Visibility = Visibility.Visible;
+        txtErrorDetail.Visibility = Visibility.Collapsed;
 
-        txtResult.Text = $"{changedCount} node(s) changed from vanilla";
-        txtDetails.Text = extraInfo != null
-            ? $"Weapon: {weaponName}\n{extraInfo}"
-            : $"Weapon: {weaponName}";
+        txtResult.Text = summary;
+        txtDetails.Text = details ?? "";
         txtStatus.Text = "Import completed successfully.";
         txtStatus.Foreground = MakeBrush("#a6e3a1");
     }
 
-    public void ShowError(string message)
+    public void ShowError(string message, string? detail = null)
     {
         SetProgress(0);
+        panelComplete.Visibility = Visibility.Collapsed;
         txtTitle.Text = "Import failed";
         txtTitle.Foreground = MakeBrush("#f38ba8");
-        txtCurrentAction.Text = message;
         txtCurrentAction.Foreground = MakeBrush("#f38ba8");
+        txtCurrentAction.Text = message;
+        if (!string.IsNullOrEmpty(detail))
+        {
+            txtErrorDetail.Text = detail;
+            txtErrorDetail.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            txtErrorDetail.Text = "";
+            txtErrorDetail.Visibility = Visibility.Collapsed;
+        }
         loadingButtons.Visibility = Visibility.Visible;
         txtStatus.Text = "Import failed.";
         txtStatus.Foreground = MakeBrush("#f38ba8");

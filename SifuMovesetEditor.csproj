@@ -9,6 +9,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="tools\**" />
+    <Content Remove="tools\**" />
+    <EmbeddedResource Remove="tools\**" />
+    <None Remove="tools\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="CUE4Parse" Version="1.2.2.202608" />
     <PackageReference Include="CUE4Parse-Conversion" Version="1.2.2.202608" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />

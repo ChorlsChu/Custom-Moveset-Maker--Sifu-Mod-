@@ -1,0 +1,2 @@
+"C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\FireDisc\FireDisciple_Advanced_Combo.uasset" "../../../Sifu/Content/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Advanced_Combo.uasset"
+"C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\FireDisc\FireDisciple_Advanced_Combo.uexp" "../../../Sifu/Content/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Advanced_Combo.uexp"

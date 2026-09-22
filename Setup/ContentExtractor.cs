@@ -117,6 +117,7 @@ public static class ContentExtractor
    - DB/_MainChar/Combos/
    - DB/AI/Archetypes/
    - DB/Attacks/
+   - DB/Movement/
    - Characters/MainChar/M/Meshes/SK_M_MainChar_01.*
    - Characters/PNJ/ (Grunt, Disicple, FlashKick, BigGuy, BodyGuards, Servant)
    - Characters/Boss/ (Fajar, Sean, Kuroki, Yang, Fengjie)

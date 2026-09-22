@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 
 namespace SifuMovesetEditor.Setup;
 
@@ -46,6 +47,17 @@ public static class ContentDetector
         var animFiles = Directory.GetFiles(mainCharAttacks, "*.uasset", SearchOption.AllDirectories);
         if (animFiles.Length == 0)
             return new DetectionResult(false, "No animation files found in MainChar/Attacks/.", contentPath);
+
+        // Check for archetype DBs (Unit Properties silently reads empty without these)
+        var archDir = Path.Combine(contentDir, "DB", "AI", "Archetypes");
+        if (!Directory.Exists(archDir) ||
+            !Directory.EnumerateFiles(archDir, "*.uasset", SearchOption.AllDirectories).Any())
+            return new DetectionResult(false, "DB/AI/Archetypes not found (needed for Unit Properties). Re-extract game content.", contentPath);
+
+        // Check for movement DB (stance switching needs BaseMovementDB)
+        var movementDb = Path.Combine(contentDir, "DB", "Movement", "BaseMovementDB.uasset");
+        if (!File.Exists(movementDb))
+            return new DetectionResult(false, "DB/Movement/BaseMovementDB.uasset not found (needed for stance switching). Re-extract game content.", contentPath);
 
         return new DetectionResult(true, "", contentPath);
     }

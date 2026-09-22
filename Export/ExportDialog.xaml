@@ -1,6 +1,7 @@
 <Window x:Class="SifuMovesetEditor.Export.ExportDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:SifuMovesetEditor"
         Title="Sifu Moveset Editor — Export"
         Width="520" Height="520"
         WindowStartupLocation="CenterOwner"
@@ -63,6 +64,122 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <Style x:Key="MoveCard" TargetType="Border">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="Margin" Value="4,1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#45475a"/>
+                    <Setter Property="BorderBrush" Value="#585b70"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <DataTemplate x:Key="ExportUnitHeaderTemplate">
+            <Border Style="{StaticResource MoveCard}" MouseLeftButtonDown="UnitHeader_Click" Tag="{Binding}">
+                <DockPanel>
+                    <Border Background="#89b4fa" Width="3" CornerRadius="2" DockPanel.Dock="Left" Margin="0,0,10,0"/>
+                    <TextBlock Text="▸" Foreground="#89b4fa" FontSize="12"
+                               DockPanel.Dock="Right" VerticalAlignment="Center" Margin="8,0,0,0">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value="▸"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                                        <Setter Property="Text" Value="▾"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <DockPanel>
+                        <TextBlock Text="{Binding Count}" Foreground="#6c7086" FontSize="11"
+                                   DockPanel.Dock="Right" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                        <StackPanel>
+                            <TextBlock Text="{Binding Name}" Foreground="#89b4fa" FontSize="14"
+                                       FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock Text="{Binding Subtitle}" Foreground="#6c7086" FontSize="10"
+                                       TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </DockPanel>
+                </DockPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ExportSectionHeaderTemplate">
+            <Border Style="{StaticResource MoveCard}" MouseLeftButtonDown="SectionHeader_Click" Tag="{Binding}"
+                    Margin="16,1,4,1">
+                <DockPanel>
+                    <Border Background="#cba6f7" Width="3" CornerRadius="2" DockPanel.Dock="Left" Margin="0,0,10,0"/>
+                    <TextBlock Foreground="#cba6f7" FontSize="12"
+                               DockPanel.Dock="Right" VerticalAlignment="Center" Margin="8,0,0,0">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value="▸"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                                        <Setter Property="Text" Value="▾"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <DockPanel>
+                        <TextBlock Text="{Binding Count}" Foreground="#6c7086" FontSize="11"
+                                   DockPanel.Dock="Right" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                        <TextBlock Text="{Binding Name}" Foreground="#cba6f7" FontSize="13"
+                                   FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center"/>
+                    </DockPanel>
+                </DockPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ExportChangeRowTemplate">
+            <Border Style="{StaticResource MoveCard}" Margin="32,1,4,1" Cursor="Arrow">
+                <DockPanel>
+                    <Border Width="3" CornerRadius="2" DockPanel.Dock="Left" Margin="0,0,10,0"
+                            Background="#a6e3a1"/>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="4"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="{Binding DisplayName}"
+                                   FontWeight="SemiBold" Foreground="#cdd6f4"
+                                   FontSize="12" TextTrimming="CharacterEllipsis"/>
+                        <Grid Grid.Row="2" Margin="0,2,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Foreground="#6c7086"
+                                       FontSize="11" Text="{Binding DefaultAnimPath}"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <TextBlock Grid.Column="1" Text="→"
+                                       Foreground="#89b4fa" FontWeight="Bold" FontSize="11"/>
+                            <TextBlock Grid.Column="2" Margin="6,0,0,0"
+                                       Foreground="#a6e3a1" FontSize="11"
+                                       Text="{Binding AnimPath}"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </Grid>
+                    </Grid>
+                </DockPanel>
+            </Border>
+        </DataTemplate>
+
+        <local:MoveGroupTemplateSelector x:Key="MoveGroupSelector"
+            EnemyHeaderTemplate="{StaticResource ExportUnitHeaderTemplate}"
+            WeaponHeaderTemplate="{StaticResource ExportSectionHeaderTemplate}"
+            MoveCardTemplate="{StaticResource ExportChangeRowTemplate}"/>
     </Window.Resources>
 
     <DockPanel>
@@ -111,39 +228,8 @@
                         <TextBlock x:Name="txtChangeCount" Foreground="#a6adc8" FontSize="12"/>
                     </Border>
                     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="4">
-                        <ItemsControl x:Name="lstChanges">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="Transparent" Padding="8,6"
-                                            BorderBrush="#313244" BorderThickness="0,0,0,1">
-                                        <Grid>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="4"/>
-                                                <RowDefinition Height="Auto"/>
-                                            </Grid.RowDefinitions>
-                                            <TextBlock Grid.Row="0" Text="{Binding DisplayName}"
-                                                       FontWeight="SemiBold" Foreground="#cdd6f4"
-                                                       FontSize="13"/>
-                                            <Grid Grid.Row="2">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="8"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Foreground="#6c7086"
-                                                           FontSize="12" Text="{Binding DefaultAnimPath}"/>
-                                                <TextBlock Grid.Column="2" Text="→"
-                                                           Foreground="#89b4fa" FontWeight="Bold"/>
-                                                <TextBlock Grid.Column="2" Margin="14,0,0,0"
-                                                           Foreground="#a6e3a1" FontSize="12"
-                                                           Text="{Binding AnimPath}"/>
-                                            </Grid>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <ItemsControl x:Name="lstChanges"
+                                      ItemTemplateSelector="{StaticResource MoveGroupSelector}"/>
                     </ScrollViewer>
                 </DockPanel>
             </Border>

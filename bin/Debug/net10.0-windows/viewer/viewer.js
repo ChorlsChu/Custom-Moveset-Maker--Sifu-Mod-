@@ -477,6 +477,7 @@ function resetCamera() {
 
     if (updateOrbitCamera) updateOrbitCamera();
 }
+window.resetCamera = resetCamera;
 
 function showError(message) {
     if (currentAction) {

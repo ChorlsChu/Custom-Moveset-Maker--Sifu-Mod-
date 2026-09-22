@@ -1,10 +1,13 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using SifuMovesetEditor;
@@ -19,21 +22,47 @@ namespace SifuMovesetEditor.Export;
 
 public partial class ExportDialog : Window
 {
-    private readonly List<ComboNode> _modifiedNodes;
+    private List<ComboNode> _modifiedNodes;
     private readonly string _contentPath;
     private readonly string _outputPath;
-    private readonly Dictionary<string, string> _animToDbPath;
-    private readonly string? _activeStance;
-    private readonly string? _charTransitionPath;
-    private readonly string? _charBaseMovementDBPath;
+    private readonly ConcurrentDictionary<string, string> _animToDbPath;
+    private string? _activeStance;
+    private string? _charTransitionPath;
+    private string? _charBaseMovementDBPath;
     private readonly string? _referenceModDir;
-    private readonly string? _enemyComboPath;
+    private string? _enemyComboPath;
     private readonly Dictionary<string, (float hitFrame, int buildupFrame)> _animToTiming;
     private ComboGraph? _graph;
-    private Dictionary<int, string>? _customClones;
-    private readonly bool _enableCustomTreeAppend = false; // Disabled: combo tree re-serialization corrupts m_Transitions
     private string? _pakPath;
     private string? _outputDir;
+    private string? _mainCharComboPath;
+    private const string DefaultMainCharComboPath = "Game/DB/_MainChar/Combos/MainChar_ComboTree";
+
+    private readonly Dictionary<string, UnitCacheEntry>? _unitCaches;
+    private readonly Dictionary<string, List<ComboNode>> _perUnitModifiedNodes = new();
+    private readonly Dictionary<string, (ComboGraph graph, string? comboPath, string? charTransitionPath, string? charBaseMovementDBPath)> _perUnitGraphs = new();
+    private readonly Dictionary<string, UnitProperties> _perUnitProps = new();
+    private UnitProperties? _unitProps;
+    private string? _activeVariant;
+    private int _reviewChangeCount;
+    private readonly HashSet<string> _expandedUnits = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, HashSet<string>> _expandedSections = new(StringComparer.OrdinalIgnoreCase);
+
+    private sealed class UnitSectionReview
+    {
+        public string Name = "";
+        public List<object> Rows = new();
+        public int Count => Rows.Count;
+    }
+
+    private sealed class UnitReview
+    {
+        public string Key = "";
+        public string DisplayName = "";
+        public string Subtitle = "";
+        public List<UnitSectionReview> Sections = new();
+        public int Total => Sections.Sum(s => s.Count);
+    }
 
     private static Brush MakeBrush(string hex) =>
         (Brush)new BrushConverter().ConvertFrom(hex);
@@ -42,15 +71,17 @@ public partial class ExportDialog : Window
         List<ComboNode> modifiedNodes,
         string contentPath,
         string outputPath,
-        Dictionary<string, string> animToDbPath,
+        ConcurrentDictionary<string, string> animToDbPath,
         string? activeStance = null,
         string? charTransitionPath = null,
         string? charBaseMovementDBPath = null,
         string? referenceModDir = null,
         ComboGraph? graph = null,
-        Dictionary<int, string>? customClones = null,
         string? enemyComboPath = null,
-        Dictionary<string, (float hitFrame, int buildupFrame)>? animToTiming = null)
+        Dictionary<string, (float hitFrame, int buildupFrame)>? animToTiming = null,
+        UnitProperties? unitProps = null,
+        string? activeVariant = null,
+        string? mainCharComboPath = null)
     {
         InitializeComponent();
 
@@ -65,33 +96,440 @@ public partial class ExportDialog : Window
         _enemyComboPath = enemyComboPath;
         _animToTiming = animToTiming ?? new();
         _graph = graph;
-        _customClones = customClones;
+        _unitProps = unitProps;
+        _activeVariant = activeVariant;
+        _mainCharComboPath = string.IsNullOrEmpty(mainCharComboPath) ? DefaultMainCharComboPath : mainCharComboPath;
 
         LoadReview();
     }
 
-    private void LoadReview()
+    public ExportDialog(
+        Dictionary<string, UnitCacheEntry> unitCaches,
+        string contentPath,
+        string outputPath,
+        ConcurrentDictionary<string, string> animToDbPath,
+        string? referenceModDir = null,
+        Dictionary<string, (float hitFrame, int buildupFrame)>? animToTiming = null)
+    {
+        InitializeComponent();
+        _unitCaches = unitCaches;
+        _contentPath = contentPath;
+        _outputPath = outputPath;
+        _animToDbPath = animToDbPath;
+        _animToTiming = animToTiming ?? new();
+        _referenceModDir = referenceModDir;
+        _modifiedNodes = new();
+        _graph = null;
+        _enemyComboPath = null;
+        _activeStance = null;
+        _charTransitionPath = null;
+        _charBaseMovementDBPath = null;
+
+        foreach (var kvp in unitCaches)
+        {
+            string unitKey = kvp.Key;
+            var entry = kvp.Value;
+            var graph = entry.Graph;
+
+            var modified = graph.Nodes
+                .Where(n => !n.IsRoot && !string.IsNullOrEmpty(n.AnimPath)
+                    && (n.TreeIndex == -1 || n.AnimPath != n.DefaultAnimPath
+                        || (!string.IsNullOrEmpty(n.VanillaAnimPath) && n.AnimPath != n.VanillaAnimPath)))
+                .ToList();
+
+            bool hasRetargets = graph.RedirectOriginalTargets.Any(rd =>
+            {
+                var node = graph.Nodes.FirstOrDefault(n => n.Id == rd.Key);
+                return node != null && node.ResolvedRedirectNodeId >= 0 && node.ResolvedRedirectNodeId != rd.Value;
+            });
+
+            var keyParts = unitKey.Split('|');
+            string arch = keyParts[0];
+            string? variant = keyParts.Length > 1 ? keyParts[1] : null;
+
+            bool hasUnitProps = entry.Props != null && !string.IsNullOrEmpty(variant)
+                && UnitPropertiesManager.HasChanges(contentPath, variant, entry.Props);
+
+            if (modified.Count > 0 || hasRetargets || hasUnitProps)
+            {
+                _perUnitModifiedNodes[unitKey] = modified;
+                if (hasUnitProps) _perUnitProps[unitKey] = entry.Props!;
+
+                string? comboPath = null;
+                string? transitionPath = null;
+                string? movementDbPath = null;
+                string? weapon = keyParts.Length > 2 ? keyParts[2] : null;
+
+                if (string.Equals(arch, "MainChar", StringComparison.OrdinalIgnoreCase))
+                {
+                    string? weaponTag = weapon
+                        ?? (keyParts.Length > 1 && keyParts[1].StartsWith("MainChar_", StringComparison.OrdinalIgnoreCase)
+                            ? keyParts[1]
+                            : null)
+                        ?? "MainChar_Barehands";
+                    comboPath = ResolveComboFilePathForUnit(weaponTag) ?? DefaultMainCharComboPath;
+                }
+                else if (!string.IsNullOrEmpty(weapon) && !string.IsNullOrEmpty(variant))
+                {
+                    string weaponSuffix = weapon.Contains('_') ? weapon.Substring(weapon.IndexOf('_') + 1) : weapon;
+                    string weaponComboKey = $"{variant}_{weaponSuffix}";
+                    comboPath = ResolveComboFilePathForUnit(weaponComboKey);
+                    if (comboPath == null && weaponSuffix == "Barehands")
+                        comboPath = ResolveComboFilePathForUnit(variant);
+                }
+                else if (!string.IsNullOrEmpty(variant))
+                {
+                    comboPath = ResolveComboFilePathForUnit(variant);
+                }
+
+                _perUnitGraphs[unitKey] = (graph, comboPath, transitionPath, movementDbPath);
+            }
+        }
+
+        LoadReview();
+    }
+
+    private static string? ResolveComboFilePathForUnit(string variantTag)
+    {
+        var comboFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["MainChar_Barehands"] = "Game/DB/_MainChar/Combos/MainChar_ComboTree",
+            ["MainChar_Bat"] = "Game/DB/_MainChar/Combos/Attacks/Weapons/Bats/MainChar_Bats_ComboTree",
+            ["MainChar_Staff"] = "Game/DB/_MainChar/Combos/Attacks/Weapons/Staff/MainChar_Staff_ComboTree",
+            ["MainChar_Blade"] = "Game/DB/_MainChar/Combos/Attacks/Weapons/Blades/MainChar_Blades_ComboTree",
+            ["Yang_P1"] = "Game/DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo",
+            ["Yang_P2"] = "Game/DB/AI/Archetypes/Yang/_DB/Phase2/Yang_P2_Combo",
+            ["Yang_P3"] = "Game/DB/AI/Archetypes/Yang/_DB/Phase3/Yang_P3_Combo",
+            ["Sean_P1"] = "Game/DB/AI/Archetypes/Sean/Sean_Combo_Phase1",
+            ["Sean_P2"] = "Game/DB/AI/Archetypes/Sean/Sean_Combo_Phase2",
+            ["Sean_Burst"] = "Game/DB/AI/Archetypes/Sean/Sean_BurstCombo",
+            ["Kuroki_P1"] = "Game/DB/AI/Archetypes/Kuroki/Kuroki_ComboPhase1_NEW",
+            ["Kuroki_P2"] = "Game/DB/AI/Archetypes/Kuroki/Kuroki_ComboPhase2_Shiroizu",
+            ["Fengjie_P1"] = "Game/DB/AI/Archetypes/Fengjie/Phase1/Fengjie_Phase1_Combo",
+            ["Fengjie_P2"] = "Game/DB/AI/Archetypes/Fengjie/Phase2/Fengjie_Phase2_Combo",
+            ["Fajar_P1"] = "Game/DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P1",
+            ["Fajar_P2"] = "Game/DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P2",
+            ["Grunt_Base"] = "Game/DB/AI/Archetypes/Grunt/_Base/Grunt_Base_Combo",
+            ["Grunt_Advanced"] = "Game/DB/AI/Archetypes/Grunt/_Advanced/Grunt_Advanced_Combo",
+            ["Grunt_Miniboss"] = "Game/DB/AI/Archetypes/Grunt/_Miniboss/Grunt_Miniboss_Combo",
+            ["BigGuy_Base"] = "Game/DB/AI/Archetypes/BigGuy/_MainGame/Generic/BigGuy_Base_Combo",
+            ["BigGuy_Advanced"] = "Game/DB/AI/Archetypes/BigGuy/_MainGame/Generic/BigGuy_Advanced_Combo",
+            ["BigGuy_Miniboss"] = "Game/DB/AI/Archetypes/BigGuy/_MainGame/Generic/BigGuy_Miniboss_Combo",
+            ["Bodyguard_Base"] = "Game/DB/AI/Archetypes/Bodyguard/_Base/Bodyguard_Base_Combo",
+            ["Bodyguard_Advanced"] = "Game/DB/AI/Archetypes/Bodyguard/_Advanced/Bodyguard_Advanced_Combo",
+            ["Bodyguard_Miniboss"] = "Game/DB/AI/Archetypes/Bodyguard/_Miniboss/Bodyguard_Miniboss_Combo",
+            ["FlashKick_Base"] = "Game/DB/AI/Archetypes/FlashKick/_MainGame/Generic/FlashKick_Base_Combo",
+            ["FlashKick_Advanced"] = "Game/DB/AI/Archetypes/FlashKick/_MainGame/Generic/FlashKick_Advanced_Combo",
+            ["FlashKick_Miniboss"] = "Game/DB/AI/Archetypes/FlashKick/_MainGame/Generic/FlashKick_Miniboss_Combo",
+            ["FD_Base"] = "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Base_Combo",
+            ["FD_Advanced"] = "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Advanced_Combo",
+            ["FD_Miniboss"] = "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_MiniBoss_Combo",
+            ["Grunt_Base_Bat"] = "Game/DB/AI/Archetypes/Grunt/_Base/Grunt_Base_BatCombo",
+            ["Grunt_Base_Blade"] = "Game/DB/AI/Archetypes/Grunt/_Base/Grunt_Base_BladeCombo",
+            ["Grunt_Advanced_Bat"] = "Game/DB/AI/Archetypes/Grunt/_Advanced/Grunt_Advanced_BatCombo",
+            ["Grunt_Advanced_Blade"] = "Game/DB/AI/Archetypes/Grunt/_Advanced/Grunt_Advanced_BladeCombo",
+            ["Grunt_Miniboss_Bat"] = "Game/DB/AI/Archetypes/Grunt/_Miniboss/Grunt_Miniboss_BatCombo",
+            ["Grunt_Miniboss_Blade"] = "Game/DB/AI/Archetypes/Grunt/_Miniboss/Grunt_Miniboss_BladeCombo",
+            ["FD_Base_Staff"] = "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Base_StaffCombo",
+            ["FD_Advanced_Staff"] = "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Advanced_StaffCombo",
+            ["FD_Miniboss_Staff"] = "Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_MiniBoss_StaffCombo",
+            ["Servant"] = "Game/DB/AI/Archetypes/Servant/Servant_Combo",
+            ["Sifu"] = "Game/DB/AI/Archetypes/Sifu/Sifu_Combo",
+        };
+        return comboFiles.TryGetValue(variantTag, out var path) ? path : null;
+    }
+
+    private List<UnitReview> BuildUnitReviews()
+    {
+        var units = new List<UnitReview>();
+
+        if (_unitCaches != null && _perUnitGraphs.Count > 0)
+        {
+            foreach (var kvp in _perUnitGraphs)
+            {
+                string unitKey = kvp.Key;
+                var (graph, comboPath, _, _) = kvp.Value;
+                var modified = _perUnitModifiedNodes.TryGetValue(unitKey, out var nodes)
+                    ? nodes
+                    : new List<ComboNode>();
+
+                var unit = new UnitReview
+                {
+                    Key = unitKey,
+                    DisplayName = FormatUnitDisplayName(unitKey),
+                    Subtitle = string.IsNullOrEmpty(comboPath)
+                        ? ""
+                        : comboPath[(comboPath.LastIndexOf('/') + 1)..]
+                };
+
+                if (modified.Count > 0)
+                {
+                    var moveRows = modified
+                        .OrderBy(n => n.TreeIndex)
+                        .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase)
+                        .Cast<object>()
+                        .ToList();
+                    unit.Sections.Add(new UnitSectionReview { Name = "Moves", Rows = moveRows });
+                }
+
+                var retargetRows = BuildRetargetRows(graph);
+                if (retargetRows.Count > 0)
+                    unit.Sections.Add(new UnitSectionReview { Name = "Retargets", Rows = retargetRows });
+
+                if (_perUnitProps.TryGetValue(unitKey, out var unitProps))
+                {
+                    var keyParts = unitKey.Split('|');
+                    string variant = keyParts.Length > 1 ? keyParts[1] : unitKey;
+                    var propRows = new List<object>();
+                    AddUnitPropsEntries(propRows, unitProps, _contentPath, variant);
+                    if (propRows.Count > 0)
+                        unit.Sections.Add(new UnitSectionReview { Name = "Unit Props", Rows = propRows });
+                }
+
+                if (unit.Total > 0)
+                    units.Add(unit);
+            }
+        }
+        else
+        {
+            var unitKey = !string.IsNullOrEmpty(_activeVariant)
+                ? string.IsNullOrEmpty(_activeStance) || _activeStance == "MainChar"
+                    ? $"MainChar|{_activeVariant}"
+                    : _activeStance
+                : _activeStance ?? "MainChar";
+
+            var unit = new UnitReview
+            {
+                Key = unitKey,
+                DisplayName = FormatUnitDisplayName(unitKey),
+                Subtitle = _mainCharComboPath?.Split('/').LastOrDefault() ?? ""
+            };
+
+            if (!string.IsNullOrEmpty(_activeStance) && _activeStance != "MainChar")
+            {
+                unit.Sections.Add(new UnitSectionReview
+                {
+                    Name = "Stance",
+                    Rows = new List<object>
+                    {
+                        new
+                        {
+                            DisplayName = $"Combat Stance → {_activeStance}",
+                            DefaultAnimPath = "MainChar (vanilla)",
+                            AnimPath = $"{_activeStance} (BaseMovementDB + BP_TransitionAnimRequest)"
+                        }
+                    }
+                });
+            }
+
+            if (_modifiedNodes is { Count: > 0 })
+            {
+                var moveRows = _modifiedNodes
+                    .OrderBy(n => n.TreeIndex)
+                    .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase)
+                    .Cast<object>()
+                    .ToList();
+                unit.Sections.Add(new UnitSectionReview { Name = "Moves", Rows = moveRows });
+            }
+
+            if (_graph != null)
+            {
+                var retargetRows = BuildRetargetRows(_graph);
+                if (retargetRows.Count > 0)
+                    unit.Sections.Add(new UnitSectionReview { Name = "Retargets", Rows = retargetRows });
+            }
+
+            if (_unitProps != null && !string.IsNullOrEmpty(_activeVariant))
+            {
+                var propRows = new List<object>();
+                AddUnitPropsEntries(propRows, _unitProps, _contentPath, _activeVariant);
+                if (propRows.Count > 0)
+                    unit.Sections.Add(new UnitSectionReview { Name = "Unit Props", Rows = propRows });
+            }
+
+            if (unit.Total > 0)
+                units.Add(unit);
+        }
+
+        return units
+            .OrderBy(u => u.Key.StartsWith("MainChar", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(u => u.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static List<object> BuildRetargetRows(ComboGraph graph)
+    {
+        var rows = new List<object>();
+        foreach (var rd in graph.RedirectOriginalTargets)
+        {
+            var node = graph.Nodes.FirstOrDefault(n => n.Id == rd.Key);
+            if (node == null || node.ResolvedRedirectNodeId < 0 || node.ResolvedRedirectNodeId == rd.Value)
+                continue;
+
+            var origTarget = graph.Nodes.FirstOrDefault(n => n.TreeIndex == rd.Value);
+            var newTarget = graph.Nodes.FirstOrDefault(n => n.Id == node.ResolvedRedirectNodeId);
+            rows.Add(new
+            {
+                DisplayName = $"Retarget: {node.DisplayName}",
+                DefaultAnimPath = $"m_NodeRedirect {rd.Value} → {origTarget?.DisplayName ?? "?"}",
+                AnimPath = $"m_NodeRedirect {rd.Value} → {newTarget?.DisplayName ?? "?"}"
+            });
+        }
+        return rows;
+    }
+
+    private static string FormatUnitDisplayName(string unitKey)
+    {
+        var parts = unitKey.Split('|', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return unitKey;
+
+        if (parts[0].Equals("MainChar", StringComparison.OrdinalIgnoreCase))
+        {
+            string weapon = parts.Length > 1 ? parts[1] : "";
+            if (weapon.StartsWith("MainChar_", StringComparison.OrdinalIgnoreCase))
+                weapon = weapon["MainChar_".Length..];
+            return string.IsNullOrEmpty(weapon) ? "MainChar" : $"MainChar | {weapon}";
+        }
+
+        if (parts.Length == 1) return parts[0];
+
+        string variant = parts[1];
+        if (variant.StartsWith(parts[0] + "_", StringComparison.OrdinalIgnoreCase))
+            variant = variant[(parts[0].Length + 1)..];
+
+        string label = $"{parts[0]} | {variant}";
+        if (parts.Length > 2)
+        {
+            string weaponPart = parts[2];
+            if (weaponPart.Contains('_'))
+                weaponPart = weaponPart[(weaponPart.IndexOf('_') + 1)..];
+            if (!weaponPart.Equals(variant, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(weaponPart, "Barehands", StringComparison.OrdinalIgnoreCase))
+                label += $" | {weaponPart}";
+        }
+        return label;
+    }
+
+    private bool IsSectionExpanded(string unitKey, string sectionName)
+    {
+        return _expandedSections.TryGetValue(unitKey, out var set) && set.Contains(sectionName);
+    }
+
+    private List<object> BuildReviewList()
     {
         var entries = new List<object>();
 
-        if (!string.IsNullOrEmpty(_activeStance) && _activeStance != "MainChar")
+        foreach (var unit in BuildUnitReviews())
         {
-            entries.Add(new { DisplayName = $"Combat Stance \u2192 {_activeStance}",
-                              DefaultAnimPath = "MainChar (vanilla)",
-                              AnimPath = $"{_activeStance} (BaseMovementDB + BP_TransitionAnimRequest)" });
+            bool unitOpen = _expandedUnits.Contains(unit.Key);
+            entries.Add(new GroupHeader
+            {
+                Name = unit.DisplayName,
+                Level = 1,
+                Count = unit.Total,
+                Subtitle = unit.Subtitle,
+                IsExpanded = unitOpen,
+                ParentName = unit.Key
+            });
+
+            if (!unitOpen) continue;
+
+            foreach (var section in unit.Sections)
+            {
+                bool sectionOpen = IsSectionExpanded(unit.Key, section.Name);
+                entries.Add(new GroupHeader
+                {
+                    Name = section.Name,
+                    Level = 2,
+                    Count = section.Count,
+                    IsExpanded = sectionOpen,
+                    ParentName = unit.Key
+                });
+
+                if (sectionOpen)
+                    entries.AddRange(section.Rows);
+            }
         }
 
-        entries.AddRange(_modifiedNodes);
+        return entries;
+    }
 
-        txtChangeCount.Text = $"{entries.Count} change(s) detected:";
-        lstChanges.ItemsSource = entries;
+    private void LoadReview()
+    {
+        var units = BuildUnitReviews();
+        _reviewChangeCount = units.Sum(u => u.Total);
+
+        bool isMulti = _unitCaches != null && _perUnitGraphs.Count > 0;
+        txtChangeCount.Text = isMulti
+            ? $"{_reviewChangeCount} change(s) across {units.Count} unit(s):"
+            : $"{_reviewChangeCount} change(s) detected:";
+
+        lstChanges.ItemsSource = BuildReviewList();
 
         var outputDir = string.IsNullOrEmpty(_outputPath)
             ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods")
             : _outputPath;
 
-        txtModName.Text = "MainCharComboMod";
+        txtModName.Text = isMulti ? "MultiUnitComboMod" : "MainCharComboMod";
         UpdateOutputPreview(outputDir);
+    }
+
+    private void RebuildReviewList()
+    {
+        lstChanges.ItemsSource = BuildReviewList();
+    }
+
+    private void UnitHeader_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not Border border || border.Tag is not GroupHeader header) return;
+        var key = string.IsNullOrEmpty(header.ParentName) ? header.Name : header.ParentName;
+        if (!_expandedUnits.Remove(key))
+            _expandedUnits.Add(key);
+        RebuildReviewList();
+    }
+
+    private void SectionHeader_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not Border border || border.Tag is not GroupHeader header) return;
+        var unitKey = header.ParentName;
+        if (string.IsNullOrEmpty(unitKey)) return;
+
+        if (!_expandedSections.TryGetValue(unitKey, out var set))
+        {
+            set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            _expandedSections[unitKey] = set;
+        }
+
+        if (!set.Remove(header.Name))
+            set.Add(header.Name);
+        RebuildReviewList();
+    }
+
+    private static int CountUnitPropsChanges(UnitProperties props, string contentPath, string variantTag)
+    {
+        var vanilla = UnitPropertiesManager.Read(contentPath, variantTag);
+        int count = 0;
+        if (props.Health.HasValue && (!vanilla.Health.HasValue || Math.Abs(props.Health.Value - vanilla.Health.Value) > 0.01f)) count++;
+        if (props.Structure.HasValue && (!vanilla.Structure.HasValue || Math.Abs(props.Structure.Value - vanilla.Structure.Value) > 0.01f)) count++;
+        if (props.MemoryLimit.HasValue && (!vanilla.MemoryLimit.HasValue || Math.Abs(props.MemoryLimit.Value - vanilla.MemoryLimit.Value) > 0.01f)) count++;
+        if (props.HitsCount.HasValue && (!vanilla.HitsCount.HasValue || props.HitsCount.Value != vanilla.HitsCount.Value)) count++;
+        if (props.MemoryFlushLimit.HasValue && (!vanilla.MemoryFlushLimit.HasValue || Math.Abs(props.MemoryFlushLimit.Value - vanilla.MemoryFlushLimit.Value) > 0.01f)) count++;
+        return count;
+    }
+
+    private static void AddUnitPropsEntries(List<object> entries, UnitProperties props, string contentPath, string variantTag)
+    {
+        var vanilla = UnitPropertiesManager.Read(contentPath, variantTag);
+        if (props.Health.HasValue && (!vanilla.Health.HasValue || Math.Abs(props.Health.Value - vanilla.Health.Value) > 0.01f))
+            entries.Add(new { DisplayName = $"Unit Props: Health", DefaultAnimPath = $"{vanilla.Health?.ToString("F1") ?? "null"}", AnimPath = $"{props.Health.Value:F1}" });
+        if (props.Structure.HasValue && (!vanilla.Structure.HasValue || Math.Abs(props.Structure.Value - vanilla.Structure.Value) > 0.01f))
+            entries.Add(new { DisplayName = $"Unit Props: Structure", DefaultAnimPath = $"{vanilla.Structure?.ToString("F1") ?? "null"}", AnimPath = $"{props.Structure.Value:F1}" });
+        if (props.MemoryLimit.HasValue && (!vanilla.MemoryLimit.HasValue || Math.Abs(props.MemoryLimit.Value - vanilla.MemoryLimit.Value) > 0.01f))
+            entries.Add(new { DisplayName = $"Unit Props: MemoryLimit", DefaultAnimPath = $"{vanilla.MemoryLimit?.ToString("F1") ?? "null"}", AnimPath = $"{props.MemoryLimit.Value:F1}" });
+        if (props.HitsCount.HasValue && (!vanilla.HitsCount.HasValue || props.HitsCount.Value != vanilla.HitsCount.Value))
+            entries.Add(new { DisplayName = $"Unit Props: HitsCount", DefaultAnimPath = $"{vanilla.HitsCount?.ToString() ?? "null"}", AnimPath = $"{props.HitsCount.Value}" });
+        if (props.MemoryFlushLimit.HasValue && (!vanilla.MemoryFlushLimit.HasValue || Math.Abs(props.MemoryFlushLimit.Value - vanilla.MemoryFlushLimit.Value) > 0.01f))
+            entries.Add(new { DisplayName = $"Unit Props: FlushLimit", DefaultAnimPath = $"{vanilla.MemoryFlushLimit?.ToString("F1") ?? "null"}", AnimPath = $"{props.MemoryFlushLimit.Value:F1}" });
     }
 
     private void UpdateOutputPreview(string outputDir)
@@ -152,1050 +590,1130 @@ public partial class ExportDialog : Window
             }
 
             var fileEntries = new List<(string src, string dest)>();
-            var hasComboChanges = _modifiedNodes.Count > 0;
-            var hasStanceChange = !string.IsNullOrEmpty(_activeStance) && _activeStance != "MainChar";
 
-            ErrorLog.Write("EXPORT", new Exception($"=== EXPORT START: {_modifiedNodes.Count} modified nodes, stance={_activeStance ?? "MainChar"} ==="));
-
-            // Phase 1: Combo tree patching (only if combo nodes changed)
-            if (hasComboChanges)
+            if (_unitCaches != null && _perUnitGraphs.Count > 0)
             {
-                UpdateStep(1, "active");
-                txtCurrentAction.Text = "Locating vanilla combo tree...";
-                SetProgress(10);
+                var savedMod = _modifiedNodes;
+                var savedGraph = _graph;
+                var savedCombo = _enemyComboPath;
+                var savedStance = _activeStance;
+                var savedTrans = _charTransitionPath;
+                var savedMove = _charBaseMovementDBPath;
+                var savedMainCharCombo = _mainCharComboPath;
 
-                var vanillaAssetPath = Path.Combine(gameRoot, "DB", "_MainChar", "Combos", "MainChar_ComboTree.uasset");
-                if (!File.Exists(vanillaAssetPath))
+                foreach (var kvp in _perUnitGraphs)
                 {
-                    ShowError($"Vanilla asset not found: {vanillaAssetPath}");
-                    return;
+                    _modifiedNodes = _perUnitModifiedNodes.TryGetValue(kvp.Key, out var n) ? n : new();
+                    _graph = kvp.Value.graph;
+
+                    string arch = kvp.Key.Contains('|') ? kvp.Key.Split('|')[0] : kvp.Key;
+                    if (string.Equals(arch, "MainChar", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _mainCharComboPath = string.IsNullOrEmpty(kvp.Value.comboPath) ? DefaultMainCharComboPath : kvp.Value.comboPath;
+                        _enemyComboPath = null;
+                    }
+                    else
+                    {
+                        _enemyComboPath = kvp.Value.comboPath;
+                    }
+
+                    _charTransitionPath = kvp.Value.charTransitionPath;
+                    _charBaseMovementDBPath = kvp.Value.charBaseMovementDBPath;
+                    _activeStance = string.Equals(arch, "MainChar", StringComparison.OrdinalIgnoreCase) ? null : arch;
+
+                    await PatchComboAndStanceForCurrentState(fileEntries, gameRoot, outputPath);
+
+                    if (_perUnitProps.TryGetValue(kvp.Key, out var unitProps))
+                    {
+                        var keyParts = kvp.Key.Split('|');
+                        string variant = keyParts.Length > 1 ? keyParts[1] : kvp.Key;
+                        PatchUnitProperties(unitProps, variant, fileEntries, gameRoot, outputPath);
+                    }
                 }
 
-                UpdateStep(1, "done");
-                SetProgress(25);
+                _modifiedNodes = savedMod;
+                _graph = savedGraph;
+                _enemyComboPath = savedCombo;
+                _activeStance = savedStance;
+                _charTransitionPath = savedTrans;
+                _charBaseMovementDBPath = savedMove;
+                _mainCharComboPath = savedMainCharCombo;
+            }
+            else
+            {
+                await PatchComboAndStanceForCurrentState(fileEntries, gameRoot, outputPath);
 
-                UpdateStep(2, "active");
-                txtCurrentAction.Text = "Patching combo tree imports...";
-
-                var outputDirForAsset = Path.Combine(outputPath, "Sifu", "Content", "DB", "_MainChar", "Combos");
-                Directory.CreateDirectory(outputDirForAsset);
-                var outUasset = Path.Combine(outputDirForAsset, "MainChar_ComboTree.uasset");
-
-                bool comboTreeModified = false;
-                await System.Threading.Tasks.Task.Run(() =>
+                if (_unitProps != null && !string.IsNullOrEmpty(_activeVariant))
                 {
-                    var eng = EngineVersion.VER_UE4_26;
-                    var asset = new UAsset(vanillaAssetPath, eng, null, CustomSerializationFlags.None);
+                    PatchUnitProperties(_unitProps, _activeVariant, fileEntries, gameRoot, outputPath);
+                }
+            }
 
-                    NormalExport? comboExport = null;
-                    for (int i = 0; i < asset.Exports.Count; i++)
+            if (fileEntries.Count == 0)
+            {
+                ShowError("No files to export.");
+                return;
+            }
+
+            ErrorLog.Write("EXPORT", new Exception($"Total files for pak: {fileEntries.Count}"));
+            SetProgress(65);
+
+            // Step 3: Build pak
+            UpdateStep(3, "active");
+            txtCurrentAction.Text = "Building pak file...";
+
+            var tempDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "temp_mod");
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            Directory.CreateDirectory(tempDir);
+
+            foreach (var (src, dest) in fileEntries)
+            {
+                var tempDest = Path.Combine(tempDir, dest.TrimStart('/').Replace('/', '\\'));
+                Directory.CreateDirectory(Path.GetDirectoryName(tempDest)!);
+                if (File.Exists(src))
+                    File.Copy(src, tempDest, true);
+            }
+
+            var filelistPath = Path.Combine(tempDir, "filelist.txt");
+            var filelistContent = string.Join("\n", fileEntries.Select(f => $"\"{f.src}\" \"{f.dest}\""));
+            File.WriteAllText(filelistPath, filelistContent);
+
+            ErrorLog.Write("EXPORT", new Exception($"Filelist content:\n{filelistContent}"));
+
+            var pakExe = @"C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\4.26\UE4\UnrealPak\UnrealPak.exe";
+            var pakFileName = GetModFileName();
+            _pakPath = Path.Combine(outputPath, pakFileName);
+
+            if (!File.Exists(pakExe))
+            {
+                ShowError($"UnrealPak not found at:\n{pakExe}");
+                return;
+            }
+
+            SetProgress(75);
+
+            var pakArgs = $"\"{_pakPath}\" -create=\"{filelistPath}\"";
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = pakExe,
+                Arguments = pakArgs,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            using var proc = Process.Start(psi);
+            var stdout = await proc.StandardOutput.ReadToEndAsync();
+            var stderr = await proc.StandardError.ReadToEndAsync();
+            await proc.WaitForExitAsync();
+
+            ErrorLog.Write("EXPORT", new Exception($"UnrealPak stdout:\n{stdout}"));
+            ErrorLog.Write("EXPORT", new Exception($"UnrealPak stderr:\n{stderr}"));
+            ErrorLog.Write("EXPORT", new Exception($"UnrealPak exit code: {proc.ExitCode}"));
+
+            if (proc.ExitCode != 0)
+            {
+                ShowError($"UnrealPak failed (exit {proc.ExitCode}):\n\n{stderr}\n{stdout}");
+                return;
+            }
+
+            if (File.Exists(_pakPath))
+            {
+                var pakSize = new FileInfo(_pakPath).Length;
+                ErrorLog.Write("EXPORT", new Exception($"Created pak size: {pakSize} bytes"));
+            }
+            else
+            {
+                ErrorLog.Write("EXPORT", new Exception("ERROR: Pak file was not created!"));
+            }
+
+            SetProgress(90);
+
+            try
+            {
+                var stagingDir = Path.Combine(outputPath, "Sifu");
+                if (Directory.Exists(stagingDir)) Directory.Delete(stagingDir, true);
+            }
+            catch { }
+
+            try { Directory.Delete(tempDir, true); } catch { }
+
+            var sigSource = @"C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\4.26\UE4\UnrealPak\pakchunk0-WindowsNoEditor.sig";
+            var sigDest = Path.Combine(outputPath, Path.ChangeExtension(pakFileName, ".sig"));
+            if (File.Exists(sigSource))
+                File.Copy(sigSource, sigDest, true);
+
+            SetProgress(100);
+            UpdateStep(3, "done");
+
+            string gameInstallDir = null;
+            var searchDir = _contentPath;
+            while (searchDir != null)
+            {
+                if (File.Exists(Path.Combine(searchDir, "Content", "Paks", "pakchunk0-WindowsNoEditor.sig")))
+                {
+                    gameInstallDir = searchDir;
+                    break;
+                }
+                searchDir = Path.GetDirectoryName(searchDir);
+            }
+
+            var installedTo = "";
+            if (gameInstallDir != null)
+            {
+                var modsDir = Path.Combine(gameInstallDir, "Content", "Paks", "~mods");
+                Directory.CreateDirectory(modsDir);
+                var destPak = Path.Combine(modsDir, pakFileName);
+                File.Copy(_pakPath, destPak, true);
+                installedTo = destPak;
+
+                var gameSig = Path.Combine(gameInstallDir, "Content", "Paks", "pakchunk0-WindowsNoEditor.sig");
+                var destSig = Path.Combine(modsDir, Path.ChangeExtension(pakFileName, ".sig"));
+                if (File.Exists(gameSig))
+                    File.Copy(gameSig, destSig, true);
+            }
+
+            ShowComplete(pakFileName, _reviewChangeCount, installedTo);
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("EXPORT", ex);
+            ShowError($"Export failed: {ex.Message}");
+        }
+    }
+
+    private async System.Threading.Tasks.Task PatchComboAndStanceForCurrentState(
+        List<(string src, string dest)> fileEntries,
+        string gameRoot,
+        string outputPath)
+    {
+        var hasRetargets = _graph != null && _graph.RedirectOriginalTargets.Any(kvp =>
+        {
+            var node = _graph.Nodes.FirstOrDefault(n => n.Id == kvp.Key);
+            return node != null && node.ResolvedRedirectNodeId >= 0 && node.ResolvedRedirectNodeId != kvp.Value;
+        });
+        var hasComboChanges = _modifiedNodes.Count > 0 || hasRetargets;
+        var hasStanceChange = !string.IsNullOrEmpty(_activeStance) && _activeStance != "MainChar";
+
+        ErrorLog.Write("EXPORT", new Exception($"=== EXPORT START: {_modifiedNodes.Count} modified nodes, stance={_activeStance ?? "MainChar"} ==="));
+
+        if (hasComboChanges)
+        {
+            UpdateStep(1, "active");
+            txtCurrentAction.Text = "Locating vanilla combo tree...";
+            SetProgress(10);
+
+            UpdateStep(1, "done");
+            SetProgress(25);
+
+            UpdateStep(2, "active");
+            txtCurrentAction.Text = "Patching combo tree imports...";
+
+            var mainComboGamePath = string.IsNullOrEmpty(_mainCharComboPath) ? DefaultMainCharComboPath : _mainCharComboPath;
+            var mainComboRel = GamePathToContentRel(mainComboGamePath);
+            var vanillaAssetPath = Path.Combine(gameRoot, mainComboRel + ".uasset");
+            if (!File.Exists(vanillaAssetPath))
+            {
+                ShowError($"Vanilla asset not found: {vanillaAssetPath}");
+                return;
+            }
+            var outputDirForAsset = Path.GetDirectoryName(Path.Combine(outputPath, "Sifu", "Content", mainComboRel + ".uasset"))!;
+            Directory.CreateDirectory(outputDirForAsset);
+            var outUasset = Path.Combine(outputPath, "Sifu", "Content", mainComboRel + ".uasset");
+
+            bool comboTreeModified = false;
+            await System.Threading.Tasks.Task.Run(() =>
+            {
+                var eng = EngineVersion.VER_UE4_26;
+                var asset = new UAsset(vanillaAssetPath, eng, null, CustomSerializationFlags.None);
+
+                NormalExport? comboExport = null;
+                for (int i = 0; i < asset.Exports.Count; i++)
+                {
+                    if (asset.Exports[i] is NormalExport ne &&
+                        (ne.Data?.Any(p => p.Name?.Value?.ToString() == "m_Nodes") == true ||
+                         ne.SerialSize > 50000))
                     {
-                        if (asset.Exports[i] is NormalExport ne && ne.SerialSize > 50000)
+                        comboExport = ne;
+                        break;
+                    }
+                }
+                if (comboExport == null)
+                {
+                    NormalExport? largest = null;
+                    foreach (var exp in asset.Exports)
+                    {
+                        if (exp is NormalExport ne && (largest == null || ne.SerialSize > largest.SerialSize))
+                            largest = ne;
+                    }
+                    comboExport = largest;
+                }
+
+                if (comboExport == null)
+                    throw new Exception($"Could not find Combo export in {Path.GetFileName(vanillaAssetPath)}");
+
+                var allMaps = FindAllMapsNamed(comboExport.Data, "m_Attacks");
+                ErrorLog.Write("EXPORT", new Exception($"Found {allMaps.Count} m_Attacks maps (tree={mainComboGamePath})"));
+
+                int patched = 0;
+                int skippedEmpty = 0;
+                int skippedNoDb = 0;
+                int patchedFallback = 0;
+                int redirectSkipped = 0;
+                var redirectNodes = new List<ComboNode>();
+                var patchedDbFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var node in _modifiedNodes)
+                {
+                    if (!string.IsNullOrEmpty(node.DefaultDBPath) && node.DefaultDBPath.Contains("/AI/Archetypes/", StringComparison.OrdinalIgnoreCase) && _graph != null && !string.Equals(_graph.WeaponName, "MainChar", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ErrorLog.Write("EXPORT", new Exception($"  ENEMY DEFER: {node.DisplayName} -> combo tree Import swap"));
+                        continue;
+                    }
+                    if (string.IsNullOrEmpty(node.DefaultDBPath))
+                    {
+                        if (node.TreeIndex == -1 && !string.IsNullOrEmpty(node.AnimPath))
                         {
-                            comboExport = ne;
-                            break;
+                            var templateRel = "DB/_MainChar/Combos/Attacks/BareHands/LightCombo/MainChar_Jab_FR.uasset";
+                            var templateFile = Path.Combine(gameRoot, templateRel);
+                            if (!File.Exists(templateFile))
+                                templateFile = Directory.GetFiles(Path.Combine(gameRoot, "DB"), "MainChar_Jab*.uasset", SearchOption.AllDirectories).FirstOrDefault();
+                            if (templateFile != null && File.Exists(templateFile))
+                            {
+                                var cloneRel = $"DB/_MainChar/Combos/Attacks/Custom/MainChar_Custom_{node.Id}";
+                                var cloneOut = Path.Combine(outputPath, "Sifu", "Content", cloneRel + ".uasset");
+                                Directory.CreateDirectory(Path.GetDirectoryName(cloneOut)!);
+                                if (PatchDbAnimation(templateFile, node.AnimPath, cloneOut, EngineVersion.VER_UE4_26))
+                                {
+                                    var cloneOutUexp = Path.ChangeExtension(cloneOut, ".uexp");
+                                    var templateUexp = Path.ChangeExtension(templateFile, ".uexp");
+                                    if (File.Exists(templateUexp) && !File.Exists(cloneOutUexp))
+                                        File.Copy(templateUexp, cloneOutUexp, true);
+                                    fileEntries.Add((cloneOut, $"../../../Sifu/Content/{cloneRel}.uasset"));
+                                    fileEntries.Add((cloneOutUexp, $"../../../Sifu/Content/{cloneRel}.uexp"));
+                                    patched++;
+                                    ErrorLog.Write("EXPORT", new Exception($"  CLONED DB for {node.DisplayName} -> {cloneRel} (anim {node.AnimPath})"));
+                                    continue;
+                                }
+                            }
+                        }
+                        skippedEmpty++;
+                        if (skippedEmpty <= 3)
+                            ErrorLog.Write("EXPORT", new Exception($"  SKIP(empty DB): {node.DisplayName} AnimPath='{node.AnimPath}' DefaultDBPath='{node.DefaultDBPath}' DefaultAnimPath='{node.DefaultAnimPath}'"));
+                        continue;
+                    }
+
+                    if (NeedsComboRedirect(node))
+                    {
+                        redirectNodes.Add(node);
+                        redirectSkipped++;
+                        ErrorLog.Write("EXPORT", new Exception($"  REDIRECT (combo tree, skip DB patch): {node.DisplayName} {Path.GetFileNameWithoutExtension(node.DefaultDBPath)} -> {Path.GetFileNameWithoutExtension(node.SourceDBPath!)}"));
+                        continue;
+                    }
+
+                    if (!_animToDbPath.TryGetValue(node.AnimPath, out var newDbPath))
+                    {
+                        var fallbackDbPath = node.DefaultDBPath;
+                        var relDbPath = fallbackDbPath.TrimStart('/');
+                        if (relDbPath.StartsWith("Game/", StringComparison.OrdinalIgnoreCase))
+                            relDbPath = relDbPath.Substring(5);
+                        var vanillaDbFile = Path.Combine(gameRoot, relDbPath + ".uasset");
+                        if (!patchedDbFiles.Contains(fallbackDbPath) && File.Exists(vanillaDbFile))
+                        {
+                            var outDbPath = Path.Combine(outputPath, "Sifu", "Content", relDbPath + ".uasset");
+
+                            ErrorLog.Write("EXPORT", new Exception($"  FALLBACK ATTEMPT: {node.DisplayName} vanillaDb='{vanillaDbFile}' (source={fallbackDbPath})"));
+
+                            if (PatchDbAnimation(vanillaDbFile, node.AnimPath, outDbPath, EngineVersion.VER_UE4_26))
+                            {
+                                patchedDbFiles.Add(fallbackDbPath);
+                                var outDbUexp = Path.ChangeExtension(outDbPath, ".uexp");
+                                var vanillaDbUexp = Path.ChangeExtension(vanillaDbFile, ".uexp");
+                                if (File.Exists(vanillaDbUexp) && !File.Exists(outDbUexp))
+                                    File.Copy(vanillaDbUexp, outDbUexp, true);
+
+                                fileEntries.Add((outDbPath, "../../../Sifu/Content/" + relDbPath + ".uasset"));
+                                fileEntries.Add((outDbUexp, "../../../Sifu/Content/" + relDbPath + ".uexp"));
+
+                                patchedFallback++;
+                                patched++;
+                                ErrorLog.Write("EXPORT", new Exception($"  PATCHED (fallback): {node.DisplayName} -> {node.AnimPath} (modified {Path.GetFileName(fallbackDbPath)})"));
+                                continue;
+                            }
+                        }
+                        else
+                        {
+                            ErrorLog.Write("EXPORT", new Exception($"  FALLBACK SKIP: {node.DisplayName} vanillaDb='{vanillaDbFile}' exists={File.Exists(vanillaDbFile)} alreadyPatched={patchedDbFiles.Contains(fallbackDbPath)}"));
+                        }
+
+                        skippedNoDb++;
+                        if (skippedNoDb <= 3)
+                            ErrorLog.Write("EXPORT", new Exception($"  SKIP(no anim->db): {node.DisplayName} AnimPath='{node.AnimPath}' DefaultDBPath='{node.DefaultDBPath}'"));
+                        continue;
+                    }
+
+                    {
+                        var inplaceDbPath = node.DefaultDBPath;
+                        var inplaceRel = inplaceDbPath.TrimStart('/');
+                        if (inplaceRel.StartsWith("Game/", StringComparison.OrdinalIgnoreCase))
+                            inplaceRel = inplaceRel.Substring(5);
+                        var inplaceVanilla = Path.Combine(gameRoot, inplaceRel + ".uasset");
+                        if (!patchedDbFiles.Contains(inplaceDbPath) && File.Exists(inplaceVanilla))
+                        {
+                            var inplaceOut = Path.Combine(outputPath, "Sifu", "Content", inplaceRel + ".uasset");
+                            if (PatchDbAnimation(inplaceVanilla, node.AnimPath, inplaceOut, EngineVersion.VER_UE4_26))
+                            {
+                                patchedDbFiles.Add(inplaceDbPath);
+                                var inplaceUexp = Path.ChangeExtension(inplaceOut, ".uexp");
+                                var inplaceVanillaUexp = Path.ChangeExtension(inplaceVanilla, ".uexp");
+                                if (File.Exists(inplaceVanillaUexp) && !File.Exists(inplaceUexp))
+                                    File.Copy(inplaceVanillaUexp, inplaceUexp, true);
+                                fileEntries.Add((inplaceOut, "../../../Sifu/Content/" + inplaceRel + ".uasset"));
+                                fileEntries.Add((inplaceUexp, "../../../Sifu/Content/" + inplaceRel + ".uexp"));
+                                patched++;
+                                ErrorLog.Write("EXPORT", new Exception($"  PATCHED (in-place): {node.DisplayName} -> {node.AnimPath} (modified {Path.GetFileName(inplaceDbPath)})"));
+                                continue;
+                            }
+                        }
+                        skippedNoDb++;
+                        if (skippedNoDb <= 3)
+                            ErrorLog.Write("EXPORT", new Exception($"  SKIP(in-place failed): {node.DisplayName} AnimPath='{node.AnimPath}' DB='{inplaceDbPath}' exists={File.Exists(inplaceVanilla)}"));
+                        continue;
+                    }
+
+                    var normalizedSlotKey = NormalizeSlotKey(node.DefaultDBPath);
+                    var attackName = Path.GetFileNameWithoutExtension(newDbPath);
+                    var attackPath = EnsureLeadingSlash(newDbPath);
+
+                    if (string.IsNullOrEmpty(attackName) || string.IsNullOrEmpty(attackPath)) continue;
+
+                    bool found = false;
+                    foreach (var attacksMap in allMaps)
+                    {
+                        foreach (var kvp in attacksMap.Value)
+                        {
+                            string keyStr = GetKeyString(kvp.Key);
+                            if (keyStr == normalizedSlotKey)
+                            {
+                                var valData = kvp.Value as ObjectPropertyData;
+                                if (valData == null) continue;
+
+                                int importIdx = FindImport(asset, attackName, attackPath);
+                                if (importIdx < 0)
+                                    importIdx = AddAttackDBImport(asset, attackName, attackPath);
+
+                                valData.Value = FPackageIndex.FromImport(importIdx);
+                                patched++;
+                                ErrorLog.Write("EXPORT", new Exception($"  PATCHED: {node.DisplayName} -> {attackName} (import[{importIdx}])"));
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (found) break;
+                    }
+
+                    if (!found)
+                        ErrorLog.Write("EXPORT", new Exception($"  NOT FOUND: {node.DisplayName} slot key '{normalizedSlotKey}'"));
+                }
+
+                if (false)
+                {
+                    var enemyNodes = _modifiedNodes
+                        .Where(n => !string.IsNullOrEmpty(n.DefaultDBPath) && n.DefaultDBPath.Contains("/AI/Archetypes/", StringComparison.OrdinalIgnoreCase) && _graph != null && !string.Equals(_graph.WeaponName, "MainChar", StringComparison.OrdinalIgnoreCase))
+                        .Select(n =>
+                        {
+                            var targetRelDb = n.DefaultDBPath.TrimStart('/');
+                            if (targetRelDb.StartsWith("Game/", StringComparison.OrdinalIgnoreCase)) targetRelDb = targetRelDb.Substring(5);
+                            var gameAttackDir = Path.GetDirectoryName(Path.Combine(gameRoot, targetRelDb + ".uasset"));
+                            return (node: n, targetRelDb, gameAttackDir, targetAttackName: Path.GetFileNameWithoutExtension(targetRelDb));
+                        })
+                        .Where(x => x.gameAttackDir != null)
+                        .ToList();
+
+                    var dtGroups = new Dictionary<string, (string vanillaDtPath, string outDtPath, List<(string rowName, string animPath)> rows)>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var (node, targetRelDb, gameAttackDir, targetAttackName) in enemyNodes)
+                    {
+                        var searchDir = gameAttackDir;
+                        for (int level = 0; level < 4 && !string.IsNullOrEmpty(searchDir); level++)
+                        {
+                            if (!Directory.Exists(searchDir)) break;
+                            foreach (var dtFile in Directory.GetFiles(searchDir, "*.uasset"))
+                            {
+                                var dtName = Path.GetFileNameWithoutExtension(dtFile);
+                                if (dtName.Equals(targetAttackName, StringComparison.OrdinalIgnoreCase)) continue;
+                                if (dtName.Contains("HitBoxData", StringComparison.OrdinalIgnoreCase)) continue;
+                                if (!dtName.Contains("Datatable", StringComparison.OrdinalIgnoreCase) && !dtName.Contains("AttackData", StringComparison.OrdinalIgnoreCase) && !dtName.EndsWith("_Attacks", StringComparison.OrdinalIgnoreCase)) continue;
+
+                                var outDt = Path.Combine(outputPath, "Sifu", "Content", Path.GetRelativePath(gameRoot, dtFile));
+                                if (!dtGroups.TryGetValue(outDt, out var group))
+                                {
+                                    group = (dtFile, outDt, new List<(string, string)>());
+                                    dtGroups[outDt] = group;
+                                }
+                                group.rows.Add((targetAttackName, node.AnimPath));
+                                ErrorLog.Write("EXPORT", new Exception($"  DT CANDIDATE: {dtName} row '{targetAttackName}' anim '{node.AnimPath}' (found at level {level})"));
+                            }
+                            var parent = Path.GetDirectoryName(searchDir);
+                            if (parent == searchDir) break;
+                            searchDir = parent;
                         }
                     }
 
-                    if (comboExport == null)
-                        throw new Exception("Could not find Combo export (no export > 50KB)");
-
-                    var allMaps = FindAllMapsNamed(comboExport.Data, "m_Attacks");
-                    ErrorLog.Write("EXPORT", new Exception($"Found {allMaps.Count} m_Attacks maps"));
-
-                    int patched = 0;
-                    int skippedEmpty = 0;
-                    int skippedNoDb = 0;
-                    int patchedFallback = 0;
-                    var patchedDbFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var node in _modifiedNodes)
+                    foreach (var (outDt, (vanillaDtPath, outDtPath, rows)) in dtGroups)
                     {
-                        // Enemy nodes: handled by combo tree Import swap below (same approach as MainChar Phase 2)
-                        // Skip DB in-place patching — the enemy combo tree's imports are redirected instead
-                        if (!string.IsNullOrEmpty(node.DefaultDBPath) && node.DefaultDBPath.Contains("/AI/Archetypes/", StringComparison.OrdinalIgnoreCase) && _graph != null && !string.Equals(_graph.WeaponName, "MainChar", StringComparison.OrdinalIgnoreCase))
+                        try
                         {
-                            ErrorLog.Write("EXPORT", new Exception($"  ENEMY DEFER: {node.DisplayName} -> combo tree Import swap"));
-                            continue;
-                        }
-                        if (string.IsNullOrEmpty(node.DefaultDBPath))
-                        {
-                            // Option B: clone template AttackDB for custom nodes (e.g. FireDisciple moves without AttackDB)
-                            if (node.TreeIndex == -1 && !string.IsNullOrEmpty(node.AnimPath))
+                            var dtAsset = new UAsset(vanillaDtPath, EngineVersion.VER_UE4_26, null, CustomSerializationFlags.None);
+                            NormalExport? dtExport = null;
+                            foreach (var exp in dtAsset.Exports)
                             {
-                                var templateRel = "DB/_MainChar/Combos/Attacks/BareHands/LightCombo/MainChar_Jab_FR.uasset";
-                                var templateFile = Path.Combine(gameRoot, templateRel);
-                                if (!File.Exists(templateFile))
-                                    templateFile = Directory.GetFiles(Path.Combine(gameRoot, "DB"), "MainChar_Jab*.uasset", SearchOption.AllDirectories).FirstOrDefault();
-                                if (templateFile != null && File.Exists(templateFile))
+                                if (exp is NormalExport ne && ne.Data != null) { dtExport = ne; break; }
+                            }
+                            if (dtExport == null) { ErrorLog.Write("EXPORT", new Exception($"  DT SKIP: No NormalExport in {Path.GetFileName(vanillaDtPath)}")); continue; }
+
+                            var dataProps = dtExport.Data;
+                            if (dataProps == null) { ErrorLog.Write("EXPORT", new Exception($"  DT SKIP: Data is null in {Path.GetFileName(vanillaDtPath)}")); continue; }
+
+                            ErrorLog.Write("EXPORT", new Exception($"  DT STRUCTURE in {Path.GetFileNameWithoutExtension(vanillaDtPath)}: {string.Join(", ", dataProps.Select(p => $"{p.Name?.Value}({p.GetType().Name})"))}"));
+
+                            var allRowNames = new List<string>();
+                            foreach (var prop in dataProps)
+                            {
+                                if (prop is ArrayPropertyData arr && arr.Name?.Value?.ToString() == "RowMap")
                                 {
-                                    var cloneRel = $"DB/_MainChar/Combos/Attacks/Custom/MainChar_Custom_{node.Id}";
-                                    var cloneOut = Path.Combine(outputPath, "Sifu", "Content", cloneRel + ".uasset");
-                                    Directory.CreateDirectory(Path.GetDirectoryName(cloneOut)!);
-                                    if (PatchDbAnimation(templateFile, node.AnimPath, cloneOut, EngineVersion.VER_UE4_26))
+                                    ErrorLog.Write("EXPORT", new Exception($"  DT RowMap is ArrayPropertyData with {arr.Value?.Length} elements"));
+                                    foreach (var elem in arr.Value)
                                     {
-                                        var cloneOutUexp = Path.ChangeExtension(cloneOut, ".uexp");
-                                        var templateUexp = Path.ChangeExtension(templateFile, ".uexp");
-                                        if (File.Exists(templateUexp) && !File.Exists(cloneOutUexp))
-                                            File.Copy(templateUexp, cloneOutUexp, true);
-                                        fileEntries.Add((cloneOut, $"../../../Sifu/Content/{cloneRel}.uasset"));
-                                        fileEntries.Add((cloneOutUexp, $"../../../Sifu/Content/{cloneRel}.uexp"));
-                                        patched++;
-                                        ErrorLog.Write("EXPORT", new Exception($"  CLONED DB for {node.DisplayName} -> {cloneRel} (anim {node.AnimPath})"));
-                                        // TODO: append new node to combo tree m_Nodes + inject edge Input — next iteration
-                                        continue;
+                                        if (elem is StructPropertyData rowStruct)
+                                        {
+                                            var rn = rowStruct.Name?.Value?.ToString() ?? "(null)";
+                                            allRowNames.Add(rn);
+                                        }
+                                        else
+                                        {
+                                            ErrorLog.Write("EXPORT", new Exception($"  DT RowMap elem type: {elem?.GetType().Name} name={elem?.Name?.Value}"));
+                                        }
+                                    }
+                                }
+                                else if (prop is MapPropertyData map && map.Name?.Value?.ToString() == "RowMap")
+                                {
+                                    ErrorLog.Write("EXPORT", new Exception($"  DT RowMap is MapPropertyData, type={map.GetType().FullName}"));
+                                    try
+                                    {
+                                        foreach (var kvp in map.Value)
+                                        {
+                                            allRowNames.Add(kvp.Key?.ToString() ?? "(null)");
+                                        }
+                                    }
+                                    catch (Exception mapEx)
+                                    {
+                                        ErrorLog.Write("EXPORT", new Exception($"  DT MapPropertyData iteration failed: {mapEx.Message}"));
+                                    }
+                                }
+                                else if (prop is SetPropertyData set && set.Name?.Value?.ToString() == "RowMap")
+                                {
+                                    ErrorLog.Write("EXPORT", new Exception($"  DT RowMap is SetPropertyData"));
+                                }
+                            }
+                            ErrorLog.Write("EXPORT", new Exception($"  DT ROWS in {Path.GetFileNameWithoutExtension(vanillaDtPath)}: [{string.Join(", ", allRowNames.Take(20))}{(allRowNames.Count > 20 ? ", ..." : "")}] ({allRowNames.Count} total)"));
+
+                            int patchedRows = 0;
+                            var binaryPatchRows = new List<(string rowName, string animPath)>();
+                            foreach (var (rowName, animPath) in rows)
+                            {
+                                bool found = false;
+                                foreach (var prop in dataProps)
+                                {
+                                    if (prop is ArrayPropertyData arr && arr.Name?.Value?.ToString() == "RowMap")
+                                    {
+                                        foreach (var elem in arr.Value)
+                                        {
+                                            if (elem is StructPropertyData rowStruct)
+                                            {
+                                                var rn = rowStruct.Name?.Value?.ToString();
+                                                if (rn == rowName)
+                                                {
+                                                    if (PatchRowAnim(rowStruct, animPath, dtAsset))
+                                                    {
+                                                        if (_animToTiming != null) PatchRowTiming(rowStruct, animPath, _animToTiming, dtAsset);
+                                                        patchedRows++;
+                                                        ErrorLog.Write("EXPORT", new Exception($"  PATCHED DataTable row '{rowName}' -> {Path.GetFileName(animPath)}"));
+                                                    }
+                                                    found = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        if (found) break;
+                                    }
+                                }
+                                if (!found)
+                                {
+                                    if (_animToTiming != null && _animToTiming.TryGetValue(animPath, out _))
+                                    {
+                                        binaryPatchRows.Add((rowName, animPath));
+                                    }
+                                    else
+                                    {
+                                        ErrorLog.Write("EXPORT", new Exception($"  DT ROW NOT FOUND: '{rowName}' in {Path.GetFileNameWithoutExtension(vanillaDtPath)}"));
                                     }
                                 }
                             }
-                            skippedEmpty++;
-                            if (skippedEmpty <= 3)
-                                ErrorLog.Write("EXPORT", new Exception($"  SKIP(empty DB): {node.DisplayName} AnimPath='{node.AnimPath}' DefaultDBPath='{node.DefaultDBPath}' DefaultAnimPath='{node.DefaultAnimPath}'"));
-                            continue;
-                        }
-                        if (!_animToDbPath.TryGetValue(node.AnimPath, out var newDbPath))
-                        {
-                            // Patch the DB the combo tree references (DefaultDBPath), not where the animation came from
-                            var fallbackDbPath = node.DefaultDBPath;
-                            var relDbPath = fallbackDbPath.TrimStart('/');
-                            if (relDbPath.StartsWith("Game/", StringComparison.OrdinalIgnoreCase))
-                                relDbPath = relDbPath.Substring(5);
-                            var vanillaDbFile = Path.Combine(gameRoot, relDbPath + ".uasset");
-                            if (!patchedDbFiles.Contains(fallbackDbPath) && File.Exists(vanillaDbFile))
+
+                            if (patchedRows > 0 || binaryPatchRows.Count > 0)
                             {
-                                var outDbPath = Path.Combine(outputPath, "Sifu", "Content", relDbPath + ".uasset");
+                                Directory.CreateDirectory(Path.GetDirectoryName(outDtPath)!);
+                                dtAsset.Write(outDtPath);
+                                var outDtUexp = Path.ChangeExtension(outDtPath, ".uexp");
+                                var inDtUexp = Path.ChangeExtension(vanillaDtPath, ".uexp");
+                                if (File.Exists(inDtUexp) && !File.Exists(outDtUexp)) File.Copy(inDtUexp, outDtUexp, true);
 
-                                ErrorLog.Write("EXPORT", new Exception($"  FALLBACK ATTEMPT: {node.DisplayName} vanillaDb='{vanillaDbFile}' (source={fallbackDbPath})"));
-
-                                if (PatchDbAnimation(vanillaDbFile, node.AnimPath, outDbPath, EngineVersion.VER_UE4_26))
+                                foreach (var (rowName, animPath) in binaryPatchRows)
                                 {
-                                    patchedDbFiles.Add(fallbackDbPath);
-                                    var outDbUexp = Path.ChangeExtension(outDbPath, ".uexp");
-                                    var vanillaDbUexp = Path.ChangeExtension(vanillaDbFile, ".uexp");
-                                    if (File.Exists(vanillaDbUexp) && !File.Exists(outDbUexp))
-                                        File.Copy(vanillaDbUexp, outDbUexp, true);
-
-                                    fileEntries.Add((outDbPath, "../../../Sifu/Content/" + relDbPath + ".uasset"));
-                                    fileEntries.Add((outDbUexp, "../../../Sifu/Content/" + relDbPath + ".uexp"));
-
-                                    patchedFallback++;
-                                    patched++;
-                                    ErrorLog.Write("EXPORT", new Exception($"  PATCHED (fallback): {node.DisplayName} -> {node.AnimPath} (modified {Path.GetFileName(fallbackDbPath)})"));
-                                    continue;
+                                    BinaryPatchDataTableTiming(vanillaDtPath, outDtPath, rowName, 0, 0, _animToTiming!, animPath);
+                                    patchedRows++;
                                 }
-                            }
-                            else
-                            {
-                                ErrorLog.Write("EXPORT", new Exception($"  FALLBACK SKIP: {node.DisplayName} vanillaDb='{vanillaDbFile}' exists={File.Exists(vanillaDbFile)} alreadyPatched={patchedDbFiles.Contains(fallbackDbPath)}"));
-                            }
 
-                            skippedNoDb++;
-                            if (skippedNoDb <= 3)
-                                ErrorLog.Write("EXPORT", new Exception($"  SKIP(no anim->db): {node.DisplayName} AnimPath='{node.AnimPath}' DefaultDBPath='{node.DefaultDBPath}'"));
-                            continue;
+                                var stagingContentDir = Path.Combine(outputPath, "Sifu", "Content");
+                                var relDt = Path.GetRelativePath(stagingContentDir, outDtPath).Replace('\\', '/');
+                                fileEntries.Add((outDtPath, "../../../Sifu/Content/" + relDt));
+                                fileEntries.Add((outDtUexp, "../../../Sifu/Content/" + relDt.Replace(".uasset", ".uexp")));
+                                ErrorLog.Write("EXPORT", new Exception($"  Wrote DataTable {Path.GetFileNameWithoutExtension(outDtPath)}: {patchedRows}/{rows.Count} rows patched ({new FileInfo(outDtPath).Length}B)"));
+                            }
                         }
-
-                        // MainChar: patch original DB in-place instead of modifying combo tree
-                        // Combo tree re-serialization via asset.Write() corrupts m_Transitions, breaking combo chains
+                        catch (Exception ex)
                         {
-                            var inplaceDbPath = node.DefaultDBPath;
-                            var inplaceRel = inplaceDbPath.TrimStart('/');
-                            if (inplaceRel.StartsWith("Game/", StringComparison.OrdinalIgnoreCase))
-                                inplaceRel = inplaceRel.Substring(5);
-                            var inplaceVanilla = Path.Combine(gameRoot, inplaceRel + ".uasset");
-                            if (!patchedDbFiles.Contains(inplaceDbPath) && File.Exists(inplaceVanilla))
-                            {
-                                var inplaceOut = Path.Combine(outputPath, "Sifu", "Content", inplaceRel + ".uasset");
-                                if (PatchDbAnimation(inplaceVanilla, node.AnimPath, inplaceOut, EngineVersion.VER_UE4_26))
-                                {
-                                    patchedDbFiles.Add(inplaceDbPath);
-                                    var inplaceUexp = Path.ChangeExtension(inplaceOut, ".uexp");
-                                    var inplaceVanillaUexp = Path.ChangeExtension(inplaceVanilla, ".uexp");
-                                    if (File.Exists(inplaceVanillaUexp) && !File.Exists(inplaceUexp))
-                                        File.Copy(inplaceVanillaUexp, inplaceUexp, true);
-                                    fileEntries.Add((inplaceOut, "../../../Sifu/Content/" + inplaceRel + ".uasset"));
-                                    fileEntries.Add((inplaceUexp, "../../../Sifu/Content/" + inplaceRel + ".uexp"));
-                                    patched++;
-                                    ErrorLog.Write("EXPORT", new Exception($"  PATCHED (in-place): {node.DisplayName} -> {node.AnimPath} (modified {Path.GetFileName(inplaceDbPath)})"));
-                                    continue;
-                                }
-                            }
-                            skippedNoDb++;
-                            if (skippedNoDb <= 3)
-                                ErrorLog.Write("EXPORT", new Exception($"  SKIP(in-place failed): {node.DisplayName} AnimPath='{node.AnimPath}' DB='{inplaceDbPath}' exists={File.Exists(inplaceVanilla)}"));
-                            continue;
+                            ErrorLog.Write("EXPORT", new Exception($"  DT FAIL: {Path.GetFileName(vanillaDtPath)}: {ex.Message}"));
                         }
+                    }
+                }
 
-                        var normalizedSlotKey = NormalizeSlotKey(node.DefaultDBPath);
-                        var attackName = Path.GetFileNameWithoutExtension(newDbPath);
-                        var attackPath = EnsureLeadingSlash(newDbPath);
+                ErrorLog.Write("EXPORT", new Exception($"Patched {patched}/{_modifiedNodes.Count} nodes (direct: {patched - patchedFallback}, fallback DB: {patchedFallback}, combo redirects: {redirectSkipped}, skipped empty DB: {skippedEmpty}, skipped no anim->db: {skippedNoDb})"));
 
-                        if (string.IsNullOrEmpty(attackName) || string.IsNullOrEmpty(attackPath)) continue;
+                int comboSwaps = 0;
+                var mainSwaps = new List<(string oldShortName, string newShortName, string newFullPath)>();
+                {
+                    foreach (var node in _modifiedNodes)
+                    {
+                        if (string.IsNullOrEmpty(node.DefaultDBPath) || string.IsNullOrEmpty(node.AnimPath))
+                            continue;
 
-                        bool found = false;
+                        string oldDbShortName = Path.GetFileNameWithoutExtension(node.DefaultDBPath);
+                        string newDbPath = string.IsNullOrEmpty(node.SourceDBPath) ? "" : node.SourceDBPath;
+                        if (string.IsNullOrEmpty(newDbPath)) continue;
+                        string newDbShortName = Path.GetFileNameWithoutExtension(newDbPath);
+                        string newDbFullPath = "/" + newDbPath.TrimStart('/');
+                        if (newDbFullPath.StartsWith("//", StringComparison.Ordinal))
+                            newDbFullPath = newDbFullPath.Substring(1);
+
+                        if (oldDbShortName == newDbShortName) continue;
+
+                        bool swappedThis = false;
                         foreach (var attacksMap in allMaps)
                         {
                             foreach (var kvp in attacksMap.Value)
                             {
                                 string keyStr = GetKeyString(kvp.Key);
-                                if (keyStr == normalizedSlotKey)
+                                string normalizedDefault = NormalizeSlotKey(node.DefaultDBPath);
+                                if (keyStr != normalizedDefault) continue;
+
+                                var valData = kvp.Value as ObjectPropertyData;
+                                if (valData?.Value == null) continue;
+
+                                int curImportIdx = -(valData.Value.Index + 1);
+                                if (curImportIdx < 0 || curImportIdx >= asset.Imports.Count) continue;
+
+                                var curImport = asset.Imports[curImportIdx];
+                                string curDbName = curImport.ObjectName?.Value?.ToString() ?? "";
+
+                                int pkgOuterIdx = -(curImport.OuterIndex.Index + 1);
+                                string curPkgPath = "";
+                                if (pkgOuterIdx >= 0 && pkgOuterIdx < asset.Imports.Count)
+                                    curPkgPath = asset.Imports[pkgOuterIdx].ObjectName?.Value?.ToString() ?? "";
+
+                                if (!curPkgPath.Contains(oldDbShortName, StringComparison.OrdinalIgnoreCase) &&
+                                    curDbName != oldDbShortName)
                                 {
-                                    var valData = kvp.Value as ObjectPropertyData;
-                                    if (valData == null) continue;
-
-                                    int importIdx = FindImport(asset, attackName, attackPath);
-                                    if (importIdx < 0)
-                                        importIdx = AddAttackDBImport(asset, attackName, attackPath);
-
-                                    valData.Value = FPackageIndex.FromImport(importIdx);
-                                    patched++;
-                                    ErrorLog.Write("EXPORT", new Exception($"  PATCHED: {node.DisplayName} -> {attackName} (import[{importIdx}])"));
-                                    found = true;
+                                    ErrorLog.Write("EXPORT", new Exception($"  COMBO SKIP: {node.DisplayName} import[{curImportIdx}] name='{curDbName}' pkg='{curPkgPath}' != expected '{oldDbShortName}'"));
                                     break;
                                 }
+
+                                curImport.ObjectName = FName.FromString(asset, newDbShortName);
+
+                                if (pkgOuterIdx >= 0 && pkgOuterIdx < asset.Imports.Count)
+                                    asset.Imports[pkgOuterIdx].ObjectName = FName.FromString(asset, newDbFullPath);
+
+                                comboSwaps++;
+                                swappedThis = true;
+                                mainSwaps.Add((oldDbShortName, newDbShortName, newDbFullPath));
+                                ErrorLog.Write("EXPORT", new Exception($"  COMBO IMPORT SWAP: {oldDbShortName} -> {newDbShortName} (import[{curImportIdx}])"));
+                                break;
                             }
-                            if (found) break;
+                            if (swappedThis) break;
                         }
 
-                        if (!found)
-                            ErrorLog.Write("EXPORT", new Exception($"  NOT FOUND: {node.DisplayName} slot key '{normalizedSlotKey}'"));
-                    }
-
-                    // Phase 1b: SKIPPED — testing combo-only export without DataTable timing patches
-                    if (false)
-                    {
-                        var enemyNodes = _modifiedNodes
-                            .Where(n => !string.IsNullOrEmpty(n.DefaultDBPath) && n.DefaultDBPath.Contains("/AI/Archetypes/", StringComparison.OrdinalIgnoreCase) && _graph != null && !string.Equals(_graph.WeaponName, "MainChar", StringComparison.OrdinalIgnoreCase))
-                            .Select(n =>
-                            {
-                                var targetRelDb = n.DefaultDBPath.TrimStart('/');
-                                if (targetRelDb.StartsWith("Game/", StringComparison.OrdinalIgnoreCase)) targetRelDb = targetRelDb.Substring(5);
-                                var gameAttackDir = Path.GetDirectoryName(Path.Combine(gameRoot, targetRelDb + ".uasset"));
-                                return (node: n, targetRelDb, gameAttackDir, targetAttackName: Path.GetFileNameWithoutExtension(targetRelDb));
-                            })
-                            .Where(x => x.gameAttackDir != null)
-                            .ToList();
-
-                        // Group by DataTable output path to load each DataTable once
-                        var dtGroups = new Dictionary<string, (string vanillaDtPath, string outDtPath, List<(string rowName, string animPath)> rows)>(StringComparer.OrdinalIgnoreCase);
-                        foreach (var (node, targetRelDb, gameAttackDir, targetAttackName) in enemyNodes)
+                        if (!swappedThis && redirectNodes.Any(r => Path.GetFileNameWithoutExtension(r.DefaultDBPath) == oldDbShortName))
                         {
-                            var searchDir = gameAttackDir;
-                            for (int level = 0; level < 4 && !string.IsNullOrEmpty(searchDir); level++)
-                            {
-                                if (!Directory.Exists(searchDir)) break;
-                                foreach (var dtFile in Directory.GetFiles(searchDir, "*.uasset"))
-                                {
-                                    var dtName = Path.GetFileNameWithoutExtension(dtFile);
-                                    if (dtName.Equals(targetAttackName, StringComparison.OrdinalIgnoreCase)) continue;
-                                    if (dtName.Contains("HitBoxData", StringComparison.OrdinalIgnoreCase)) continue;
-                                    if (!dtName.Contains("Datatable", StringComparison.OrdinalIgnoreCase) && !dtName.Contains("AttackData", StringComparison.OrdinalIgnoreCase) && !dtName.EndsWith("_Attacks", StringComparison.OrdinalIgnoreCase)) continue;
+                            string attackName = newDbShortName;
+                            string attackPath = newDbFullPath;
+                            int importIdx = FindImport(asset, attackName, attackPath);
+                            if (importIdx < 0)
+                                importIdx = AddAttackDBImport(asset, attackName, attackPath);
 
-                                    var outDt = Path.Combine(outputPath, "Sifu", "Content", Path.GetRelativePath(gameRoot, dtFile));
-                                    if (!dtGroups.TryGetValue(outDt, out var group))
-                                    {
-                                        group = (dtFile, outDt, new List<(string, string)>());
-                                        dtGroups[outDt] = group;
-                                    }
-                                    group.rows.Add((targetAttackName, node.AnimPath));
-                                    ErrorLog.Write("EXPORT", new Exception($"  DT CANDIDATE: {dtName} row '{targetAttackName}' anim '{node.AnimPath}' (found at level {level})"));
-                                }
-                                var parent = Path.GetDirectoryName(searchDir);
-                                if (parent == searchDir) break;
-                                searchDir = parent;
-                            }
-                        }
-
-                        foreach (var (outDt, (vanillaDtPath, outDtPath, rows)) in dtGroups)
-                        {
-                            try
-                            {
-                                var dtAsset = new UAsset(vanillaDtPath, EngineVersion.VER_UE4_26, null, CustomSerializationFlags.None);
-                                NormalExport? dtExport = null;
-                                foreach (var exp in dtAsset.Exports)
-                                {
-                                    if (exp is NormalExport ne && ne.Data != null) { dtExport = ne; break; }
-                                }
-                                if (dtExport == null) { ErrorLog.Write("EXPORT", new Exception($"  DT SKIP: No NormalExport in {Path.GetFileName(vanillaDtPath)}")); continue; }
-
-                                var dataProps = dtExport.Data;
-                                if (dataProps == null) { ErrorLog.Write("EXPORT", new Exception($"  DT SKIP: Data is null in {Path.GetFileName(vanillaDtPath)}")); continue; }
-
-                                // Debug: dump all top-level property names and types
-                                ErrorLog.Write("EXPORT", new Exception($"  DT STRUCTURE in {Path.GetFileNameWithoutExtension(vanillaDtPath)}: {string.Join(", ", dataProps.Select(p => $"{p.Name?.Value}({p.GetType().Name})"))}"));
-
-                                // Debug: dump all row names in this DataTable
-                                var allRowNames = new List<string>();
-                                foreach (var prop in dataProps)
-                                {
-                                    if (prop is ArrayPropertyData arr && arr.Name?.Value?.ToString() == "RowMap")
-                                    {
-                                        ErrorLog.Write("EXPORT", new Exception($"  DT RowMap is ArrayPropertyData with {arr.Value?.Length} elements"));
-                                        foreach (var elem in arr.Value)
-                                        {
-                                            if (elem is StructPropertyData rowStruct)
-                                            {
-                                                var rn = rowStruct.Name?.Value?.ToString() ?? "(null)";
-                                                allRowNames.Add(rn);
-                                            }
-                                            else
-                                            {
-                                                ErrorLog.Write("EXPORT", new Exception($"  DT RowMap elem type: {elem?.GetType().Name} name={elem?.Name?.Value}"));
-                                            }
-                                        }
-                                    }
-                                    else if (prop is MapPropertyData map && map.Name?.Value?.ToString() == "RowMap")
-                                    {
-                                        ErrorLog.Write("EXPORT", new Exception($"  DT RowMap is MapPropertyData, type={map.GetType().FullName}"));
-                                        try
-                                        {
-                                            foreach (var kvp in map.Value)
-                                            {
-                                                allRowNames.Add(kvp.Key?.ToString() ?? "(null)");
-                                            }
-                                        }
-                                        catch (Exception mapEx)
-                                        {
-                                            ErrorLog.Write("EXPORT", new Exception($"  DT MapPropertyData iteration failed: {mapEx.Message}"));
-                                        }
-                                    }
-                                    else if (prop is SetPropertyData set && set.Name?.Value?.ToString() == "RowMap")
-                                    {
-                                        ErrorLog.Write("EXPORT", new Exception($"  DT RowMap is SetPropertyData"));
-                                    }
-                                }
-                                ErrorLog.Write("EXPORT", new Exception($"  DT ROWS in {Path.GetFileNameWithoutExtension(vanillaDtPath)}: [{string.Join(", ", allRowNames.Take(20))}{(allRowNames.Count > 20 ? ", ..." : "")}] ({allRowNames.Count} total)"));
-
-                                int patchedRows = 0;
-                                var binaryPatchRows = new List<(string rowName, string animPath)>();
-                                foreach (var (rowName, animPath) in rows)
-                                {
-                                    bool found = false;
-                                    foreach (var prop in dataProps)
-                                    {
-                                        if (prop is ArrayPropertyData arr && arr.Name?.Value?.ToString() == "RowMap")
-                                        {
-                                            foreach (var elem in arr.Value)
-                                            {
-                                                if (elem is StructPropertyData rowStruct)
-                                                {
-                                                    var rn = rowStruct.Name?.Value?.ToString();
-                                                    if (rn == rowName)
-                                                    {
-                                                        if (PatchRowAnim(rowStruct, animPath, dtAsset))
-                                                        {
-                                                            if (_animToTiming != null) PatchRowTiming(rowStruct, animPath, _animToTiming, dtAsset);
-                                                            patchedRows++;
-                                                            ErrorLog.Write("EXPORT", new Exception($"  PATCHED DataTable row '{rowName}' -> {Path.GetFileName(animPath)}"));
-                                                        }
-                                                        found = true;
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                            if (found) break;
-                                        }
-                                    }
-                                    if (!found)
-                                    {
-                                        if (_animToTiming != null && _animToTiming.TryGetValue(animPath, out _))
-                                        {
-                                            binaryPatchRows.Add((rowName, animPath));
-                                        }
-                                        else
-                                        {
-                                            ErrorLog.Write("EXPORT", new Exception($"  DT ROW NOT FOUND: '{rowName}' in {Path.GetFileNameWithoutExtension(vanillaDtPath)}"));
-                                        }
-                                    }
-                                }
-
-                                if (patchedRows > 0 || binaryPatchRows.Count > 0)
-                                {
-                                    Directory.CreateDirectory(Path.GetDirectoryName(outDtPath)!);
-                                    dtAsset.Write(outDtPath);
-                                    var outDtUexp = Path.ChangeExtension(outDtPath, ".uexp");
-                                    var inDtUexp = Path.ChangeExtension(vanillaDtPath, ".uexp");
-                                    if (File.Exists(inDtUexp) && !File.Exists(outDtUexp)) File.Copy(inDtUexp, outDtUexp, true);
-
-                                    foreach (var (rowName, animPath) in binaryPatchRows)
-                                    {
-                                        BinaryPatchDataTableTiming(vanillaDtPath, outDtPath, rowName, 0, 0, _animToTiming!, animPath);
-                                        patchedRows++;
-                                    }
-
-                                    var stagingContentDir = Path.Combine(outputPath, "Sifu", "Content");
-                                    var relDt = Path.GetRelativePath(stagingContentDir, outDtPath).Replace('\\', '/');
-                                    fileEntries.Add((outDtPath, "../../../Sifu/Content/" + relDt));
-                                    fileEntries.Add((outDtUexp, "../../../Sifu/Content/" + relDt.Replace(".uasset", ".uexp")));
-                                    ErrorLog.Write("EXPORT", new Exception($"  Wrote DataTable {Path.GetFileNameWithoutExtension(outDtPath)}: {patchedRows}/{rows.Count} rows patched ({new FileInfo(outDtPath).Length}B)"));
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                ErrorLog.Write("EXPORT", new Exception($"  DT FAIL: {Path.GetFileName(vanillaDtPath)}: {ex.Message}"));
-                            }
-                        }
-                    }
-
-                    // Append new custom nodes to m_Nodes and inject edges
-                    if (_graph != null && _enableCustomTreeAppend)
-                    {
-                        try
-                        {
-                            var newNodes = _graph.Nodes.Where(n => n.TreeIndex == -1).ToList();
-                            if (newNodes.Count > 0)
-                            {
-                                var nodesArr = comboExport.Data.OfType<ArrayPropertyData>().FirstOrDefault(p => p.Name.Value.ToString() == "m_Nodes");
-                                if (nodesArr != null && nodesArr.Value != null && nodesArr.Value.Length > 0)
-                                {
-                                    var idToTreeIndex = new Dictionary<int,int>();
-                                    foreach (var n in _graph.Nodes.Where(n=>n.TreeIndex>=0))
-                                        idToTreeIndex[n.Id] = n.TreeIndex;
-                                    int baseCount = nodesArr.Value.Length;
-                                    // pick first non-conduit real combo node as template, not Value[0] which is often Conduit/Root
-                                    StructPropertyData template = null;
-                                    foreach (var cand in nodesArr.Value)
-                                    {
-                                        if (cand is StructPropertyData spd)
-                                        {
-                                            var nm = spd.Value.OfType<NamePropertyData>().FirstOrDefault(p=>p.Name.Value.ToString()=="m_Name");
-                                            var nameStr = nm?.Value.ToString() ?? "";
-                                            if (!nameStr.Contains("Conduit", StringComparison.OrdinalIgnoreCase) && !nameStr.Contains("Root", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(nameStr) && nameStr!="None")
-                                            { template = spd; break; }
-                                        }
-                                    }
-                                    if (template == null) template = nodesArr.Value[0] as StructPropertyData;
-                                    var newList = new List<PropertyData>(nodesArr.Value);
-                                    for (int ni = 0; ni < newNodes.Count; ni++)
-                                    {
-                                        var cn = newNodes[ni];
-                                        int newIdx = baseCount + ni;
-                                        idToTreeIndex[cn.Id] = newIdx;
-                                        var cloneDbPath = _customClones != null && _customClones.TryGetValue(cn.Id, out var cp) ? cp : null;
-                                        if (cloneDbPath == null && _animToDbPath.TryGetValue(cn.AnimPath, out var existingDb)) cloneDbPath = existingDb;
-                                        string attackName2 = cloneDbPath != null ? Path.GetFileNameWithoutExtension(cloneDbPath) : Path.GetFileNameWithoutExtension(cn.AnimPath);
-                                        string attackPath2 = cloneDbPath != null ? EnsureLeadingSlash(cloneDbPath) : $"/Game/DB/_MainChar/Combos/Attacks/Custom/MainChar_Custom_{cn.Id}";
-                                        int impIdx = FindImport(asset, attackName2, attackPath2);
-                                        if (impIdx < 0) impIdx = AddAttackDBImport(asset, attackName2, attackPath2);
-                                        // shallow clone template struct
-                                        StructPropertyData newNodeStruct;
-                                        if (template != null)
-                                        {
-                                            newNodeStruct = new StructPropertyData();
-                                            newNodeStruct.Name = new FName(asset, "m_Nodes");
-                                            newNodeStruct.StructType = template.StructType;
-                                            newNodeStruct.Value = new List<PropertyData>();
-                                            // deep copy children — replace patched ones with new instances to avoid mutating template
-                                            for (int ci=0; ci<template.Value.Count; ci++)
-                                            {
-                                                var child = template.Value[ci];
-                                                if (child.Name.Value.ToString()=="m_Name" && child is NamePropertyData np)
-                                                {
-                                                    newNodeStruct.Value.Add(new NamePropertyData{ Name=np.Name, Value=new FName(asset, $"Custom_{cn.Id}") });
-                                                }
-                                                else if (child.Name.Value.ToString()=="m_AttackInfos" && child is StructPropertyData sp)
-                                                {
-                                                    var spCopy = new StructPropertyData{ Name=sp.Name, StructType=sp.StructType, Value=new List<PropertyData>() };
-                                                    foreach (var gc in sp.Value)
-                                                    {
-                                                        if (gc is MapPropertyData mp && gc.Name.Value.ToString()=="m_Attacks")
-                                                        {
-                                                            var mpCopy = new MapPropertyData{ Name=mp.Name, KeyType=mp.KeyType, ValueType=mp.ValueType, Value=new TMap<PropertyData,PropertyData>() };
-                                                            // copy existing entries then overwrite first value to new import
-                                                            bool first = true;
-                                                            foreach (var kv in mp.Value)
-                                                            {
-                                                                if (first && kv.Value is ObjectPropertyData opd)
-                                                                {
-                                                                    mpCopy.Value.Add(kv.Key, new ObjectPropertyData{ Name=opd.Name, Value=FPackageIndex.FromImport(impIdx)});
-                                                                    first = false;
-                                                                }
-                                                                else mpCopy.Value.Add(kv.Key, kv.Value);
-                                                            }
-                                                            if (mpCopy.Value.Count==0)
-                                                                mpCopy.Value.Add(new NamePropertyData{ Name=new FName(asset,"m_Attacks"), Value=new FName(asset, attackPath2)}, new ObjectPropertyData{ Name=new FName(asset,"m_Attacks"), Value=FPackageIndex.FromImport(impIdx)});
-                                                            spCopy.Value.Add(mpCopy);
-                                                        }
-                                                        else spCopy.Value.Add(gc);
-                                                    }
-                                                    newNodeStruct.Value.Add(spCopy);
-                                                }
-                                                else
-                                                {
-                                                    newNodeStruct.Value.Add(child);
-                                                }
-                                            }
-                                        }
-                                        else
-                                        {
-                                            newNodeStruct = template;
-                                        }
-                                        newList.Add(newNodeStruct);
-                                        ErrorLog.Write("EXPORT", new Exception($"  APPENDED new node {cn.DisplayName} -> idx {newIdx} import {impIdx}"));
-                                    }
-                                    nodesArr.Value = newList.ToArray();
-                                    // Inject edges: for each ComboEdge, ensure source m_Transitions has target
-                                    foreach (var edge in _graph.Edges)
-                                    {
-                                        if (!idToTreeIndex.TryGetValue(edge.FromNodeId, out var srcIdx)) continue;
-                                        if (!idToTreeIndex.TryGetValue(edge.ToNodeId, out var dstIdx)) continue;
-                                        var srcNodeData = nodesArr.Value[srcIdx] as StructPropertyData;
-                                        if (srcNodeData == null) continue;
-                                        var transStruct = srcNodeData.Value.OfType<StructPropertyData>().FirstOrDefault(p=>p.Name.Value.ToString()=="m_Transitions");
-                                        if (transStruct == null) continue;
-                                        var transArr = transStruct.Value.OfType<ArrayPropertyData>().FirstOrDefault(p=>p.Name.Value.ToString()=="m_Transitions");
-                                        if (transArr == null) continue;
-                                        string inputEnum = edge.InputName?.Replace(" Delay","") ?? "";
-                                        string ueEnum = inputEnum switch { "LMB"=>"Light","RMB"=>"Heavy","RMB Hold"=>"HeavyHold","S"=>"Special","Shift"=>"Dodge","Q"=>"Throw", _=>"Light"};
-                                        // find existing transition element for this input
-                                        StructPropertyData targetTrans = null;
-                                        foreach (var elem in transArr.Value)
-                                        {
-                                            if (elem is StructPropertyData spd)
-                                            {
-                                                var enumProp = spd.Value.OfType<EnumPropertyData>().FirstOrDefault(p=>p.Name.Value.ToString()=="m_eInputTransition");
-                                                if (enumProp != null && enumProp.Value.ToString().Contains(ueEnum)) { targetTrans = spd; break; }
-                                            }
-                                        }
-                                        if (targetTrans == null)
-                                        {
-                                            // create new transition element by cloning first
-                                            if (transArr.Value.Length>0 && transArr.Value[0] is StructPropertyData first)
-                                            {
-                                                targetTrans = new StructPropertyData { Name = first.Name, StructType = first.StructType, Value = new List<PropertyData>() };
-                                                foreach (var ch in first.Value)
-                                                {
-                                                    if (ch.Name.Value.ToString()=="m_eInputTransition" && ch is EnumPropertyData ep)
-                                                        targetTrans.Value.Add(new EnumPropertyData{ Name=ep.Name, EnumType=ep.EnumType, Value=new FName(asset, $"EComboInputTransition::{ueEnum}")});
-                                                    else if (ch.Name.Value.ToString()=="m_TargetNodes" && ch is MapPropertyData mp)
-                                                        targetTrans.Value.Add(new MapPropertyData{ Name=mp.Name, KeyType=mp.KeyType, ValueType=mp.ValueType, Value=new TMap<PropertyData,PropertyData>()});
-                                                    else targetTrans.Value.Add(ch);
-                                                }
-                                                var list = new List<PropertyData>(transArr.Value) { targetTrans };
-                                                transArr.Value = list.ToArray();
-                                            }
-                                        }
-                                        if (targetTrans != null)
-                                        {
-                                            var map2 = targetTrans.Value.OfType<MapPropertyData>().FirstOrDefault(p=>p.Name.Value.ToString()=="m_TargetNodes");
-                                            if (map2 != null && !map2.Value.Any(kvp=> kvp.Key is IntPropertyData ip && ip.Value==dstIdx))
-                                            {
-                                                map2.Value.Add(new IntPropertyData{ Name=new FName(asset,"m_TargetNodes"), Value=dstIdx }, new IntPropertyData{ Name=new FName(asset,"m_TargetNodes"), Value=1});
-                                            }
-                                        }
-                                    }
-                                    ErrorLog.Write("EXPORT", new Exception($"  Appended {newNodes.Count} custom nodes, injected edges, new total {nodesArr.Value.Length}"));
-                                }
-                            }
-                        } catch (Exception ex2) { ErrorLog.Write("EXPORT", new Exception($"  APPEND/EDGE inject failed: {ex2.Message}")); }
-                    }
-
-                    ErrorLog.Write("EXPORT", new Exception($"Patched {patched}/{_modifiedNodes.Count} nodes (direct: {patched - patchedFallback}, fallback DB: {patchedFallback}, skipped empty DB: {skippedEmpty}, skipped no anim->db: {skippedNoDb})"));
-
-                    // Phase 2: Swap combo tree Import entries for modified nodes
-                    // This matches the working Fire Disciple mod approach: modify the combo tree's
-                    // Import table to point to different DBs, rather than patching DB files.
-                    // The .uexp (combo tree structure/transitions) stays untouched.
-                    int comboSwaps = 0;
-                    {
-                        foreach (var node in _modifiedNodes)
-                        {
-                            if (string.IsNullOrEmpty(node.DefaultDBPath) || string.IsNullOrEmpty(node.AnimPath))
-                                continue;
-
-                            string oldDbShortName = Path.GetFileNameWithoutExtension(node.DefaultDBPath);
-                            string newDbPath = string.IsNullOrEmpty(node.SourceDBPath) ? "" : node.SourceDBPath;
-                            if (string.IsNullOrEmpty(newDbPath)) continue;
-                            string newDbShortName = Path.GetFileNameWithoutExtension(newDbPath);
-                            string newDbFullPath = "/" + newDbPath.TrimStart('/');
-
-                            if (oldDbShortName == newDbShortName) continue;
-
+                            bool mapPatched = false;
                             foreach (var attacksMap in allMaps)
                             {
                                 foreach (var kvp in attacksMap.Value)
                                 {
                                     string keyStr = GetKeyString(kvp.Key);
-                                    string normalizedDefault = NormalizeSlotKey(node.DefaultDBPath);
-                                    if (keyStr != normalizedDefault) continue;
-
-                                    var valData = kvp.Value as ObjectPropertyData;
-                                    if (valData?.Value == null) continue;
-
-                                    int curImportIdx = -(valData.Value.Index + 1);
-                                    if (curImportIdx < 0 || curImportIdx >= asset.Imports.Count) continue;
-
-                                    var curImport = asset.Imports[curImportIdx];
-                                    string curDbName = curImport.ObjectName?.Value?.ToString() ?? "";
-
-                                    int pkgOuterIdx = -(curImport.OuterIndex.Index + 1);
-                                    string curPkgPath = "";
-                                    if (pkgOuterIdx >= 0 && pkgOuterIdx < asset.Imports.Count)
-                                        curPkgPath = asset.Imports[pkgOuterIdx].ObjectName?.Value?.ToString() ?? "";
-
-                                    if (!curPkgPath.Contains(oldDbShortName, StringComparison.OrdinalIgnoreCase) &&
-                                        curDbName != oldDbShortName)
-                                    {
-                                        ErrorLog.Write("EXPORT", new Exception($"  COMBO SKIP: {node.DisplayName} import[{curImportIdx}] name='{curDbName}' pkg='{curPkgPath}' != expected '{oldDbShortName}'"));
-                                        break;
-                                    }
-
-                                    curImport.ObjectName = FName.FromString(asset, newDbShortName);
-
-                                    if (pkgOuterIdx >= 0 && pkgOuterIdx < asset.Imports.Count)
-                                        asset.Imports[pkgOuterIdx].ObjectName = FName.FromString(asset, newDbFullPath);
-
-                                    comboSwaps++;
-                                    ErrorLog.Write("EXPORT", new Exception($"  COMBO IMPORT SWAP: {oldDbShortName} -> {newDbShortName} (import[{curImportIdx}])"));
+                                    if (keyStr != NormalizeSlotKey(node.DefaultDBPath)) continue;
+                                    if (kvp.Value is not ObjectPropertyData od || od.Value == null) continue;
+                                    od.Value = FPackageIndex.FromImport(importIdx);
+                                    mapPatched = true;
                                     break;
                                 }
+                                if (mapPatched) break;
+                            }
+
+                            if (mapPatched)
+                            {
+                                comboSwaps++;
+                                mainSwaps.Add((oldDbShortName, newDbShortName, newDbFullPath));
+                                ErrorLog.Write("EXPORT", new Exception($"  COMBO MAP REPOINT: {oldDbShortName} -> {newDbShortName} (import[{importIdx}])"));
                             }
                         }
                     }
 
-                    ErrorLog.Write("EXPORT", new Exception($"Combo tree swaps: {comboSwaps}"));
-
-                    comboTreeModified = comboSwaps > 0;
-                    if (comboTreeModified)
+                    if (mainSwaps.Count > 0)
                     {
-                        asset.Write(outUasset);
+                        var swapDict = mainSwaps
+                            .GroupBy(s => s.oldShortName, StringComparer.OrdinalIgnoreCase)
+                            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
-                        var comboVanillaUexp = Path.Combine(gameRoot, "DB", "_MainChar", "Combos", "MainChar_ComboTree.uexp");
-                        var comboOutUexp = Path.ChangeExtension(outUasset, ".uexp");
-                        if (File.Exists(comboVanillaUexp))
-                            File.Copy(comboVanillaUexp, comboOutUexp, true);
+                        var nodesProp = comboExport.Data.FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Nodes");
+                        if (nodesProp is ArrayPropertyData nodesArr)
+                        {
+                            int fNamesPatched = 0;
+                            foreach (var elem in nodesArr.Value)
+                            {
+                                if (elem is not StructPropertyData nodeStruct || nodeStruct.Value == null) continue;
+
+                                var attackInfos = nodeStruct.Value
+                                    .OfType<StructPropertyData>()
+                                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_AttackInfos");
+                                if (attackInfos?.Value == null) continue;
+
+                                foreach (var field in attackInfos.Value)
+                                {
+                                    if (field is not NamePropertyData nameProp) continue;
+                                    if (nameProp.Name?.Value?.ToString() != "m_Attacks") continue;
+
+                                    string curPath = nameProp.Value?.Value?.ToString() ?? "";
+                                    if (string.IsNullOrEmpty(curPath) || curPath == "None") continue;
+
+                                    string curShortName = Path.GetFileNameWithoutExtension(curPath);
+                                    if (!swapDict.TryGetValue(curShortName, out var swap)) continue;
+
+                                    string newFNamePath = swap.newFullPath + "." + swap.newShortName;
+                                    nameProp.Value = FName.FromString(asset, newFNamePath);
+                                    fNamesPatched++;
+                                }
+                            }
+                            if (fNamesPatched > 0)
+                            {
+                                comboTreeModified = true;
+                                ErrorLog.Write("EXPORT", new Exception($"  COMBO FName PATCH: {fNamesPatched} m_Attacks paths in m_Nodes"));
+                            }
+                        }
+
+                        foreach (var attacksMap in allMaps)
+                        {
+                            if (attacksMap.Value == null) continue;
+                            var rebuilt = new TMap<PropertyData, PropertyData>();
+                            bool mapKeyChanged = false;
+                            foreach (var kvp in attacksMap.Value)
+                            {
+                                string keyStr = GetKeyString(kvp.Key);
+                                string shortKey = Path.GetFileNameWithoutExtension(keyStr);
+                                if (swapDict.TryGetValue(shortKey, out var mapSwap))
+                                {
+                                    string newFNamePath = mapSwap.newFullPath + "." + mapSwap.newShortName;
+                                    var newKeyNameProp = new NamePropertyData
+                                    {
+                                        Name = new FName(asset, "m_Attacks"),
+                                        Value = FName.FromString(asset, newFNamePath)
+                                    };
+                                    rebuilt.Add(newKeyNameProp, kvp.Value);
+                                    mapKeyChanged = true;
+                                    ErrorLog.Write("EXPORT", new Exception($"  COMBO MAP KEY: {shortKey} -> {newFNamePath}"));
+                                }
+                                else
+                                {
+                                    rebuilt.Add(kvp.Key, kvp.Value);
+                                }
+                            }
+                            if (mapKeyChanged)
+                            {
+                                attacksMap.Value = rebuilt;
+                                comboTreeModified = true;
+                            }
+                        }
                     }
-                });
-
-                UpdateStep(2, "done");
-                SetProgress(50);
-
-                if (comboTreeModified)
-                {
-                    fileEntries.Add((outUasset, "../../../Sifu/Content/DB/_MainChar/Combos/MainChar_ComboTree.uasset"));
-                    fileEntries.Add((Path.ChangeExtension(outUasset, ".uexp"),
-                        "../../../Sifu/Content/DB/_MainChar/Combos/MainChar_ComboTree.uexp"));
                 }
 
-                if (!string.IsNullOrEmpty(_enemyComboPath))
+                ErrorLog.Write("EXPORT", new Exception($"Combo tree swaps: {comboSwaps}"));
+
+                if (_graph != null && string.IsNullOrEmpty(_enemyComboPath))
                 {
-                    var enemyComboRelPath = _enemyComboPath.Replace("Game/", "");
-                    var enemyVanillaPath = Path.Combine(gameRoot, enemyComboRelPath + ".uasset");
-                    if (File.Exists(enemyVanillaPath))
+                    var nodesProp = comboExport.Data.FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Nodes");
+                    if (nodesProp is ArrayPropertyData nodesArr)
                     {
-                        var enemyOutDir = Path.Combine(outputPath, "Sifu", "Content", Path.GetDirectoryName(enemyComboRelPath)!);
-                        Directory.CreateDirectory(enemyOutDir);
-                        var enemyOutUasset = Path.Combine(enemyOutDir, Path.GetFileName(enemyComboRelPath) + ".uasset");
-
-                        await System.Threading.Tasks.Task.Run(() =>
+                        int redirectPatched = 0;
+                        foreach (var nodeTag in nodesArr.Value)
                         {
-                            var eng = EngineVersion.VER_UE4_26;
-                            var enemyAsset = new UAsset(enemyVanillaPath, eng, null, CustomSerializationFlags.None);
-
-                            NormalExport? enemyComboExport = null;
-                            for (int i = 0; i < enemyAsset.Exports.Count; i++)
+                            if (nodeTag is StructPropertyData nodeSp && nodeSp.Value != null)
                             {
-                                if (enemyAsset.Exports[i] is NormalExport ne && ne.SerialSize > 1000)
+                                var nameProp = nodeSp.Value.OfType<NamePropertyData>().FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Name");
+                                var nodeName = nameProp?.Value?.Value?.ToString() ?? "";
+                                var redirectProp = nodeSp.Value.OfType<IntPropertyData>().FirstOrDefault(p => p.Name?.Value?.ToString() == "m_NodeRedirect");
+                                if (redirectProp != null && redirectProp.Value >= 0)
                                 {
-                                    enemyComboExport = ne;
-                                    break;
+                                    int treeIndex = Array.IndexOf(nodesArr.Value, nodeTag);
+                                    var graphNode = _graph.Nodes.FirstOrDefault(n => n.TreeIndex == treeIndex && n.IsRedirect);
+                                    if (graphNode != null && _graph.RedirectOriginalTargets.TryGetValue(graphNode.Id, out var origTarget))
+                                    {
+                                        int newTarget = graphNode.ResolvedRedirectNodeId;
+                                        if (newTarget >= 0 && newTarget != origTarget)
+                                        {
+                                            var newTargetNode = _graph.Nodes.FirstOrDefault(n => n.Id == newTarget);
+                                            if (newTargetNode != null && newTargetNode.TreeIndex >= 0)
+                                            {
+                                                redirectProp.Value = newTargetNode.TreeIndex;
+                                                redirectPatched++;
+                                                ErrorLog.Write("EXPORT", new Exception($"  REDIRECT PATCH: [{treeIndex}] {nodeName} redirect {origTarget} -> {newTargetNode.TreeIndex} ({newTargetNode.DisplayName})"));
+                                            }
+                                        }
+                                    }
                                 }
                             }
+                        }
+                        if (redirectPatched > 0)
+                        {
+                            comboTreeModified = true;
+                            ErrorLog.Write("EXPORT", new Exception($"Redirect patches: {redirectPatched}"));
+                        }
+                    }
+                }
 
-                            if (enemyComboExport == null)
+                comboTreeModified = comboSwaps > 0 || comboTreeModified;
+
+                var swappedShortNames = new HashSet<string>(mainSwaps.Select(s => s.oldShortName), StringComparer.OrdinalIgnoreCase);
+                foreach (var node in redirectNodes)
+                {
+                    string slotShort = Path.GetFileNameWithoutExtension(node.DefaultDBPath);
+                    if (swappedShortNames.Contains(slotShort)) continue;
+
+                    var relDbPath = node.DefaultDBPath.TrimStart('/');
+                    if (relDbPath.StartsWith("Game/", StringComparison.OrdinalIgnoreCase))
+                        relDbPath = relDbPath.Substring(5);
+                    var vanillaDbFile = Path.Combine(gameRoot, relDbPath + ".uasset");
+                    if (patchedDbFiles.Contains(node.DefaultDBPath) || !File.Exists(vanillaDbFile))
+                    {
+                        ErrorLog.Write("EXPORT", new Exception($"  REDIRECT FAILED (no combo slot): {node.DisplayName} slot={slotShort} — move may not apply"));
+                        continue;
+                    }
+
+                    var outDbPath = Path.Combine(outputPath, "Sifu", "Content", relDbPath + ".uasset");
+                    if (PatchDbAnimation(vanillaDbFile, node.AnimPath, outDbPath, EngineVersion.VER_UE4_26))
+                    {
+                        patchedDbFiles.Add(node.DefaultDBPath);
+                        var outUexp = Path.ChangeExtension(outDbPath, ".uexp");
+                        var vanillaUexp = Path.ChangeExtension(vanillaDbFile, ".uexp");
+                        if (File.Exists(vanillaUexp) && !File.Exists(outUexp))
+                            File.Copy(vanillaUexp, outUexp, true);
+                        fileEntries.Add((outDbPath, "../../../Sifu/Content/" + relDbPath + ".uasset"));
+                        fileEntries.Add((outUexp, "../../../Sifu/Content/" + relDbPath + ".uexp"));
+                        patched++;
+                        ErrorLog.Write("EXPORT", new Exception($"  REDIRECT FALLBACK DB PATCH: {node.DisplayName} -> {node.AnimPath} (combo slot '{slotShort}' not found in tree)"));
+                    }
+                }
+
+                if (redirectSkipped > 0 && comboSwaps == 0)
+                {
+                    ErrorLog.Write("EXPORT", new Exception($"WARNING: {redirectSkipped} redirect(s) requested but 0 combo tree swaps applied — weapon tree may be missing slot keys for this graph"));
+                }
+                if (comboTreeModified)
+                {
+                    asset.Write(outUasset);
+
+                    var comboVanillaUexp = Path.ChangeExtension(vanillaAssetPath, ".uexp");
+                    var comboOutUexp = Path.ChangeExtension(outUasset, ".uexp");
+                    if (File.Exists(comboVanillaUexp))
+                        File.Copy(comboVanillaUexp, comboOutUexp, true);
+                }
+            });
+
+            UpdateStep(2, "done");
+            SetProgress(50);
+
+            if (comboTreeModified)
+            {
+                fileEntries.Add((outUasset, "../../../Sifu/Content/" + mainComboRel + ".uasset"));
+                fileEntries.Add((Path.ChangeExtension(outUasset, ".uexp"),
+                    "../../../Sifu/Content/" + mainComboRel + ".uexp"));
+            }
+
+            if (!string.IsNullOrEmpty(_enemyComboPath))
+            {
+                var enemyComboRelPath = _enemyComboPath.Replace("Game/", "");
+                var enemyVanillaPath = Path.Combine(gameRoot, enemyComboRelPath + ".uasset");
+                if (File.Exists(enemyVanillaPath))
+                {
+                    var enemyOutDir = Path.Combine(outputPath, "Sifu", "Content", Path.GetDirectoryName(enemyComboRelPath)!);
+                    Directory.CreateDirectory(enemyOutDir);
+                    var enemyOutUasset = Path.Combine(enemyOutDir, Path.GetFileName(enemyComboRelPath) + ".uasset");
+
+                    await System.Threading.Tasks.Task.Run(() =>
+                    {
+                        var eng = EngineVersion.VER_UE4_26;
+                        var enemyAsset = new UAsset(enemyVanillaPath, eng, null, CustomSerializationFlags.None);
+
+                        NormalExport? enemyComboExport = null;
+                        for (int i = 0; i < enemyAsset.Exports.Count; i++)
+                        {
+                            if (enemyAsset.Exports[i] is NormalExport ne && ne.SerialSize > 1000)
                             {
-                                ErrorLog.Write("EXPORT", new Exception($"Could not find enemy Combo export in {enemyVanillaPath}"));
-                                return;
+                                enemyComboExport = ne;
+                                break;
                             }
+                        }
 
-                            ErrorLog.Write("EXPORT", new Exception($"Loaded enemy combo tree: {enemyVanillaPath}"));
+                        if (enemyComboExport == null)
+                        {
+                            ErrorLog.Write("EXPORT", new Exception($"Could not find enemy Combo export in {enemyVanillaPath}"));
+                            return;
+                        }
 
-                            var enemyNodesArr = enemyComboExport.Data.OfType<ArrayPropertyData>()
-                                .FirstOrDefault(p => p.Name.Value.ToString() == "m_Nodes");
-                            if (enemyNodesArr == null || enemyNodesArr.Value == null || enemyNodesArr.Value.Length == 0)
+                        ErrorLog.Write("EXPORT", new Exception($"Loaded enemy combo tree: {enemyVanillaPath}"));
+
+                        var enemyNodesArr = enemyComboExport.Data.OfType<ArrayPropertyData>()
+                            .FirstOrDefault(p => p.Name.Value.ToString() == "m_Nodes");
+                        if (enemyNodesArr == null || enemyNodesArr.Value == null || enemyNodesArr.Value.Length == 0)
+                        {
+                            ErrorLog.Write("EXPORT", new Exception("Enemy combo tree has no m_Nodes array"));
+                            return;
+                        }
+
+                        var enemyComboBinSwaps = new List<(string oldShortName, string newShortName, string newFullPath)>();
+                        {
+                            var enemyAllMaps = FindAllMapsNamed(enemyComboExport.Data, "m_Attacks");
+                            ErrorLog.Write("EXPORT", new Exception($"Enemy combo tree: found {enemyAllMaps.Count} m_Attacks maps, {enemyAsset.Imports.Count} imports"));
+
+                            var enemyModifiedNodes = _modifiedNodes
+                                .Where(n => !string.IsNullOrEmpty(n.DefaultDBPath)
+                                    && n.DefaultDBPath.Contains("/AI/Archetypes/", StringComparison.OrdinalIgnoreCase)
+                                    && n.TreeIndex >= 0)
+                                .ToList();
+                            ErrorLog.Write("EXPORT", new Exception($"Enemy combo Import swap: {enemyModifiedNodes.Count} modified existing nodes"));
+
+                            foreach (var node in enemyModifiedNodes)
                             {
-                                ErrorLog.Write("EXPORT", new Exception("Enemy combo tree has no m_Nodes array"));
-                                return;
-                            }
+                                string oldDbShortName = Path.GetFileNameWithoutExtension(node.DefaultDBPath);
+                                string newDbPath = string.IsNullOrEmpty(node.SourceDBPath) ? "" : node.SourceDBPath;
+                                if (string.IsNullOrEmpty(newDbPath)) continue;
+                                string newDbShortName = Path.GetFileNameWithoutExtension(newDbPath);
+                                string newDbFullPath = "/" + newDbPath.TrimStart('/');
 
-                            var enemyComboBinSwaps = new List<(string oldShortName, string newShortName, string newFullPath)>();
-                            {
-                                var enemyAllMaps = FindAllMapsNamed(enemyComboExport.Data, "m_Attacks");
-                                ErrorLog.Write("EXPORT", new Exception($"Enemy combo tree: found {enemyAllMaps.Count} m_Attacks maps, {enemyAsset.Imports.Count} imports"));
+                                if (oldDbShortName == newDbShortName) continue;
 
-                                var enemyModifiedNodes = _modifiedNodes
-                                    .Where(n => !string.IsNullOrEmpty(n.DefaultDBPath)
-                                        && n.DefaultDBPath.Contains("/AI/Archetypes/", StringComparison.OrdinalIgnoreCase)
-                                        && n.TreeIndex >= 0)
-                                    .ToList();
-                                ErrorLog.Write("EXPORT", new Exception($"Enemy combo Import swap: {enemyModifiedNodes.Count} modified existing nodes"));
-
-                                foreach (var node in enemyModifiedNodes)
+                                bool swapped = false;
+                                foreach (var attacksMap in enemyAllMaps)
                                 {
-                                    string oldDbShortName = Path.GetFileNameWithoutExtension(node.DefaultDBPath);
-                                    string newDbPath = string.IsNullOrEmpty(node.SourceDBPath) ? "" : node.SourceDBPath;
-                                    if (string.IsNullOrEmpty(newDbPath)) continue;
-                                    string newDbShortName = Path.GetFileNameWithoutExtension(newDbPath);
-                                    string newDbFullPath = "/" + newDbPath.TrimStart('/');
-
-                                    if (oldDbShortName == newDbShortName) continue;
-
-                                    bool swapped = false;
-                                    foreach (var attacksMap in enemyAllMaps)
+                                    foreach (var kvp in attacksMap.Value)
                                     {
-                                        foreach (var kvp in attacksMap.Value)
+                                        string keyStr = GetKeyString(kvp.Key);
+                                        string normalizedDefault = NormalizeSlotKey(node.DefaultDBPath);
+                                        if (keyStr != normalizedDefault) continue;
+
+                                        var valData = kvp.Value as ObjectPropertyData;
+                                        if (valData?.Value == null) continue;
+
+                                        int curImportIdx = -(valData.Value.Index + 1);
+                                        if (curImportIdx < 0 || curImportIdx >= enemyAsset.Imports.Count) continue;
+
+                                        var curImport = enemyAsset.Imports[curImportIdx];
+                                        string curDbName = curImport.ObjectName?.Value?.ToString() ?? "";
+
+                                        int pkgOuterIdx = -(curImport.OuterIndex.Index + 1);
+                                        string curPkgPath = "";
+                                        if (pkgOuterIdx >= 0 && pkgOuterIdx < enemyAsset.Imports.Count)
+                                            curPkgPath = enemyAsset.Imports[pkgOuterIdx].ObjectName?.Value?.ToString() ?? "";
+
+                                        if (!curPkgPath.Contains(oldDbShortName, StringComparison.OrdinalIgnoreCase) &&
+                                            curDbName != oldDbShortName)
                                         {
-                                            string keyStr = GetKeyString(kvp.Key);
-                                            string normalizedDefault = NormalizeSlotKey(node.DefaultDBPath);
-                                            if (keyStr != normalizedDefault) continue;
-
-                                            var valData = kvp.Value as ObjectPropertyData;
-                                            if (valData?.Value == null) continue;
-
-                                            int curImportIdx = -(valData.Value.Index + 1);
-                                            if (curImportIdx < 0 || curImportIdx >= enemyAsset.Imports.Count) continue;
-
-                                            var curImport = enemyAsset.Imports[curImportIdx];
-                                            string curDbName = curImport.ObjectName?.Value?.ToString() ?? "";
-
-                                            int pkgOuterIdx = -(curImport.OuterIndex.Index + 1);
-                                            string curPkgPath = "";
-                                            if (pkgOuterIdx >= 0 && pkgOuterIdx < enemyAsset.Imports.Count)
-                                                curPkgPath = enemyAsset.Imports[pkgOuterIdx].ObjectName?.Value?.ToString() ?? "";
-
-                                            if (!curPkgPath.Contains(oldDbShortName, StringComparison.OrdinalIgnoreCase) &&
-                                                curDbName != oldDbShortName)
-                                            {
-                                                ErrorLog.Write("EXPORT", new Exception($"  ENEMY COMBO SKIP: {node.DisplayName} import[{curImportIdx}] name='{curDbName}' pkg='{curPkgPath}' != expected '{oldDbShortName}'"));
-                                                break;
-                                            }
-
-                                            enemyComboBinSwaps.Add((oldDbShortName, newDbShortName, newDbFullPath));
-                                            swapped = true;
-                                            ErrorLog.Write("EXPORT", new Exception($"  ENEMY COMBO IMPORT SWAP: {oldDbShortName} -> {newDbShortName} (import[{curImportIdx}])"));
+                                            ErrorLog.Write("EXPORT", new Exception($"  ENEMY COMBO SKIP: {node.DisplayName} import[{curImportIdx}] name='{curDbName}' pkg='{curPkgPath}' != expected '{oldDbShortName}'"));
                                             break;
                                         }
-                                        if (swapped) break;
+
+                                        enemyComboBinSwaps.Add((oldDbShortName, newDbShortName, newDbFullPath));
+                                        swapped = true;
+                                        ErrorLog.Write("EXPORT", new Exception($"  ENEMY COMBO IMPORT SWAP: {oldDbShortName} -> {newDbShortName} (import[{curImportIdx}])"));
+                                        break;
                                     }
+                                    if (swapped) break;
                                 }
                             }
+                        }
 
-                            ErrorLog.Write("EXPORT", new Exception($"Enemy combo tree swaps: {enemyComboBinSwaps.Count}"));
+                        ErrorLog.Write("EXPORT", new Exception($"Enemy combo tree swaps: {enemyComboBinSwaps.Count}"));
 
-                            if (enemyComboBinSwaps.Count > 0)
-                            {
-                                try
-                                {
-                                    var processedSwaps = new HashSet<string>();
-                                    foreach (var (oldShortName, newShortName, newFullPath) in enemyComboBinSwaps)
-                                    {
-                                        for (int i = 0; i < enemyAsset.Imports.Count; i++)
-                                        {
-                                            var imp = enemyAsset.Imports[i];
-                                            string objName = imp.ObjectName?.Value?.ToString() ?? "";
-
-                                            if (objName == oldShortName)
-                                            {
-                                                int outerIdx = -(imp.OuterIndex.Index + 1);
-
-                                                if (!processedSwaps.Contains(oldShortName))
-                                                {
-                                                    imp.ObjectName = FName.FromString(enemyAsset, newShortName);
-                                                    ErrorLog.Write("EXPORT", new Exception($"  UAPI SWAP import[{i}]: {oldShortName} -> {newShortName}"));
-                                                }
-
-                                                if (outerIdx >= 0 && outerIdx < enemyAsset.Imports.Count && !processedSwaps.Contains(newFullPath))
-                                                {
-                                                    enemyAsset.Imports[outerIdx].ObjectName = FName.FromString(enemyAsset, newFullPath);
-                                                    ErrorLog.Write("EXPORT", new Exception($"  UAPI SWAP outer[{outerIdx}]: -> {newFullPath}"));
-                                                }
-
-                                                processedSwaps.Add(oldShortName);
-                                                processedSwaps.Add(newFullPath);
-                                                break;
-                                            }
-                                        }
-                                    }
-
-                                    var swapDict = enemyComboBinSwaps.ToDictionary(
-                                        s => s.oldShortName,
-                                        s => (s.newShortName, s.newFullPath));
-
-                                    int fNamesPatched = 0;
-                                    foreach (var elem in enemyNodesArr.Value)
-                                    {
-                                        if (elem is not StructPropertyData nodeStruct || nodeStruct.Value == null) continue;
-
-                                        var attackInfos = nodeStruct.Value
-                                            .OfType<StructPropertyData>()
-                                            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_AttackInfos");
-                                        if (attackInfos?.Value == null) continue;
-
-                                        foreach (var field in attackInfos.Value)
-                                        {
-                                            if (field is not NamePropertyData nameProp) continue;
-                                            if (nameProp.Name?.Value?.ToString() != "m_Attacks") continue;
-
-                                            string curPath = nameProp.Value?.Value?.ToString() ?? "";
-                                            if (string.IsNullOrEmpty(curPath) || curPath == "None") continue;
-
-                                            string curShortName = Path.GetFileNameWithoutExtension(curPath);
-                                            if (!swapDict.TryGetValue(curShortName, out var swap)) continue;
-
-                                            string newFNamePath = swap.newFullPath + "." + swap.newShortName;
-                                            nameProp.Value = FName.FromString(enemyAsset, newFNamePath);
-                                            fNamesPatched++;
-                                        }
-                                    }
-                                    ErrorLog.Write("EXPORT", new Exception($"  UAPI: patched {fNamesPatched} FName paths in m_Nodes"));
-
-                                    var mAttacksMap = enemyComboExport.Data
-                                        .OfType<MapPropertyData>()
-                                        .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Attacks");
-                                    if (mAttacksMap?.Value != null)
-                                    {
-                                        var rebuilt = new TMap<PropertyData, PropertyData>();
-                                        foreach (var kvp in mAttacksMap.Value)
-                                        {
-                                            string keyStr = GetKeyString(kvp.Key);
-                                            string shortKey = Path.GetFileNameWithoutExtension(keyStr);
-                                            if (swapDict.TryGetValue(shortKey, out var mapSwap))
-                                            {
-                                                string newFNamePath = mapSwap.newFullPath + "." + mapSwap.newShortName;
-                                                var newKeyNameProp = new NamePropertyData
-                                                {
-                                                    Name = new FName(enemyAsset, "m_Attacks"),
-                                                    Value = FName.FromString(enemyAsset, newFNamePath)
-                                                };
-                                                rebuilt.Add(newKeyNameProp, kvp.Value);
-                                                ErrorLog.Write("EXPORT", new Exception($"  UAPI MAP KEY: {shortKey} -> {newFNamePath}"));
-                                            }
-                                            else
-                                            {
-                                                rebuilt.Add(kvp.Key, kvp.Value);
-                                            }
-                                        }
-                                        mAttacksMap.Value = rebuilt;
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    ErrorLog.Write("EXPORT", new Exception($"  UAPI SWAP FAIL: {ex.Message}\n{ex.StackTrace}"));
-                                }
-                            }
-
+                        if (enemyComboBinSwaps.Count > 0)
+                        {
                             try
                             {
-                                if (_graph != null)
+                                var processedSwaps = new HashSet<string>();
+                                foreach (var (oldShortName, newShortName, newFullPath) in enemyComboBinSwaps)
                                 {
-                                        var newNodes = _graph.Nodes.Where(n => n.TreeIndex == -1).ToList();
-                                        if (newNodes.Count > 0)
+                                    for (int i = 0; i < enemyAsset.Imports.Count; i++)
+                                    {
+                                        var imp = enemyAsset.Imports[i];
+                                        string objName = imp.ObjectName?.Value?.ToString() ?? "";
+
+                                        if (objName == oldShortName)
                                         {
-                                            var nodesArr = enemyComboExport.Data.OfType<ArrayPropertyData>()
-                                                .FirstOrDefault(p => p.Name.Value.ToString() == "m_Nodes");
-                                            if (nodesArr != null && nodesArr.Value != null && nodesArr.Value.Length > 0)
+                                            int outerIdx = -(imp.OuterIndex.Index + 1);
+
+                                            if (!processedSwaps.Contains(oldShortName))
                                             {
-                                                var idToTreeIndex = new Dictionary<int, int>();
-                                                foreach (var n in _graph.Nodes.Where(n => n.TreeIndex >= 0))
-                                                    idToTreeIndex[n.Id] = n.TreeIndex;
-                                                int baseCount = nodesArr.Value.Length;
-
-                                                StructPropertyData template = null;
-                                                foreach (var cand in nodesArr.Value)
-                                                {
-                                                    if (cand is StructPropertyData spd)
-                                                    {
-                                                        var nm = spd.Value.OfType<NamePropertyData>().FirstOrDefault(p => p.Name.Value.ToString() == "m_Name");
-                                                        var nameStr = nm?.Value.ToString() ?? "";
-                                                        if (!nameStr.Contains("Conduit", StringComparison.OrdinalIgnoreCase) && !nameStr.Contains("Root", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(nameStr) && nameStr != "None")
-                                                        { template = spd; break; }
-                                                    }
-                                                }
-                                                if (template == null) template = nodesArr.Value[0] as StructPropertyData;
-
-                                                var attackNodes = newNodes.Where(n => !n.IsRedirect).ToList();
-                                                var redirectNodes = newNodes.Where(n => n.IsRedirect).ToList();
-
-                                                var allNewNodes = new List<ComboNode>();
-                                                allNewNodes.AddRange(attackNodes);
-                                                allNewNodes.AddRange(redirectNodes);
-
-                                                var newList = new List<PropertyData>(nodesArr.Value);
-                                                for (int ni = 0; ni < allNewNodes.Count; ni++)
-                                                {
-                                                    var cn = allNewNodes[ni];
-                                                    int newIdx = baseCount + ni;
-                                                    idToTreeIndex[cn.Id] = newIdx;
-                                                    var cloneDbPath = _customClones != null && _customClones.TryGetValue(cn.Id, out var cp) ? cp : null;
-                                                    if (cloneDbPath == null && _animToDbPath.TryGetValue(cn.AnimPath, out var existingDb)) cloneDbPath = existingDb;
-                                                    string attackName2 = cloneDbPath != null ? Path.GetFileNameWithoutExtension(cloneDbPath) : Path.GetFileNameWithoutExtension(cn.AnimPath);
-                                                    if (string.IsNullOrEmpty(attackName2)) attackName2 = "Custom_" + cn.Id;
-                                                    string attackPath2 = cloneDbPath != null ? EnsureLeadingSlash(cloneDbPath) : $"/Game/DB/_MainChar/Combos/Attacks/Custom/MainChar_Custom_{cn.Id}";
-                                                    int impIdx = FindImport(enemyAsset, attackName2, attackPath2);
-                                                    if (impIdx < 0) impIdx = AddAttackDBImport(enemyAsset, attackName2, attackPath2);
-
-                                                    StructPropertyData newNodeStruct = null;
-                                                    if (template != null)
-                                                    {
-                                                        newNodeStruct = new StructPropertyData();
-                                                        newNodeStruct.Name = new FName(enemyAsset, "m_Nodes");
-                                                        newNodeStruct.StructType = template.StructType;
-                                                        newNodeStruct.Value = new List<PropertyData>();
-                                                        for (int ci = 0; ci < template.Value.Count; ci++)
-                                                        {
-                                                            var child = template.Value[ci];
-                                                            if (child.Name.Value.ToString() == "m_Name" && child is NamePropertyData np)
-                                                            {
-                                                                string nodeName = cn.IsRedirect ? $"Redirect_{cn.Id}" : $"Custom_{cn.Id}";
-                                                                newNodeStruct.Value.Add(new NamePropertyData { Name = np.Name, Value = new FName(enemyAsset, nodeName) });
-                                                            }
-                                                            else if (child.Name.Value.ToString() == "m_NodeRedirect" && child is IntPropertyData)
-                                                            {
-                                                                int redirectTarget = -1;
-                                                                if (cn.IsRedirect && cn.RedirectTargetId >= 0)
-                                                                {
-                                                                    var targetNode = _graph.Nodes.FirstOrDefault(n => n.Id == cn.RedirectTargetId);
-                                                                    if (targetNode != null && idToTreeIndex.TryGetValue(targetNode.Id, out var resolved))
-                                                                        redirectTarget = resolved;
-                                                                    else
-                                                                        redirectTarget = cn.RedirectTargetId;
-                                                                }
-                                                                newNodeStruct.Value.Add(new IntPropertyData { Name = new FName(enemyAsset, "m_NodeRedirect"), Value = redirectTarget });
-                                                            }
-                                                            else if (child.Name.Value.ToString() == "m_AttackInfos" && child is StructPropertyData sp)
-                                                            {
-                                                                var spCopy = new StructPropertyData { Name = sp.Name, StructType = sp.StructType, Value = new List<PropertyData>() };
-                                                                string fAttackPath = attackPath2 + "." + attackName2;
-                                                                foreach (var gc in sp.Value)
-                                                                {
-                                                                    if (cn.IsRedirect)
-                                                                    {
-                                                                        if (gc.Name.Value.ToString() == "m_Attacks" && gc is NamePropertyData)
-                                                                            spCopy.Value.Add(new NamePropertyData { Name = gc.Name, Value = FName.FromString(enemyAsset, "None") });
-                                                                        else spCopy.Value.Add(gc);
-                                                                    }
-                                                                    else
-                                                                    {
-                                                                        if (gc.Name.Value.ToString() == "m_Attacks" && gc is NamePropertyData)
-                                                                            spCopy.Value.Add(new NamePropertyData { Name = gc.Name, Value = FName.FromString(enemyAsset, fAttackPath) });
-                                                                        else spCopy.Value.Add(gc);
-                                                                    }
-                                                                }
-                                                                newNodeStruct.Value.Add(spCopy);
-                                                            }
-                                                            else
-                                                            {
-                                                                newNodeStruct.Value.Add(child);
-                                                            }
-                                                        }
-                                                    }
-                                                    else
-                                                    {
-                                                        newNodeStruct = template;
-                                                    }
-                                                    newList.Add(newNodeStruct);
-                                                    ErrorLog.Write("EXPORT", new Exception($"  ENEMY APPEND: node {cn.DisplayName} -> idx {newIdx} redirect={cn.IsRedirect} imp={impIdx}"));
-                                                }
-                                                nodesArr.Value = newList.ToArray();
-
-                                                var rootAttacksMap = enemyComboExport.Data
-                                                    .OfType<MapPropertyData>()
-                                                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Attacks");
-                                                if (rootAttacksMap?.Value != null)
-                                                {
-                                                    foreach (var cn2 in attackNodes)
-                                                    {
-                                                        var cloneDbPath2 = _customClones != null && _customClones.TryGetValue(cn2.Id, out var cp2) ? cp2 : null;
-                                                        if (cloneDbPath2 == null && _animToDbPath.TryGetValue(cn2.AnimPath, out var existingDb2)) cloneDbPath2 = existingDb2;
-                                                        string aName2 = cloneDbPath2 != null ? Path.GetFileNameWithoutExtension(cloneDbPath2) : Path.GetFileNameWithoutExtension(cn2.AnimPath);
-                                                        string aPath2 = cloneDbPath2 != null ? EnsureLeadingSlash(cloneDbPath2) : $"/Game/DB/_MainChar/Combos/Attacks/Custom/MainChar_Custom_{cn2.Id}";
-                                                        if (string.IsNullOrEmpty(aName2)) aName2 = "Custom_" + cn2.Id;
-                                                        string fAttackPath2 = aPath2 + "." + aName2;
-                                                        bool found = false;
-                                                        foreach (var kv in rootAttacksMap.Value)
-                                                        {
-                                                            if (GetKeyString(kv.Key) == fAttackPath2) { found = true; break; }
-                                                        }
-                                                        if (!found)
-                                                        {
-                                                            int imp2 = FindImport(enemyAsset, aName2, aPath2);
-                                                            if (imp2 < 0) imp2 = AddAttackDBImport(enemyAsset, aName2, aPath2);
-                                                            rootAttacksMap.Value.Add(
-                                                                new NamePropertyData { Name = new FName(enemyAsset, "m_Attacks"), Value = FName.FromString(enemyAsset, fAttackPath2) },
-                                                                new ObjectPropertyData { Name = new FName(enemyAsset, "m_Attacks"), Value = FPackageIndex.FromImport(imp2) }
-                                                            );
-                                                            ErrorLog.Write("EXPORT", new Exception($"  ENEMY ROOT MAP: added {fAttackPath2} -> imp[{imp2}]"));
-                                                        }
-                                                    }
-                                                }
-
-                                                var newIds = new HashSet<int>(allNewNodes.Select(n => n.Id));
-                                                foreach (var edge in _graph.Edges)
-                                                {
-                                                    if (!newIds.Contains(edge.FromNodeId) && !newIds.Contains(edge.ToNodeId)) continue;
-                                                    if (!idToTreeIndex.TryGetValue(edge.FromNodeId, out var srcIdx)) continue;
-                                                    if (!idToTreeIndex.TryGetValue(edge.ToNodeId, out var dstIdx)) continue;
-                                                    var srcNodeData = nodesArr.Value[srcIdx] as StructPropertyData;
-                                                    if (srcNodeData == null) continue;
-                                                    var transStruct = srcNodeData.Value.OfType<StructPropertyData>().FirstOrDefault(p => p.Name.Value.ToString() == "m_Transitions");
-                                                    if (transStruct == null) continue;
-                                                    var transArr = transStruct.Value.OfType<ArrayPropertyData>().FirstOrDefault(p => p.Name.Value.ToString() == "m_Transitions");
-                                                    if (transArr == null) continue;
-                                                    string inputEnum = edge.InputName?.Replace(" Delay", "") ?? "";
-                                                    string ueEnum = inputEnum switch { "LMB" => "Light", "RMB" => "Heavy", "RMB Hold" => "HeavyHold", "S" => "Special", "Shift" => "Dodge", "Q" => "Throw", _ => "Light" };
-                                                    StructPropertyData targetTrans = null;
-                                                    foreach (var elem in transArr.Value)
-                                                    {
-                                                        if (elem is StructPropertyData spd)
-                                                        {
-                                                            var enumProp = spd.Value.OfType<EnumPropertyData>().FirstOrDefault(p => p.Name.Value.ToString() == "m_eInputTransition");
-                                                            if (enumProp != null && enumProp.Value.ToString().Contains(ueEnum)) { targetTrans = spd; break; }
-                                                        }
-                                                    }
-                                                    if (targetTrans == null)
-                                                    {
-                                                        if (transArr.Value.Length > 0 && transArr.Value[0] is StructPropertyData first)
-                                                        {
-                                                            targetTrans = new StructPropertyData { Name = first.Name, StructType = first.StructType, Value = new List<PropertyData>() };
-                                                            foreach (var ch in first.Value)
-                                                            {
-                                                                if (ch.Name.Value.ToString() == "m_eInputTransition" && ch is EnumPropertyData ep)
-                                                                    targetTrans.Value.Add(new EnumPropertyData { Name = ep.Name, EnumType = ep.EnumType, Value = new FName(enemyAsset, $"EComboInputTransition::{ueEnum}") });
-                                                                else if (ch.Name.Value.ToString() == "m_TargetNodes" && ch is MapPropertyData mp)
-                                                                    targetTrans.Value.Add(new MapPropertyData { Name = mp.Name, KeyType = mp.KeyType, ValueType = mp.ValueType, Value = new TMap<PropertyData, PropertyData>() });
-                                                                else targetTrans.Value.Add(ch);
-                                                            }
-                                                            var list = new List<PropertyData>(transArr.Value) { targetTrans };
-                                                            transArr.Value = list.ToArray();
-                                                        }
-                                                    }
-                                                    if (targetTrans != null)
-                                                    {
-                                                        var map2 = targetTrans.Value.OfType<MapPropertyData>().FirstOrDefault(p => p.Name.Value.ToString() == "m_TargetNodes");
-                                                        if (map2 != null && !map2.Value.Any(kvp => kvp.Key is IntPropertyData ip && ip.Value == dstIdx))
-                                                        {
-                                                            map2.Value.Add(new IntPropertyData { Name = new FName(enemyAsset, "m_TargetNodes"), Value = dstIdx }, new IntPropertyData { Name = new FName(enemyAsset, "m_TargetNodes"), Value = 1 });
-                                                        }
-                                                    }
-                                                }
-                                                ErrorLog.Write("EXPORT", new Exception($"  ENEMY APPEND: {newNodes.Count} nodes ({attackNodes.Count} attack + {redirectNodes.Count} redirect), edges {_graph.Edges.Count}, total {nodesArr.Value.Length}"));
+                                                imp.ObjectName = FName.FromString(enemyAsset, newShortName);
+                                                ErrorLog.Write("EXPORT", new Exception($"  UAPI SWAP import[{i}]: {oldShortName} -> {newShortName}"));
                                             }
+
+                                            if (outerIdx >= 0 && outerIdx < enemyAsset.Imports.Count && !processedSwaps.Contains(newFullPath))
+                                            {
+                                                enemyAsset.Imports[outerIdx].ObjectName = FName.FromString(enemyAsset, newFullPath);
+                                                ErrorLog.Write("EXPORT", new Exception($"  UAPI SWAP outer[{outerIdx}]: -> {newFullPath}"));
+                                            }
+
+                                            processedSwaps.Add(oldShortName);
+                                            processedSwaps.Add(newFullPath);
+                                            break;
                                         }
+                                    }
                                 }
 
-                                Directory.CreateDirectory(Path.GetDirectoryName(enemyOutUasset)!);
-                                enemyAsset.Write(enemyOutUasset);
-                                ErrorLog.Write("EXPORT", new Exception($"  UAPI: wrote {new FileInfo(enemyOutUasset).Length} bytes .uasset"));
-                                var outUexpPath = Path.ChangeExtension(enemyOutUasset, ".uexp");
-                                if (File.Exists(outUexpPath))
-                                    ErrorLog.Write("EXPORT", new Exception($"  UAPI: wrote {new FileInfo(outUexpPath).Length} bytes .uexp"));
+                                var swapDict = enemyComboBinSwaps.ToDictionary(
+                                    s => s.oldShortName,
+                                    s => (s.newShortName, s.newFullPath));
+
+                                int fNamesPatched = 0;
+                                foreach (var elem in enemyNodesArr.Value)
+                                {
+                                    if (elem is not StructPropertyData nodeStruct || nodeStruct.Value == null) continue;
+
+                                    var attackInfos = nodeStruct.Value
+                                        .OfType<StructPropertyData>()
+                                        .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_AttackInfos");
+                                    if (attackInfos?.Value == null) continue;
+
+                                    foreach (var field in attackInfos.Value)
+                                    {
+                                        if (field is not NamePropertyData nameProp) continue;
+                                        if (nameProp.Name?.Value?.ToString() != "m_Attacks") continue;
+
+                                        string curPath = nameProp.Value?.Value?.ToString() ?? "";
+                                        if (string.IsNullOrEmpty(curPath) || curPath == "None") continue;
+
+                                        string curShortName = Path.GetFileNameWithoutExtension(curPath);
+                                        if (!swapDict.TryGetValue(curShortName, out var swap)) continue;
+
+                                        string newFNamePath = swap.newFullPath + "." + swap.newShortName;
+                                        nameProp.Value = FName.FromString(enemyAsset, newFNamePath);
+                                        fNamesPatched++;
+                                    }
+                                }
+                                ErrorLog.Write("EXPORT", new Exception($"  UAPI: patched {fNamesPatched} FName paths in m_Nodes"));
+
+                                var mAttacksMap = enemyComboExport.Data
+                                    .OfType<MapPropertyData>()
+                                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Attacks");
+                                if (mAttacksMap?.Value != null)
+                                {
+                                    var rebuilt = new TMap<PropertyData, PropertyData>();
+                                    foreach (var kvp in mAttacksMap.Value)
+                                    {
+                                        string keyStr = GetKeyString(kvp.Key);
+                                        string shortKey = Path.GetFileNameWithoutExtension(keyStr);
+                                        if (swapDict.TryGetValue(shortKey, out var mapSwap))
+                                        {
+                                            string newFNamePath = mapSwap.newFullPath + "." + mapSwap.newShortName;
+                                            var newKeyNameProp = new NamePropertyData
+                                            {
+                                                Name = new FName(enemyAsset, "m_Attacks"),
+                                                Value = FName.FromString(enemyAsset, newFNamePath)
+                                            };
+                                            rebuilt.Add(newKeyNameProp, kvp.Value);
+                                            ErrorLog.Write("EXPORT", new Exception($"  UAPI MAP KEY: {shortKey} -> {newFNamePath}"));
+                                        }
+                                        else
+                                        {
+                                            rebuilt.Add(kvp.Key, kvp.Value);
+                                        }
+                                    }
+                                    mAttacksMap.Value = rebuilt;
+                                }
                             }
                             catch (Exception ex)
                             {
-                                ErrorLog.Write("EXPORT", new Exception($"  UAPI FAIL: {ex.Message}\n{ex.StackTrace}"));
+                                ErrorLog.Write("EXPORT", new Exception($"  UAPI SWAP FAIL: {ex.Message}\n{ex.StackTrace}"));
+                            }
                             }
 
-                            // === Arena combo patching ===
-                            // Find the character root from the story combo path
-                            // e.g. "DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo" -> "DB/AI/Archetypes/Yang"
+                            if (_graph != null)
+                            {
+                                int enemyRedirectPatched = 0;
+                                foreach (var nodeTag in enemyNodesArr.Value)
+                                {
+                                    if (nodeTag is StructPropertyData nodeSp && nodeSp.Value != null)
+                                    {
+                                        var nameProp = nodeSp.Value.OfType<NamePropertyData>().FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Name");
+                                        var nodeName = nameProp?.Value?.Value?.ToString() ?? "";
+                                        var redirectProp = nodeSp.Value.OfType<IntPropertyData>().FirstOrDefault(p => p.Name?.Value?.ToString() == "m_NodeRedirect");
+                                        if (redirectProp != null && redirectProp.Value >= 0)
+                                        {
+                                            int treeIndex = Array.IndexOf(enemyNodesArr.Value, nodeTag);
+                                            var graphNode = _graph.Nodes.FirstOrDefault(n => n.TreeIndex == treeIndex && n.IsRedirect);
+                                            if (graphNode != null && _graph.RedirectOriginalTargets.TryGetValue(graphNode.Id, out var origTarget))
+                                            {
+                                                int newTarget = graphNode.ResolvedRedirectNodeId;
+                                                if (newTarget >= 0 && newTarget != origTarget)
+                                                {
+                                                    var newTargetNode = _graph.Nodes.FirstOrDefault(n => n.Id == newTarget);
+                                                    if (newTargetNode != null && newTargetNode.TreeIndex >= 0)
+                                                    {
+                                                        redirectProp.Value = newTargetNode.TreeIndex;
+                                                        enemyRedirectPatched++;
+                                                        ErrorLog.Write("EXPORT", new Exception($"  ENEMY REDIRECT PATCH: [{treeIndex}] {nodeName} redirect {origTarget} -> {newTargetNode.TreeIndex} ({newTargetNode.DisplayName})"));
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if (enemyRedirectPatched > 0)
+                                    ErrorLog.Write("EXPORT", new Exception($"Enemy redirect patches: {enemyRedirectPatched}"));
+                            }
+
+                            Directory.CreateDirectory(Path.GetDirectoryName(enemyOutUasset)!);
+                            enemyAsset.Write(enemyOutUasset);
+                            ErrorLog.Write("EXPORT", new Exception($"  UAPI: wrote {new FileInfo(enemyOutUasset).Length} bytes .uasset"));
+                            try { var dbgDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "debug_export"); Directory.CreateDirectory(dbgDir); File.Copy(enemyOutUasset, Path.Combine(dbgDir, "debug_combo.uasset"), true); var uexpSrc = Path.ChangeExtension(enemyOutUasset, ".uexp"); if (File.Exists(uexpSrc)) File.Copy(uexpSrc, Path.Combine(dbgDir, "debug_combo.uexp"), true); } catch { }
+                            var outUexpPath = Path.ChangeExtension(enemyOutUasset, ".uexp");
+                            if (File.Exists(outUexpPath))
+                                ErrorLog.Write("EXPORT", new Exception($"  UAPI: wrote {new FileInfo(outUexpPath).Length} bytes .uexp"));
+
                         var comboPathParts = enemyComboRelPath.Replace('\\', '/').Split('/');
                         int archetypesIdx = Array.IndexOf(comboPathParts, "Archetypes");
                         if (archetypesIdx >= 0 && archetypesIdx + 1 < comboPathParts.Length)
@@ -1343,227 +1861,88 @@ public partial class ExportDialog : Window
                         }
                         });
 
-                        if (File.Exists(enemyOutUasset))
-                        {
-                            fileEntries.Add((enemyOutUasset,
-                                "../../../Sifu/Content/" + enemyComboRelPath + ".uasset"));
-                            fileEntries.Add((Path.ChangeExtension(enemyOutUasset, ".uexp"),
-                                "../../../Sifu/Content/" + enemyComboRelPath + ".uexp"));
-                        }
-                    }
-                    else
+                    if (File.Exists(enemyOutUasset))
                     {
-                        ErrorLog.Write("EXPORT", new Exception($"Enemy combo file not found: {enemyVanillaPath}"));
+                        fileEntries.Add((enemyOutUasset,
+                            "../../../Sifu/Content/" + enemyComboRelPath + ".uasset"));
+                        fileEntries.Add((Path.ChangeExtension(enemyOutUasset, ".uexp"),
+                            "../../../Sifu/Content/" + enemyComboRelPath + ".uexp"));
                     }
                 }
-            }
-            else
-            {
-                UpdateStep(1, "done");
-                UpdateStep(2, "done");
-                SetProgress(50);
-            }
-
-            // Phase 2: Stance DB files (only if stance changed) — load char-specific UAsset
-            if (hasStanceChange)
-            {
-
-                // Patch BP_TransitionAnimRequest
-                if (!string.IsNullOrEmpty(_charTransitionPath))
+                else
                 {
-                    txtCurrentAction.Text = "Patching BP_TransitionAnimRequest...";
-                    var vanillaTransPath = Path.Combine(gameRoot, "DB/Movement/Transition/BP_TransitionAnimRequest.uasset");
-                    var charTransPath = Path.Combine(gameRoot, _charTransitionPath + ".uasset");
-
-                    if (File.Exists(vanillaTransPath) && File.Exists(charTransPath))
-                    {
-                        var outTransDir = Path.Combine(outputPath, "Sifu", "Content", "DB", "Movement", "Transition");
-                        Directory.CreateDirectory(outTransDir);
-                        var outTransAsset = Path.Combine(outTransDir, "BP_TransitionAnimRequest.uasset");
-
-                        var eng = EngineVersion.VER_UE4_26;
-                        await System.Threading.Tasks.Task.Run(() =>
-                            PatchStanceAsset(vanillaTransPath, charTransPath, outTransAsset, eng, _referenceModDir, _activeStance ?? "", "BP_TransitionAnimRequest"));
-
-                        fileEntries.Add((outTransAsset,
-                            "../../../Sifu/Content/DB/Movement/Transition/BP_TransitionAnimRequest.uasset"));
-                        fileEntries.Add((Path.ChangeExtension(outTransAsset, ".uexp"),
-                            "../../../Sifu/Content/DB/Movement/Transition/BP_TransitionAnimRequest.uexp"));
-
-                        ErrorLog.Write("EXPORT", new Exception($"Patched BP_TransitionAnimRequest for stance '{_activeStance}'"));
-                    }
-                    else
-                    {
-                        ErrorLog.Write("EXPORT", new Exception(
-                            $"Transition patch skipped: vanilla={File.Exists(vanillaTransPath)}, char={File.Exists(charTransPath)}"));
-                    }
-                }
-
-                // Patch BaseMovementDB
-                if (!string.IsNullOrEmpty(_charBaseMovementDBPath))
-                {
-                    txtCurrentAction.Text = "Patching BaseMovementDB...";
-                    var vanillaDbPath = Path.Combine(gameRoot, "DB/Movement/BaseMovementDB.uasset");
-                    var charDbPath = Path.Combine(gameRoot, _charBaseMovementDBPath + ".uasset");
-
-                    if (File.Exists(vanillaDbPath) && File.Exists(charDbPath))
-                    {
-                        var outDbDir = Path.Combine(outputPath, "Sifu", "Content", "DB", "Movement");
-                        Directory.CreateDirectory(outDbDir);
-                        var outDbAsset = Path.Combine(outDbDir, "BaseMovementDB.uasset");
-
-                        var eng = EngineVersion.VER_UE4_26;
-                        await System.Threading.Tasks.Task.Run(() =>
-                            PatchStanceAsset(vanillaDbPath, charDbPath, outDbAsset, eng, _referenceModDir, _activeStance ?? "", "BaseMovementDB"));
-
-                        fileEntries.Add((outDbAsset,
-                            "../../../Sifu/Content/DB/Movement/BaseMovementDB.uasset"));
-                        fileEntries.Add((Path.ChangeExtension(outDbAsset, ".uexp"),
-                            "../../../Sifu/Content/DB/Movement/BaseMovementDB.uexp"));
-
-                        ErrorLog.Write("EXPORT", new Exception($"Patched BaseMovementDB for stance '{_activeStance}'"));
-                    }
-                    else
-                    {
-                        ErrorLog.Write("EXPORT", new Exception(
-                            $"BaseMovementDB patch skipped: vanilla={File.Exists(vanillaDbPath)}, char={File.Exists(charDbPath)}"));
-                    }
+                    ErrorLog.Write("EXPORT", new Exception($"Enemy combo file not found: {enemyVanillaPath}"));
                 }
             }
-
-            if (fileEntries.Count == 0)
-            {
-                ShowError("No files to export.");
-                return;
-            }
-
-            ErrorLog.Write("EXPORT", new Exception($"Total files for pak: {fileEntries.Count}"));
-            SetProgress(65);
-
-            // Step 3: Build pak
-            UpdateStep(3, "active");
-            txtCurrentAction.Text = "Building pak file...";
-
-            var tempDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "temp_mod");
-            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
-            Directory.CreateDirectory(tempDir);
-
-            foreach (var (src, dest) in fileEntries)
-            {
-                var tempDest = Path.Combine(tempDir, dest.TrimStart('/').Replace('/', '\\'));
-                Directory.CreateDirectory(Path.GetDirectoryName(tempDest)!);
-                if (File.Exists(src))
-                    File.Copy(src, tempDest, true);
-            }
-
-            var filelistPath = Path.Combine(tempDir, "filelist.txt");
-            var filelistContent = string.Join("\n", fileEntries.Select(f => $"\"{f.src}\" \"{f.dest}\""));
-            File.WriteAllText(filelistPath, filelistContent);
-
-            ErrorLog.Write("EXPORT", new Exception($"Filelist content:\n{filelistContent}"));
-
-            var pakExe = @"C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\4.26\UE4\UnrealPak\UnrealPak.exe";
-            var pakFileName = GetModFileName();
-            _pakPath = Path.Combine(outputPath, pakFileName);
-
-            if (!File.Exists(pakExe))
-            {
-                ShowError($"UnrealPak not found at:\n{pakExe}");
-                return;
-            }
-
-            SetProgress(75);
-
-            var pakArgs = $"\"{_pakPath}\" -create=\"{filelistPath}\"";
-
-            var psi = new ProcessStartInfo
-            {
-                FileName = pakExe,
-                Arguments = pakArgs,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-
-            using var proc = Process.Start(psi);
-            var stdout = await proc.StandardOutput.ReadToEndAsync();
-            var stderr = await proc.StandardError.ReadToEndAsync();
-            await proc.WaitForExitAsync();
-
-            ErrorLog.Write("EXPORT", new Exception($"UnrealPak stdout:\n{stdout}"));
-            ErrorLog.Write("EXPORT", new Exception($"UnrealPak stderr:\n{stderr}"));
-            ErrorLog.Write("EXPORT", new Exception($"UnrealPak exit code: {proc.ExitCode}"));
-
-            if (proc.ExitCode != 0)
-            {
-                ShowError($"UnrealPak failed (exit {proc.ExitCode}):\n\n{stderr}\n{stdout}");
-                return;
-            }
-
-            if (File.Exists(_pakPath))
-            {
-                var pakSize = new FileInfo(_pakPath).Length;
-                ErrorLog.Write("EXPORT", new Exception($"Created pak size: {pakSize} bytes"));
-            }
-            else
-            {
-                ErrorLog.Write("EXPORT", new Exception("ERROR: Pak file was not created!"));
-            }
-
-            SetProgress(90);
-
-            try
-            {
-                var stagingDir = Path.Combine(outputPath, "Sifu");
-                if (Directory.Exists(stagingDir)) Directory.Delete(stagingDir, true);
-            }
-            catch { }
-
-            try { Directory.Delete(tempDir, true); } catch { }
-
-            var sigSource = @"C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\4.26\UE4\UnrealPak\pakchunk0-WindowsNoEditor.sig";
-            var sigDest = Path.Combine(outputPath, Path.ChangeExtension(pakFileName, ".sig"));
-            if (File.Exists(sigSource))
-                File.Copy(sigSource, sigDest, true);
-
-            SetProgress(100);
-            UpdateStep(3, "done");
-
-            string gameInstallDir = null;
-            var searchDir = _contentPath;
-            while (searchDir != null)
-            {
-                if (File.Exists(Path.Combine(searchDir, "Content", "Paks", "pakchunk0-WindowsNoEditor.sig")))
-                {
-                    gameInstallDir = searchDir;
-                    break;
-                }
-                searchDir = Path.GetDirectoryName(searchDir);
-            }
-
-            var installedTo = "";
-            if (gameInstallDir != null)
-            {
-                var modsDir = Path.Combine(gameInstallDir, "Content", "Paks", "~mods");
-                Directory.CreateDirectory(modsDir);
-                var destPak = Path.Combine(modsDir, pakFileName);
-                File.Copy(_pakPath, destPak, true);
-                installedTo = destPak;
-
-                var gameSig = Path.Combine(gameInstallDir, "Content", "Paks", "pakchunk0-WindowsNoEditor.sig");
-                var destSig = Path.Combine(modsDir, Path.ChangeExtension(pakFileName, ".sig"));
-                if (File.Exists(gameSig))
-                    File.Copy(gameSig, destSig, true);
-            }
-
-            var totalChanges = _modifiedNodes.Count + (hasStanceChange ? 1 : 0);
-            ShowComplete(pakFileName, totalChanges, installedTo);
         }
-        catch (Exception ex)
+        else
         {
-            ErrorLog.Write("EXPORT", ex);
-            ShowError($"Export failed: {ex.Message}");
+            UpdateStep(1, "done");
+            UpdateStep(2, "done");
+            SetProgress(50);
+        }
+
+        if (hasStanceChange)
+        {
+            if (!string.IsNullOrEmpty(_charTransitionPath))
+            {
+                txtCurrentAction.Text = "Patching BP_TransitionAnimRequest...";
+                var vanillaTransPath = Path.Combine(gameRoot, "DB/Movement/Transition/BP_TransitionAnimRequest.uasset");
+                var charTransPath = Path.Combine(gameRoot, _charTransitionPath + ".uasset");
+
+                if (File.Exists(vanillaTransPath) && File.Exists(charTransPath))
+                {
+                    var outTransDir = Path.Combine(outputPath, "Sifu", "Content", "DB", "Movement", "Transition");
+                    Directory.CreateDirectory(outTransDir);
+                    var outTransAsset = Path.Combine(outTransDir, "BP_TransitionAnimRequest.uasset");
+
+                    var eng = EngineVersion.VER_UE4_26;
+                    await System.Threading.Tasks.Task.Run(() =>
+                        PatchStanceAsset(vanillaTransPath, charTransPath, outTransAsset, eng, _referenceModDir, _activeStance ?? "", "BP_TransitionAnimRequest"));
+
+                    fileEntries.Add((outTransAsset,
+                        "../../../Sifu/Content/DB/Movement/Transition/BP_TransitionAnimRequest.uasset"));
+                    fileEntries.Add((Path.ChangeExtension(outTransAsset, ".uexp"),
+                        "../../../Sifu/Content/DB/Movement/Transition/BP_TransitionAnimRequest.uexp"));
+
+                    ErrorLog.Write("EXPORT", new Exception($"Patched BP_TransitionAnimRequest for stance '{_activeStance}'"));
+                }
+                else
+                {
+                    ErrorLog.Write("EXPORT", new Exception(
+                        $"Transition patch skipped: vanilla={File.Exists(vanillaTransPath)}, char={File.Exists(charTransPath)}"));
+                }
+            }
+
+            if (!string.IsNullOrEmpty(_charBaseMovementDBPath))
+            {
+                txtCurrentAction.Text = "Patching BaseMovementDB...";
+                var vanillaDbPath = Path.Combine(gameRoot, "DB/Movement/BaseMovementDB.uasset");
+                var charDbPath = Path.Combine(gameRoot, _charBaseMovementDBPath + ".uasset");
+
+                if (File.Exists(vanillaDbPath) && File.Exists(charDbPath))
+                {
+                    var outDbDir = Path.Combine(outputPath, "Sifu", "Content", "DB", "Movement");
+                    Directory.CreateDirectory(outDbDir);
+                    var outDbAsset = Path.Combine(outDbDir, "BaseMovementDB.uasset");
+
+                    var eng = EngineVersion.VER_UE4_26;
+                    await System.Threading.Tasks.Task.Run(() =>
+                        PatchStanceAsset(vanillaDbPath, charDbPath, outDbAsset, eng, _referenceModDir, _activeStance ?? "", "BaseMovementDB"));
+
+                    fileEntries.Add((outDbAsset,
+                        "../../../Sifu/Content/DB/Movement/BaseMovementDB.uasset"));
+                    fileEntries.Add((Path.ChangeExtension(outDbAsset, ".uexp"),
+                        "../../../Sifu/Content/DB/Movement/BaseMovementDB.uexp"));
+
+                    ErrorLog.Write("EXPORT", new Exception($"Patched BaseMovementDB for stance '{_activeStance}'"));
+                }
+                else
+                {
+                    ErrorLog.Write("EXPORT", new Exception(
+                        $"BaseMovementDB patch skipped: vanilla={File.Exists(vanillaDbPath)}, char={File.Exists(charDbPath)}"));
+                }
+            }
         }
     }
 
@@ -1577,6 +1956,24 @@ public partial class ExportDialog : Window
         if (lastDot < lastSlash)
             path = path + "." + path.Substring(lastSlash + 1);
         return path;
+    }
+
+    private static string GamePathToContentRel(string gamePath)
+    {
+        var rel = gamePath.Replace("\\", "/").TrimStart('/');
+        if (rel.StartsWith("Game/", StringComparison.OrdinalIgnoreCase))
+            rel = rel.Substring(5);
+        return rel;
+    }
+
+    private static bool NeedsComboRedirect(ComboNode node)
+    {
+        if (string.IsNullOrEmpty(node.DefaultDBPath) || string.IsNullOrEmpty(node.SourceDBPath))
+            return false;
+        return !string.Equals(
+            Path.GetFileNameWithoutExtension(node.DefaultDBPath),
+            Path.GetFileNameWithoutExtension(node.SourceDBPath),
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private static string EnsureLeadingSlash(string path)
@@ -1754,6 +2151,99 @@ public partial class ExportDialog : Window
         var vanillaUexp = Path.ChangeExtension(vanillaPath, ".uexp");
         if (File.Exists(vanillaUexp))
             File.Copy(vanillaUexp, Path.ChangeExtension(outputPath, ".uexp"), overwrite: true);
+    }
+
+    private void PatchUnitProperties(UnitProperties props, string variantTag, List<(string src, string dest)> fileEntries, string gameRoot, string outputPath)
+    {
+        try
+        {
+            var eng = EngineVersion.VER_UE4_26;
+
+            var archRel = UnitPropertiesManager.ResolveArchetypePath(variantTag);
+            if (archRel != null)
+            {
+                var vanillaPath = Path.Combine(gameRoot, archRel + ".uasset");
+                if (File.Exists(vanillaPath))
+                {
+                    var outDir = Path.Combine(outputPath, "Sifu", "Content", Path.GetDirectoryName(archRel)!);
+                    Directory.CreateDirectory(outDir);
+                    var outPath = Path.Combine(outDir, Path.GetFileName(archRel) + ".uasset");
+                    File.Copy(vanillaPath, outPath, true);
+
+                    var asset = new UAsset(vanillaPath, eng, null, CustomSerializationFlags.None);
+                    if (asset.Exports.Count > 1 && asset.Exports[1] is UAssetAPI.ExportTypes.NormalExport ne)
+                    {
+                        if (props.Health.HasValue)
+                        {
+                            var hp = ne.Data.OfType<UAssetAPI.PropertyTypes.Objects.FloatPropertyData>()
+                                .FirstOrDefault(p => p.Name.Value.ToString() == "m_fHealth");
+                            if (hp != null) hp.Value = props.Health.Value;
+                        }
+                        if (props.Structure.HasValue)
+                        {
+                            var sp = ne.Data.OfType<UAssetAPI.PropertyTypes.Objects.FloatPropertyData>()
+                                .FirstOrDefault(p => p.Name.Value.ToString() == "m_fStructure");
+                            if (sp != null) sp.Value = props.Structure.Value;
+                        }
+                        asset.Write(outPath);
+
+                        var relFromContent = archRel;
+                        fileEntries.Add((outPath, $"../../../Sifu/Content/{relFromContent}.uasset"));
+                        var uexpOut = Path.ChangeExtension(outPath, ".uexp");
+                        if (File.Exists(uexpOut))
+                            fileEntries.Add((uexpOut, $"../../../Sifu/Content/{relFromContent}.uexp"));
+                    }
+                }
+            }
+
+            var defRel = UnitPropertiesManager.ResolveContextDefensePath(variantTag);
+            if (defRel != null)
+            {
+                var vanillaDefPath = Path.Combine(gameRoot, defRel + ".uasset");
+                if (File.Exists(vanillaDefPath))
+                {
+                    var outDir = Path.Combine(outputPath, "Sifu", "Content", Path.GetDirectoryName(defRel)!);
+                    Directory.CreateDirectory(outDir);
+                    var outPath = Path.Combine(outDir, Path.GetFileName(defRel) + ".uasset");
+                    File.Copy(vanillaDefPath, outPath, true);
+
+                    var defAsset = new UAsset(vanillaDefPath, eng, null, CustomSerializationFlags.None);
+                    bool modified = false;
+                    foreach (var exp in defAsset.Exports)
+                    {
+                        if (exp is not UAssetAPI.ExportTypes.NormalExport ne2) continue;
+                        foreach (var d in ne2.Data)
+                        {
+                            if (d is UAssetAPI.PropertyTypes.Objects.FloatPropertyData fp)
+                            {
+                                var n = fp.Name.Value.ToString();
+                                if (n == "m_fMemoryLimit" && props.MemoryLimit.HasValue) { fp.Value = props.MemoryLimit.Value; modified = true; }
+                                else if (n == "m_fMemoryFlushLimit" && props.MemoryFlushLimit.HasValue) { fp.Value = props.MemoryFlushLimit.Value; modified = true; }
+                            }
+                            else if (d is UAssetAPI.PropertyTypes.Objects.BytePropertyData bp && bp.Name.Value.ToString() == "m_uiHitsCount" && props.HitsCount.HasValue)
+                            {
+                                bp.Value = (byte)props.HitsCount.Value;
+                                modified = true;
+                            }
+                        }
+                    }
+                    if (modified)
+                    {
+                        defAsset.Write(outPath);
+
+                        var relFromContent = defRel;
+                        fileEntries.Add((outPath, $"../../../Sifu/Content/{relFromContent}.uasset"));
+                        var uexpOut = Path.ChangeExtension(outPath, ".uexp");
+                        if (File.Exists(uexpOut))
+                            fileEntries.Add((uexpOut, $"../../../Sifu/Content/{relFromContent}.uexp"));
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("EXPORT", new Exception($"[UNIT_PROPS] Error patching {variantTag}: {ex.Message}"));
+        }
     }
 
     private static bool PatchDbAnimation(string vanillaDbPath, string newAnimPath, string outputDbPath, EngineVersion eng)

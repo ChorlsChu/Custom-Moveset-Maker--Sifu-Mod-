@@ -1,0 +1,6 @@
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\_pak_extract\_pak_extract\obj\Debug\net10.0-windows\_pak_extract.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\_pak_extract\_pak_extract\obj\Debug\net10.0-windows\_pak_extract.AssemblyInfoInputs.cache
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\_pak_extract\_pak_extract\obj\Debug\net10.0-windows\_pak_extract.AssemblyInfo.cs
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\_pak_extract\_pak_extract\obj\Debug\net10.0-windows\_pak_extract.csproj.CoreCompileInputs.cache
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\_pak_extract\_pak_extract\obj\Debug\net10.0-windows\_pak_extract.sourcelink.json
+C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\_pak_extract\_pak_extract\obj\Debug\net10.0-windows\_pak_extract.csproj.AssemblyReference.cache

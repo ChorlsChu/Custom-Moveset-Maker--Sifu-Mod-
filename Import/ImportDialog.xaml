@@ -116,7 +116,7 @@
             <StackPanel x:Name="stepList" Grid.Row="4" Margin="0,8,0,0">
                 <TextBlock x:Name="step1" Text="&#x25CB; Extracting pak file"
                            Foreground="#6c7086" FontSize="12" Margin="0,2"/>
-                <TextBlock x:Name="step2" Text="&#x25CB; Checking for combo tree"
+                <TextBlock x:Name="step2" Text="&#x25CB; Finding combo trees / unit props"
                            Foreground="#6c7086" FontSize="12" Margin="0,2"/>
                 <TextBlock x:Name="step3" Text="&#x25CB; Detecting stance"
                            Foreground="#6c7086" FontSize="12" Margin="0,2"/>
@@ -128,9 +128,14 @@
                            Foreground="#6c7086" FontSize="12" Margin="0,2"/>
             </StackPanel>
 
-            <!-- Current action -->
-            <TextBlock x:Name="txtCurrentAction" Grid.Row="5" TextWrapping="Wrap"
-                       FontSize="12" Foreground="#6c7086" Margin="0,8,0,0"/>
+            <!-- Current action + error detail -->
+            <StackPanel x:Name="panelAction" Grid.Row="5" Margin="0,8,0,0">
+                <TextBlock x:Name="txtCurrentAction" TextWrapping="Wrap"
+                           FontSize="12" Foreground="#6c7086"/>
+                <TextBlock x:Name="txtErrorDetail" TextWrapping="Wrap"
+                           FontSize="11" Foreground="#f38ba8" Margin="0,6,0,0"
+                           Visibility="Collapsed"/>
+            </StackPanel>
 
             <!-- Close button (hidden during loading) -->
             <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right"
@@ -141,32 +146,26 @@
         </Grid>
 
         <!-- State 2: Complete -->
-        <Grid x:Name="panelComplete" Visibility="Collapsed" Margin="20,16">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="16"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="16"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-
-            <TextBlock Grid.Row="0" FontSize="15" FontWeight="Bold">
+        <DockPanel x:Name="panelComplete" Visibility="Collapsed" Margin="20,16">
+            <TextBlock DockPanel.Dock="Top" FontSize="15" FontWeight="Bold">
                 <Run Text="&#x2713; " Foreground="#a6e3a1"/>
                 <Run Text="Import complete!" Foreground="#cdd6f4"/>
             </TextBlock>
 
-            <TextBlock x:Name="txtResult" Grid.Row="2" FontSize="13"
-                       Foreground="#cdd6f4" TextWrapping="Wrap"/>
+            <TextBlock x:Name="txtResult" DockPanel.Dock="Top" FontSize="13"
+                       Foreground="#cdd6f4" TextWrapping="Wrap" Margin="0,8,0,0"/>
 
-            <TextBlock x:Name="txtDetails" Grid.Row="3" FontSize="12"
-                       Foreground="#6c7086" TextWrapping="Wrap" Margin="0,4,0,0"/>
-
-            <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
+            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+                        HorizontalAlignment="Right" Margin="0,12,0,0">
                 <Button Content="Close" Style="{StaticResource AccentButton}"
                         Click="Close_Click" Padding="16,8" MinHeight="30"/>
             </StackPanel>
-        </Grid>
+
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          Margin="0,8,0,0">
+                <TextBlock x:Name="txtDetails" FontSize="12"
+                           Foreground="#6c7086" TextWrapping="Wrap"/>
+            </ScrollViewer>
+        </DockPanel>
     </DockPanel>
 </Window>

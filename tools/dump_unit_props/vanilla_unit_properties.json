@@ -1,0 +1,234 @@
+{
+  "Grunt_Base": {
+    "Health": 100.00,
+    "Structure": 150.00,
+    "MemoryLimit": 3.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": null,
+    "Probability": 0.70
+  },
+  "Grunt_Advanced": {
+    "Health": 200.00,
+    "Structure": 300.00,
+    "MemoryLimit": 5.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": null,
+    "Probability": 0.70
+  },
+  "Grunt_Miniboss": {
+    "Health": 160.00,
+    "Structure": 240.00,
+    "MemoryLimit": 5.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": null,
+    "Probability": 0.70
+  },
+  "Bodyguard_Base": {
+    "Health": 200.00,
+    "Structure": 400.00,
+    "MemoryLimit": 20.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": 20.00,
+    "Probability": 0.50
+  },
+  "Bodyguard_Advanced": {
+    "Health": 320.00,
+    "Structure": 640.00,
+    "MemoryLimit": 5.00,
+    "HitsCount": 2,
+    "MemoryFlushLimit": 20.00,
+    "Probability": 0.50
+  },
+  "Bodyguard_Miniboss": {
+    "Health": 500.00,
+    "Structure": 800.00,
+    "MemoryLimit": 5.00,
+    "HitsCount": 2,
+    "MemoryFlushLimit": 20.00,
+    "Probability": 0.50
+  },
+  "BigGuy_Base": {
+    "Health": 210.00,
+    "Structure": 250.00,
+    "MemoryLimit": 6.00,
+    "HitsCount": 2,
+    "MemoryFlushLimit": null,
+    "Probability": null
+  },
+  "BigGuy_Advanced": {
+    "Health": 310.00,
+    "Structure": 370.00,
+    "MemoryLimit": 10.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": null,
+    "Probability": null
+  },
+  "BigGuy_Miniboss": {
+    "Health": 440.00,
+    "Structure": 520.00,
+    "MemoryLimit": 6.00,
+    "HitsCount": 2,
+    "MemoryFlushLimit": null,
+    "Probability": null
+  },
+  "FlashKick_Base": {
+    "Health": null,
+    "Structure": 210.00,
+    "MemoryLimit": 6.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": null,
+    "Probability": null
+  },
+  "FlashKick_Advanced": {
+    "Health": 230.00,
+    "Structure": 400.00,
+    "MemoryLimit": 6.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": null,
+    "Probability": null
+  },
+  "FlashKick_Miniboss": {
+    "Health": 400.00,
+    "Structure": 700.00,
+    "MemoryLimit": 6.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": null,
+    "Probability": null
+  },
+  "FD_Base": {
+    "Health": 160.00,
+    "Structure": 320.00,
+    "MemoryLimit": 30.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": 20.00,
+    "Probability": null
+  },
+  "FD_Advanced": {
+    "Health": 270.00,
+    "Structure": 540.00,
+    "MemoryLimit": 20.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": 20.00,
+    "Probability": null
+  },
+  "FD_Miniboss": {
+    "Health": 400.00,
+    "Structure": 800.00,
+    "MemoryLimit": 20.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": 20.00,
+    "Probability": null
+  },
+  "Fajar_P1": {
+    "Health": 800.00,
+    "Structure": 1200.00,
+    "MemoryLimit": 10.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": 20.00,
+    "Probability": 0.50
+  },
+  "Fajar_P2": {
+    "Health": null,
+    "Structure": null,
+    "MemoryLimit": 6.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": 20.00,
+    "Probability": 0.50
+  },
+  "Fengjie_P1": {
+    "Health": 550.00,
+    "Structure": 700.00,
+    "MemoryLimit": 30.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": 30.00,
+    "Probability": null
+  },
+  "Fengjie_P2": {
+    "Health": 750.00,
+    "Structure": 850.00,
+    "MemoryLimit": 20.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": 20.00,
+    "Probability": null
+  },
+  "Kuroki_P1": {
+    "Health": 1200.00,
+    "Structure": 1400.00,
+    "MemoryLimit": 7.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": 15.00,
+    "Probability": 0.50
+  },
+  "Kuroki_P2": {
+    "Health": 1200.00,
+    "Structure": 1100.00,
+    "MemoryLimit": 10.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": null,
+    "Probability": null
+  },
+  "Sean_P1": {
+    "Health": 1000.00,
+    "Structure": 1350.00,
+    "MemoryLimit": 10.00,
+    "HitsCount": 2,
+    "MemoryFlushLimit": 20.00,
+    "Probability": null
+  },
+  "Sean_P2": {
+    "Health": 1000.00,
+    "Structure": 1350.00,
+    "MemoryLimit": 10.00,
+    "HitsCount": 2,
+    "MemoryFlushLimit": 20.00,
+    "Probability": null
+  },
+  "Sean_Burst": {
+    "Health": 1000.00,
+    "Structure": 1350.00,
+    "MemoryLimit": 10.00,
+    "HitsCount": 2,
+    "MemoryFlushLimit": 20.00,
+    "Probability": null
+  },
+  "Yang_P1": {
+    "Health": 1100.00,
+    "Structure": 1400.00,
+    "MemoryLimit": 100.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": 30.00,
+    "Probability": 0.50
+  },
+  "Yang_P2": {
+    "Health": 1300.00,
+    "Structure": 1650.00,
+    "MemoryLimit": 100.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": 20.00,
+    "Probability": 0.50
+  },
+  "Yang_P3": {
+    "Health": 1.00,
+    "Structure": 700.00,
+    "MemoryLimit": 10.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": null,
+    "Probability": 0.50
+  },
+  "Sifu": {
+    "Health": 400.00,
+    "Structure": 500.00,
+    "MemoryLimit": 10.00,
+    "HitsCount": 1,
+    "MemoryFlushLimit": null,
+    "Probability": null
+  },
+  "Servant": {
+    "Health": 60.00,
+    "Structure": 80.00,
+    "MemoryLimit": 5.00,
+    "HitsCount": 2,
+    "MemoryFlushLimit": null,
+    "Probability": null
+  }
+}

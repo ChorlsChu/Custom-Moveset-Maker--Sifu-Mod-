@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -16,6 +17,10 @@ using CUE4Parse_Conversion.Animations.PSA;
 using CUE4Parse_Conversion.Meshes;
 using CUE4Parse_Conversion.Meshes.PSK;
 using Newtonsoft.Json;
+using UAssetAPI;
+using UAssetAPI.PropertyTypes;
+using UAssetAPI.PropertyTypes.Objects;
+using UAssetAPI.PropertyTypes.Structs;
 
 namespace SifuMovesetEditor;
 
@@ -123,14 +128,17 @@ public class ComboNode
     public string DefaultDBPath { get; set; } = "";
     public string SourceDBPath { get; set; } = "";
     public string DisplayName { get; set; } = "";
+    public string ImportedDisplayName { get; set; } = "";
     public bool IsRoot { get; set; }
     public int Depth { get; set; }
     public string InputLabel { get; set; } = "";
     public string DirectionLabel { get; set; } = "";
     public string VanillaAnimPath { get; set; } = "";
-    public int RedirectTargetId { get; set; } = -1;
-    public int ResolvedRedirectNodeId { get; set; } = -1;
     public bool IsRedirect { get; set; }
+    public int RedirectTargetTreeIndex { get; set; } = -1;
+    public int ResolvedRedirectNodeId { get; set; } = -1;
+    [Newtonsoft.Json.JsonIgnore]
+    public bool IsImportedFromMod { get; set; }
 }
 
 public class ComboEdge
@@ -146,6 +154,15 @@ public class ComboGraph
     public string WeaponName { get; set; } = "";
     public List<ComboNode> Nodes { get; set; } = [];
     public List<ComboEdge> Edges { get; set; } = [];
+    public Dictionary<int, int> RedirectOriginalTargets { get; set; } = new();
+}
+
+public class ModdedComboNodeInfo
+{
+    public int TreeIndex { get; set; }
+    public string Name { get; set; } = "";
+    public int RedirectTargetTreeIndex { get; set; } = -1;
+    public List<string> AttackDbPaths { get; set; } = [];
 }
 
 public class BoneData
@@ -223,13 +240,14 @@ public class MeshJsonData
 public class AnimationParser : IDisposable
 {
     private DefaultFileProvider? _provider;
+    private DefaultFileProvider? _overlayProvider;
     private string _gameRootPath = "";
     private string _contentPath = "";
     private string ContentDir => _contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase)
         ? _contentPath
         : Path.Combine(_contentPath, "Content");
     public bool IsLoaded => _provider != null;
-    public Dictionary<string, string> AnimToDbPath { get; } = new();
+    public ConcurrentDictionary<string, string> AnimToDbPath { get; } = new();
     public Dictionary<string, (float hitFrame, int buildupFrame)> AnimToTiming { get; } = new();
 
     private static readonly HashSet<string> SkipDirectories = new(StringComparer.OrdinalIgnoreCase)
@@ -319,6 +337,73 @@ public class AnimationParser : IDisposable
         }
     }
 
+    public void SetOverlayProvider(DefaultFileProvider? provider)
+    {
+        try
+        {
+            if (_overlayProvider != null && !ReferenceEquals(_overlayProvider, provider))
+                (_overlayProvider as IDisposable)?.Dispose();
+        }
+        catch { }
+        _overlayProvider = provider;
+    }
+
+    public DefaultFileProvider? CreateOverlayProvider(string contentRoot)
+    {
+        if (_provider == null || !Directory.Exists(contentRoot)) return null;
+        try
+        {
+            var provider = new DefaultFileProvider(
+                contentRoot,
+                SearchOption.AllDirectories,
+                _provider.Versions);
+            provider.Initialize();
+
+            var baseDir = new DirectoryInfo(contentRoot);
+            int filesAdded = 0;
+            foreach (var file in Directory.GetFiles(contentRoot, "*", SearchOption.AllDirectories))
+            {
+                var ext = Path.GetExtension(file).ToLowerInvariant();
+                if (ext != ".uasset" && ext != ".uexp" && ext != ".ubulk") continue;
+                var gameFile = new OsGameFile(baseDir, new FileInfo(file), "Game/", provider.Versions);
+                provider.Files.AddFiles(new Dictionary<string, GameFile> { [gameFile.Path] = gameFile });
+                filesAdded++;
+            }
+
+            LogDebug($"[OVERLAY] Mounted {filesAdded} files from {contentRoot}");
+            return provider;
+        }
+        catch (Exception ex)
+        {
+            LogDebug($"[OVERLAY] Create failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    public int MountCustomIntoProvider(string customRoot)
+    {
+        if (_provider == null || !Directory.Exists(customRoot)) return 0;
+        int filesAdded = 0;
+        try
+        {
+            var baseDir = new DirectoryInfo(customRoot);
+            foreach (var file in Directory.GetFiles(customRoot, "*", SearchOption.AllDirectories))
+            {
+                var ext = Path.GetExtension(file).ToLowerInvariant();
+                if (ext != ".uasset" && ext != ".uexp" && ext != ".ubulk") continue;
+                var gameFile = new OsGameFile(baseDir, new FileInfo(file), "Game/", _provider.Versions);
+                _provider.Files.AddFiles(new Dictionary<string, GameFile> { [gameFile.Path] = gameFile });
+                filesAdded++;
+            }
+            LogDebug($"[CUSTOM] Mounted {filesAdded} custom anim files from {customRoot}");
+        }
+        catch (Exception ex)
+        {
+            LogDebug($"[CUSTOM] Mount failed: {ex.Message}");
+        }
+        return filesAdded;
+    }
+
     private static void LogDebug(string message)
     {
         try { File.AppendAllText(Path.Combine(Directory.GetCurrentDirectory(), "error.log"), $"[{DateTime.Now:HH:mm:ss}] {message}\n"); } catch { }
@@ -336,6 +421,8 @@ public class AnimationParser : IDisposable
             if (SkipDirectories.Contains(character)) continue;
 
             var attacksDir = Path.Combine(characterDir, "Attacks");
+            if (!Directory.Exists(attacksDir))
+                attacksDir = Path.Combine(characterDir, "Attack");
             if (!Directory.Exists(attacksDir)) continue;
 
             foreach (var weaponDir in Directory.GetDirectories(attacksDir))
@@ -344,6 +431,21 @@ public class AnimationParser : IDisposable
                 if (SkipDirectories.Contains(weaponType)) continue;
 
                 ScanAttackMoves(weaponDir, character, weaponType, "", moves);
+            }
+
+            foreach (var file in Directory.GetFiles(attacksDir, "*.uasset"))
+            {
+                var name = Path.GetFileNameWithoutExtension(file);
+                var relPath = file.Substring(_contentPath.Length).TrimStart('\\', '/').Replace('\\', '/');
+                var gamePath = "Game/" + relPath.Replace(".uasset", "");
+                moves.Add(new MoveInfo
+                {
+                    DisplayName = name,
+                    FullPath = gamePath,
+                    Character = character,
+                    WeaponType = "New",
+                    Category = ""
+                });
             }
         }
 
@@ -379,7 +481,7 @@ public class AnimationParser : IDisposable
                 Character = character,
                 WeaponType = "BareHands",
                 Category = "GetUp",
-                IsUsed = false
+                IsUsed = true
             });
         }
 
@@ -511,8 +613,8 @@ public class AnimationParser : IDisposable
                         if (resolved != null)
                         {
                             var animPath = NormalizeAnimPath(resolved.GetPathName());
-                            if (!string.IsNullOrEmpty(animPath) && !AnimToDbPath.ContainsKey(animPath))
-                                AnimToDbPath[animPath] = gamePath;
+                            if (!string.IsNullOrEmpty(animPath))
+                                AnimToDbPath.TryAdd(animPath, gamePath);
                         }
                     }
                 }
@@ -629,6 +731,24 @@ public class AnimationParser : IDisposable
                         }
                     }
                 }
+                else if (prop.PropertyType.Text == "StructProperty" && prop.Tag is StructProperty structProp)
+                {
+                    var structText = structProp.Value?.ToString();
+                    if (!string.IsNullOrEmpty(structText) && structText.Contains("Anim", StringComparison.OrdinalIgnoreCase)
+                        && structText.Contains('/'))
+                    {
+                        foreach (var segment in structText.Split(','))
+                        {
+                            var trimmed = segment.Trim().Trim('"');
+                            if (trimmed.Contains("Anim", StringComparison.OrdinalIgnoreCase) && trimmed.Contains('/'))
+                            {
+                                var normalized = NormalizeAnimPath(trimmed);
+                                if (!string.IsNullOrEmpty(normalized))
+                                    usedPaths.Add(normalized);
+                            }
+                        }
+                    }
+                }
             }
             catch { }
         }
@@ -713,7 +833,7 @@ public class AnimationParser : IDisposable
         {
             "barehands" or "bare_hands" => "BareHands",
             "staff" => "Staff",
-            "blade" or "blades" or "machete" or "dagger" => "Blades",
+            "blade" or "blades" or "machete" or "dagger" or "daggers" => "Blades",
             "bat" or "bats" or "blunt" => "Bats",
             "meteor" or "hammer" or "meteorhammer" or "meteor_hammer" => "MeteorHammer",
             "tristaff" => "TriStaff",
@@ -869,7 +989,8 @@ public class AnimationParser : IDisposable
     private ComboGraph? ParseComboTreeFromObject(UObject obj, string weaponName = "BareHands")
     {
         bool isMainChar = string.Equals(weaponName, "BareHands", StringComparison.OrdinalIgnoreCase) 
-                       || string.Equals(weaponName, "MainChar", StringComparison.OrdinalIgnoreCase);
+                       || string.Equals(weaponName, "MainChar", StringComparison.OrdinalIgnoreCase)
+                       || weaponName.StartsWith("MainChar_", StringComparison.OrdinalIgnoreCase);
         try
         {
             LogDebug($"[COMBO] Loaded {obj.GetPathName()}: exportType={obj.ExportType}, weapon={weaponName}");
@@ -905,32 +1026,23 @@ public class AnimationParser : IDisposable
 
             LogDebug($"[COMBO] Parsed {rawNodes.Count} raw nodes from {allNodeStructs.Count} tree nodes");
 
-            if (!isMainChar)
-            {
-                LogDebug("[REDIRECT DEBUG] === RAW NODES ===");
-                for (int i = 0; i < allNodeStructs.Count; i++)
-                {
-                    if (!treeIndexToNodeIds.TryGetValue(i, out var nids)) continue;
-                    foreach (var nid in nids)
-                    {
-                        var rn = rawNodes.FirstOrDefault(n => n.Id == nid);
-                        if (rn == null) continue;
-                        LogDebug($"[REDIRECT DEBUG] TreeIdx={i} | Id={rn.Id} | Name={rn.Name} | Redirect={rn.RedirectTargetId} | DisplayName={rn.DisplayName}");
-                    }
-                }
-            }
-
             if (isMainChar)
             {
-                foreach (var n in rawNodes) { n.RedirectTargetId = -1; }
-            }
-            else
-            {
-                foreach (var n in rawNodes) { if (n.RedirectTargetId >= 0) n.IsRedirect = true; }
+                foreach (var node in rawNodes)
+                {
+                    if (node.IsRedirect)
+                    {
+                        node.IsRedirect = false;
+                        node.RedirectTargetTreeIndex = -1;
+                    }
+                }
+                LogDebug("[COMBO] MainChar: stripped redirect flags (redirects are enemy-only)");
             }
 
             var rawEdges = new List<ComboEdge>();
-            var redirectNodeIds = new HashSet<int>(rawNodes.Where(n => n.RedirectTargetId >= 0).Select(n => n.Id));
+            var redirectNodeIds = new HashSet<int>(rawNodes.Where(n => n.IsRedirect).Select(n => n.Id));
+            if (redirectNodeIds.Count > 0)
+                LogDebug($"[COMBO] Found {redirectNodeIds.Count} redirect nodes: {string.Join(", ", rawNodes.Where(n => n.IsRedirect).Select(n => $"{n.Name} → tree[{n.RedirectTargetTreeIndex}]"))}");
             for (int ti = 0; ti < allNodeStructs.Count; ti++)
             {
                 var nodeData = allNodeStructs[ti];
@@ -1000,7 +1112,7 @@ public class AnimationParser : IDisposable
             LogDebug($"[COMBO] After dedup: {rawEdges.Count} raw edges");
 
             var conduitIds = new HashSet<int>(
-                rawNodes.Where(n => string.IsNullOrEmpty(n.AnimPath) && !n.IsRoot && n.RedirectTargetId < 0).Select(n => n.Id));
+                rawNodes.Where(n => string.IsNullOrEmpty(n.AnimPath) && !n.IsRoot && !n.IsRedirect).Select(n => n.Id));
 
             var conduitEdges = new Dictionary<int, List<ComboEdge>>();
             foreach (var cid in conduitIds)
@@ -1069,28 +1181,6 @@ public class AnimationParser : IDisposable
             var graph = new ComboGraph { WeaponName = isMainChar ? "BareHands" : weaponName };
             graph.Nodes.AddRange(keptNodes);
 
-            if (!isMainChar)
-            {
-                foreach (var node in graph.Nodes)
-                {
-                    if (node.RedirectTargetId < 0) continue;
-                    if (!treeIndexToNodeIds.TryGetValue(node.RedirectTargetId, out var targetOrigIds)) continue;
-                    foreach (var origTargetId in targetOrigIds)
-                    {
-                        if (oldToNew.TryGetValue(origTargetId, out var newTargetId))
-                        {
-                            var targetNode = graph.Nodes.FirstOrDefault(n => n.Id == newTargetId);
-                            if (targetNode != null)
-                            {
-                                node.DisplayName = "↗ " + targetNode.DisplayName;
-                                node.ResolvedRedirectNodeId = newTargetId;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
             foreach (var edge in finalEdges)
             {
                 if (oldToNew.TryGetValue(edge.FromNodeId, out var newFrom) &&
@@ -1105,48 +1195,31 @@ public class AnimationParser : IDisposable
                 }
             }
 
-            LogDebug($"[COMBO] Final: {graph.Nodes.Count} nodes, {graph.Edges.Count} edges (removed {conduitIds.Count} conduits)");
-
-            if (!isMainChar)
+            foreach (var node in graph.Nodes.Where(n => n.IsRedirect))
             {
-                int redirectEdges = 0;
-                foreach (var edge in graph.Edges)
+                if (treeIndexToNodeIds.TryGetValue(node.RedirectTargetTreeIndex, out var targetIds) && targetIds.Count > 0)
                 {
-                    var targetNode = graph.Nodes.FirstOrDefault(n => n.Id == edge.ToNodeId);
-                    if (targetNode != null && targetNode.IsRedirect)
-                    {
-                        edge.IsRedirect = true;
-                        redirectEdges++;
-                    }
+                    var resolvedId = targetIds.First();
+                    if (oldToNew.TryGetValue(resolvedId, out var newTargetId))
+                        node.ResolvedRedirectNodeId = newTargetId;
                 }
-                LogDebug($"[COMBO] Marked {redirectEdges} edges as redirect (incoming to redirect nodes)");
-
-                var seenRedirectTargets = new HashSet<(int fromId, int resolvedTargetId)>();
-                var edgesToRemove = new List<ComboEdge>();
-                foreach (var edge in graph.Edges.Where(e => e.IsRedirect))
-                {
-                    var toNode = graph.Nodes.FirstOrDefault(n => n.Id == edge.ToNodeId);
-                    if (toNode == null) continue;
-                    var key = (edge.FromNodeId, toNode.ResolvedRedirectNodeId);
-                    if (!seenRedirectTargets.Add(key))
-                        edgesToRemove.Add(edge);
-                }
-                foreach (var e in edgesToRemove)
-                    graph.Edges.Remove(e);
-                LogDebug($"[COMBO] Removed {edgesToRemove.Count} duplicate redirect edges (same source → same resolved target)");
-
-                LogDebug("[REDIRECT DEBUG] === GRAPH NODES (redirect) ===");
-                foreach (var n in graph.Nodes.Where(n => n.IsRedirect))
-                    LogDebug($"[REDIRECT DEBUG] Node Id={n.Id} TreeIdx={n.TreeIndex} ResolvedTarget={n.ResolvedRedirectNodeId} DisplayName={n.DisplayName}");
-
-                LogDebug("[REDIRECT DEBUG] === GRAPH EDGES (redirect) ===");
-                foreach (var e in graph.Edges.Where(e => e.IsRedirect))
-                {
-                    var fn = graph.Nodes.FirstOrDefault(n => n.Id == e.FromNodeId);
-                    var tn = graph.Nodes.FirstOrDefault(n => n.Id == e.ToNodeId);
-                    LogDebug($"[REDIRECT DEBUG] Edge From={e.FromNodeId}({fn?.DisplayName}) → To={e.ToNodeId}({tn?.DisplayName})");
-                }
+                graph.RedirectOriginalTargets[node.Id] = node.ResolvedRedirectNodeId;
             }
+
+            foreach (var edge in graph.Edges)
+            {
+                var fromNode = graph.Nodes.FirstOrDefault(n => n.Id == edge.FromNodeId);
+                if (fromNode?.IsRedirect == true) edge.IsRedirect = true;
+            }
+
+            var incomingCounts = new Dictionary<int, int>();
+            foreach (var node in graph.Nodes) incomingCounts[node.Id] = 0;
+            foreach (var edge in graph.Edges)
+                if (incomingCounts.ContainsKey(edge.ToNodeId))
+                    incomingCounts[edge.ToNodeId]++;
+
+
+            LogDebug($"[COMBO] Final: {graph.Nodes.Count} nodes, {graph.Edges.Count} edges (removed {conduitIds.Count} conduits, kept {redirectNodeIds.Count} redirects)");
 
             var delayAnimNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (isMainChar)
@@ -1231,11 +1304,13 @@ public class AnimationParser : IDisposable
         return DirectionSuffixes.Contains(suffix) ? suffix.ToUpperInvariant() : "";
     }
 
-    private string? ResolveAnimationFromDB(string dbPath)
+    public string? ResolveAnimationFromDB(string dbPath)
     {
         try
         {
             var dbObj = _provider?.SafeLoadPackageObject<UObject>(dbPath);
+            if (dbObj == null && _overlayProvider != null)
+                dbObj = _overlayProvider.SafeLoadPackageObject<UObject>(dbPath);
             if (dbObj == null) return null;
 
             var mAttack = dbObj.Properties.FirstOrDefault(p => p.Name.Text == "m_Attack");
@@ -1351,7 +1426,8 @@ public class AnimationParser : IDisposable
                     DisplayName = baseDisplayName,
                     IsRoot = isRoot,
                     DirectionLabel = "",
-                    RedirectTargetId = redirectTarget
+                    IsRedirect = redirectTarget >= 0,
+                    RedirectTargetTreeIndex = redirectTarget,
                 }
             };
         }
@@ -1377,11 +1453,397 @@ public class AnimationParser : IDisposable
                 DisplayName = displayName,
                 IsRoot = isRoot,
                 DirectionLabel = dir,
-                RedirectTargetId = redirectTarget
             });
         }
 
         return variants;
+    }
+
+    public List<ModdedComboNodeInfo> ReadModdedComboNodes(string uassetPath)
+    {
+        var result = new List<ModdedComboNodeInfo>();
+        try
+        {
+            var asset = new UAsset(uassetPath, UAssetAPI.UnrealTypes.EngineVersion.VER_UE4_26, null, CustomSerializationFlags.None);
+            ArrayPropertyData? nodesArr = null;
+            foreach (var exp in asset.Exports)
+            {
+                if (exp is not UAssetAPI.ExportTypes.NormalExport ne || ne.Data == null) continue;
+                nodesArr = ne.Data.OfType<ArrayPropertyData>()
+                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Nodes");
+                if (nodesArr != null) break;
+            }
+            if (nodesArr?.Value == null)
+            {
+                LogDebug($"[IMPORT] ReadModdedComboNodes: no m_Nodes in {uassetPath}");
+                return result;
+            }
+
+            for (int i = 0; i < nodesArr.Value.Length; i++)
+            {
+                if (nodesArr.Value[i] is not StructPropertyData nodeSp || nodeSp.Value == null) continue;
+
+                var info = new ModdedComboNodeInfo { TreeIndex = i };
+                var nameProp = nodeSp.Value.OfType<NamePropertyData>()
+                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Name");
+                info.Name = nameProp?.Value?.Value?.ToString() ?? "";
+                if (info.Name == "None") info.Name = "";
+
+                var redirectProp = nodeSp.Value.OfType<IntPropertyData>()
+                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_NodeRedirect");
+                if (redirectProp != null && redirectProp.Value >= 0)
+                    info.RedirectTargetTreeIndex = redirectProp.Value;
+
+                var attackInfos = nodeSp.Value.OfType<StructPropertyData>()
+                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_AttackInfos");
+                if (attackInfos?.Value != null)
+                {
+                    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var ap in attackInfos.Value)
+                    {
+                        if (ap.Name?.Value?.ToString() != "m_Attacks" || ap is not NamePropertyData npd)
+                            continue;
+                        var path = npd.Value?.Value?.ToString() ?? "";
+                        if (string.IsNullOrEmpty(path) || path == "None" || !path.Contains('/'))
+                            continue;
+                        var norm = NormalizeAnimPath(path);
+                        if (seen.Add(norm))
+                            info.AttackDbPaths.Add(norm);
+                    }
+                }
+
+                result.Add(info);
+            }
+
+            LogDebug($"[IMPORT] ReadModdedComboNodes: {result.Count} nodes from {Path.GetFileName(uassetPath)}");
+        }
+        catch (Exception ex)
+        {
+            LogDebug($"[IMPORT] ReadModdedComboNodes failed for {uassetPath}: {ex.Message}");
+        }
+        return result;
+    }
+
+    private static string NormalizeNodeKey(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name == "None") return "";
+        var s = name.Trim();
+        foreach (var prefix in new[]
+                 {
+                     "MainChar_Attack_barehands_", "MainChar_attack_barehands_",
+                     "MainChar_Attack_", "MainChar_attack_", "MainChar_",
+                     "FireDisciple_attack_barehands_", "FireDisciple_Attack_barehands_",
+                     "FireDisciple_barehands_", "FireDisciple_", "Grunt_",
+                     "MC_", "Attack barehands ", "attack barehands "
+                 })
+        {
+            if (s.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                s = s[prefix.Length..];
+                break;
+            }
+        }
+        s = s.Replace("_", " ").Replace("-", " ").Trim();
+        while (s.Contains("  "))
+            s = s.Replace("  ", " ");
+        return s;
+    }
+
+    private static string StripDirectionSuffix(string fileName)
+    {
+        if (string.IsNullOrEmpty(fileName)) return "";
+        var lastUnderscore = fileName.LastIndexOf('_');
+        if (lastUnderscore <= 0) return fileName;
+        var suffix = fileName[(lastUnderscore + 1)..];
+        return DirectionSuffixes.Contains(suffix)
+            ? fileName[..lastUnderscore]
+            : fileName;
+    }
+
+    private static string PrettifyAttackName(string dbPath, string directionLabel)
+    {
+        var fileName = Path.GetFileNameWithoutExtension(dbPath);
+        if (string.IsNullOrEmpty(fileName)) return "";
+        var display = fileName
+            .Replace("MainChar_", "")
+            .Replace("FireDisciple_", "")
+            .Replace("FireDisciple", "")
+            .Replace("Grunt_", "")
+            .Replace("MC_", "")
+            .Replace("_", " ")
+            .Replace("Attack barehands ", "")
+            .Replace("Attack Barehands ", "")
+            .Replace("attack barehands ", "")
+            .Replace("barehands ", "")
+            .Replace("Barehands ", "")
+            .Trim();
+        while (display.Contains("  "))
+            display = display.Replace("  ", " ");
+        if (!string.IsNullOrEmpty(directionLabel) &&
+            !display.EndsWith(directionLabel, StringComparison.OrdinalIgnoreCase))
+            display = $"{display} {directionLabel}";
+        return display;
+    }
+
+    public (int moveChanges, int retargetChanges, int unmatched) ApplyModdedComboToVanilla(
+        ComboGraph vanillaGraph, List<ModdedComboNodeInfo> moddedNodes, string weaponName)
+    {
+        bool isMainChar = string.Equals(weaponName, "BareHands", StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(weaponName, "MainChar", StringComparison.OrdinalIgnoreCase)
+                       || weaponName.StartsWith("MainChar_", StringComparison.OrdinalIgnoreCase);
+
+        int moveChanges = 0, retargetChanges = 0, unmatched = 0;
+
+        var vanillaMoves = vanillaGraph.Nodes
+            .Where(n => n.TreeIndex >= 0 && !n.IsRedirect && !n.IsRoot)
+            .GroupBy(n => n.TreeIndex)
+            .ToDictionary(g => g.Key, g => g.OrderBy(n => n.Id).ToList());
+
+        int vanillaTreeCount = vanillaGraph.Nodes
+            .Where(n => n.TreeIndex >= 0)
+            .Select(n => n.TreeIndex)
+            .Distinct()
+            .Count();
+        if (moddedNodes.Count != vanillaTreeCount)
+            LogDebug($"[IMPORT] Tree size mismatch: {moddedNodes.Count} modded vs {vanillaTreeCount} vanilla tree indices ({weaponName})");
+
+        var usedModded = new HashSet<ModdedComboNodeInfo>();
+        var groupToModded = new Dictionary<int, ModdedComboNodeInfo>();
+
+        var byName = new Dictionary<string, Queue<ModdedComboNodeInfo>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in moddedNodes)
+        {
+            var key = NormalizeNodeKey(m.Name);
+            if (string.IsNullOrEmpty(key)) continue;
+            if (!byName.TryGetValue(key, out var q))
+                byName[key] = q = new Queue<ModdedComboNodeInfo>();
+            q.Enqueue(m);
+        }
+
+        foreach (var kvp in vanillaMoves.OrderBy(k => k.Key))
+        {
+            var nameKey = NormalizeNodeKey(kvp.Value
+                .Select(n => n.Name)
+                .FirstOrDefault(s => !string.IsNullOrEmpty(s) && s != "None") ?? "");
+            if (string.IsNullOrEmpty(nameKey)) continue;
+            if (!byName.TryGetValue(nameKey, out var q) || q.Count == 0) continue;
+            var match = q.Dequeue();
+            groupToModded[kvp.Key] = match;
+            usedModded.Add(match);
+        }
+
+        var byIndex = new Dictionary<int, ModdedComboNodeInfo>();
+        foreach (var m in moddedNodes)
+        {
+            if (usedModded.Contains(m)) continue;
+            byIndex.TryAdd(m.TreeIndex, m);
+        }
+        foreach (var kvp in vanillaMoves.OrderBy(k => k.Key))
+        {
+            if (groupToModded.ContainsKey(kvp.Key)) continue;
+            if (!byIndex.TryGetValue(kvp.Key, out var m)) continue;
+            groupToModded[kvp.Key] = m;
+            usedModded.Add(m);
+            byIndex.Remove(kvp.Key);
+        }
+
+        foreach (var kvp in vanillaMoves.OrderBy(k => k.Key))
+        {
+            var vanillaList = kvp.Value;
+            if (!groupToModded.TryGetValue(kvp.Key, out var modded))
+            {
+                unmatched += vanillaList.Count;
+                continue;
+            }
+
+            var paths = modded.AttackDbPaths
+                .Select(NormalizeAnimPath)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var directed = new List<(string Path, string Dir, string Base, string BaseNoDir, bool Used)>();
+            var shared = new List<(string Path, string Dir, string Base, string BaseNoDir, bool Used)>();
+            foreach (var p in paths)
+            {
+                var dir = ExtractDirectionLabel(p);
+                var bas = Path.GetFileNameWithoutExtension(p);
+                var item = (Path: p, Dir: dir, Base: bas, BaseNoDir: StripDirectionSuffix(bas), Used: false);
+                if (string.IsNullOrEmpty(dir))
+                    shared.Add(item);
+                else
+                    directed.Add(item);
+            }
+
+            foreach (var vNode in vanillaList)
+            {
+                var vanillaDb = NormalizeAnimPath(
+                    string.IsNullOrEmpty(vNode.DefaultDBPath) ? vNode.SourceDBPath : vNode.DefaultDBPath);
+                var vDir = !string.IsNullOrEmpty(vNode.DirectionLabel)
+                    ? vNode.DirectionLabel
+                    : ExtractDirectionLabel(vanillaDb);
+                var vBase = Path.GetFileNameWithoutExtension(vanillaDb);
+                var vBaseNoDir = StripDirectionSuffix(vBase);
+
+                int pickDir = -1, pickShared = -1;
+                int bestDirScore = -1, bestSharedScore = -1;
+
+                for (int i = 0; i < directed.Count; i++)
+                {
+                    if (directed[i].Used) continue;
+                    int score = 0;
+                    if (string.Equals(directed[i].Path, vanillaDb, StringComparison.OrdinalIgnoreCase))
+                        score = 1000;
+                    else
+                    {
+                        bool bothHaveDir = !string.IsNullOrEmpty(vDir) && !string.IsNullOrEmpty(directed[i].Dir);
+                        if (bothHaveDir &&
+                            !string.Equals(directed[i].Dir, vDir, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        if (!string.IsNullOrEmpty(vDir) &&
+                            string.Equals(directed[i].Dir, vDir, StringComparison.OrdinalIgnoreCase))
+                            score += 100;
+                        if (!string.IsNullOrEmpty(vBaseNoDir) &&
+                            string.Equals(directed[i].BaseNoDir, vBaseNoDir, StringComparison.OrdinalIgnoreCase))
+                            score += 80;
+                        else if (!string.IsNullOrEmpty(vBase) &&
+                                 string.Equals(directed[i].Base, vBase, StringComparison.OrdinalIgnoreCase))
+                            score += 90;
+                    }
+                    if (score > bestDirScore)
+                    {
+                        bestDirScore = score;
+                        pickDir = i;
+                    }
+                }
+
+                for (int i = 0; i < shared.Count; i++)
+                {
+                    int score = 10;
+                    if (string.Equals(shared[i].Path, vanillaDb, StringComparison.OrdinalIgnoreCase))
+                        score = 1000;
+                    else if (!string.IsNullOrEmpty(vBaseNoDir) &&
+                             string.Equals(shared[i].BaseNoDir, vBaseNoDir, StringComparison.OrdinalIgnoreCase))
+                        score = 80;
+                    else if (!string.IsNullOrEmpty(vBase) &&
+                             string.Equals(shared[i].Base, vBase, StringComparison.OrdinalIgnoreCase))
+                        score = 90;
+                    if (score > bestSharedScore)
+                    {
+                        bestSharedScore = score;
+                        pickShared = i;
+                    }
+                }
+
+                string? moddedDb = null;
+                bool consumeDirected = false;
+                bool sameAsVanilla = false;
+
+                bool dirWins = pickDir >= 0 && bestDirScore >= 80 &&
+                               (pickShared < 0 || bestDirScore >= bestSharedScore);
+                bool sharedWins = pickShared >= 0 && bestSharedScore >= 80 &&
+                                  (pickDir < 0 || bestSharedScore > bestDirScore);
+
+                if (dirWins)
+                {
+                    moddedDb = directed[pickDir].Path;
+                    consumeDirected = true;
+                    sameAsVanilla = bestDirScore >= 1000;
+                }
+                else if (sharedWins)
+                {
+                    moddedDb = shared[pickShared].Path;
+                    sameAsVanilla = bestSharedScore >= 1000;
+                }
+                else if (pickDir >= 0 && bestDirScore > 0)
+                {
+                    moddedDb = directed[pickDir].Path;
+                    consumeDirected = true;
+                    sameAsVanilla = bestDirScore >= 1000;
+                }
+                else if (pickShared >= 0)
+                {
+                    moddedDb = shared[pickShared].Path;
+                    sameAsVanilla = bestSharedScore >= 1000;
+                }
+                else if (pickDir >= 0)
+                {
+                    moddedDb = directed[pickDir].Path;
+                    consumeDirected = true;
+                }
+
+                if (moddedDb == null)
+                {
+                    unmatched++;
+                    continue;
+                }
+
+                if (consumeDirected && pickDir >= 0)
+                {
+                    var used = directed[pickDir];
+                    directed[pickDir] = used with { Used = true };
+                }
+
+                if (sameAsVanilla)
+                    continue;
+
+                var resolved = ResolveAnimationFromDB(moddedDb);
+                if (string.IsNullOrEmpty(resolved))
+                {
+                    LogDebug($"[IMPORT] Could not resolve modded DB {moddedDb} for '{vNode.Name}' tree[{kvp.Key}] — keeping vanilla anim");
+                    unmatched++;
+                    continue;
+                }
+
+                vNode.AnimPath = resolved;
+                vNode.SourceDBPath = moddedDb;
+                var pathDir = ExtractDirectionLabel(moddedDb);
+                var newDisplay = PrettifyAttackName(moddedDb, string.IsNullOrEmpty(pathDir) ? vDir : pathDir);
+                if (!string.IsNullOrEmpty(newDisplay))
+                    vNode.ImportedDisplayName = newDisplay;
+                vNode.IsImportedFromMod = true;
+                moveChanges++;
+            }
+        }
+
+        if (!isMainChar)
+        {
+            var moddedByTree = moddedNodes
+                .GroupBy(m => m.TreeIndex)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            var vanillaRedirects = vanillaGraph.Nodes
+                .Where(n => n.IsRedirect && n.TreeIndex >= 0)
+                .ToList();
+
+            foreach (var vRedir in vanillaRedirects)
+            {
+                if (!moddedByTree.TryGetValue(vRedir.TreeIndex, out var modded)) continue;
+                if (modded.RedirectTargetTreeIndex < 0) continue;
+                if (modded.RedirectTargetTreeIndex == vRedir.RedirectTargetTreeIndex) continue;
+
+                var targetNode = vanillaGraph.Nodes.FirstOrDefault(n =>
+                    n.TreeIndex == modded.RedirectTargetTreeIndex && !n.IsRedirect);
+                if (targetNode == null)
+                {
+                    LogDebug($"[IMPORT] Redirect target tree[{modded.RedirectTargetTreeIndex}] not found for '{vRedir.Name}'");
+                    unmatched++;
+                    continue;
+                }
+
+                vRedir.ResolvedRedirectNodeId = targetNode.Id;
+                vanillaGraph.Edges.RemoveAll(e => e.FromNodeId == vRedir.Id);
+                vanillaGraph.Edges.Add(new ComboEdge
+                {
+                    FromNodeId = vRedir.Id,
+                    ToNodeId = targetNode.Id,
+                    InputName = "",
+                    IsRedirect = true
+                });
+                retargetChanges++;
+            }
+        }
+
+        LogDebug($"[IMPORT] ApplyModdedComboToVanilla: {moveChanges} moves, {retargetChanges} retargets, {unmatched} unmatched ({weaponName})");
+        return (moveChanges, retargetChanges, unmatched);
     }
 
     private string ExtractInputName(FStructFallback transitionData)
@@ -1850,6 +2312,8 @@ public class AnimationParser : IDisposable
 
     public void Dispose()
     {
+        try { (_overlayProvider as IDisposable)?.Dispose(); } catch { }
+        _overlayProvider = null;
         try { (_provider as IDisposable)?.Dispose(); } catch { }
         _provider = null;
     }
