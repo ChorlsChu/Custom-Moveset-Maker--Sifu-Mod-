@@ -862,6 +862,9 @@ public partial class ExportDialog : Window
                 int skippedNoDb = 0;
                 int patchedFallback = 0;
                 int redirectSkipped = 0;
+                int comboSwaps = 0;
+                var mainSwaps = new List<(string oldShortName, string newShortName, string newFullPath)>();
+                var swappedSlotShorts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var redirectNodes = new List<ComboNode>();
                 var patchedDbFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var node in _modifiedNodes)
@@ -959,6 +962,7 @@ public partial class ExportDialog : Window
                         if (inplaceRel.StartsWith("Game/", StringComparison.OrdinalIgnoreCase))
                             inplaceRel = inplaceRel.Substring(5);
                         var inplaceVanilla = Path.Combine(gameRoot, inplaceRel + ".uasset");
+                        bool inplaceOk = false;
                         if (!patchedDbFiles.Contains(inplaceDbPath) && File.Exists(inplaceVanilla))
                         {
                             var inplaceOut = Path.Combine(outputPath, "Sifu", "Content", inplaceRel + ".uasset");
@@ -973,18 +977,18 @@ public partial class ExportDialog : Window
                                 fileEntries.Add((inplaceUexp, "../../../Sifu/Content/" + inplaceRel + ".uexp"));
                                 patched++;
                                 ErrorLog.Write("EXPORT", new Exception($"  PATCHED (in-place): {node.DisplayName} -> {node.AnimPath} (modified {Path.GetFileName(inplaceDbPath)})"));
-                                continue;
+                                inplaceOk = true;
                             }
                         }
-                        skippedNoDb++;
-                        if (skippedNoDb <= 3)
-                            ErrorLog.Write("EXPORT", new Exception($"  SKIP(in-place failed): {node.DisplayName} AnimPath='{node.AnimPath}' DB='{inplaceDbPath}' exists={File.Exists(inplaceVanilla)}"));
-                        continue;
+                        if (inplaceOk)
+                            continue;
                     }
 
                     var normalizedSlotKey = NormalizeSlotKey(node.DefaultDBPath);
                     var attackName = Path.GetFileNameWithoutExtension(newDbPath);
                     var attackPath = EnsureLeadingSlash(newDbPath);
+                    var oldSlotShort = Path.GetFileNameWithoutExtension(node.DefaultDBPath);
+                    var newSlotShort = Path.GetFileNameWithoutExtension(newDbPath);
 
                     if (string.IsNullOrEmpty(attackName) || string.IsNullOrEmpty(attackPath)) continue;
 
@@ -994,27 +998,40 @@ public partial class ExportDialog : Window
                         foreach (var kvp in attacksMap.Value)
                         {
                             string keyStr = GetKeyString(kvp.Key);
-                            if (keyStr == normalizedSlotKey)
+                            if (!SlotKeysMatch(keyStr, normalizedSlotKey))
                             {
-                                var valData = kvp.Value as ObjectPropertyData;
-                                if (valData == null) continue;
-
-                                int importIdx = FindImport(asset, attackName, attackPath);
-                                if (importIdx < 0)
-                                    importIdx = AddAttackDBImport(asset, attackName, attackPath);
-
-                                valData.Value = FPackageIndex.FromImport(importIdx);
-                                patched++;
-                                ErrorLog.Write("EXPORT", new Exception($"  PATCHED: {node.DisplayName} -> {attackName} (import[{importIdx}])"));
-                                found = true;
-                                break;
+                                continue;
                             }
+
+                            var valData = kvp.Value as ObjectPropertyData;
+                            if (valData == null) continue;
+
+                            int importIdx = FindImport(asset, attackName, attackPath);
+                            if (importIdx < 0)
+                                importIdx = AddAttackDBImport(asset, attackName, attackPath);
+
+                            valData.Value = FPackageIndex.FromImport(importIdx);
+                            patched++;
+                            ErrorLog.Write("EXPORT", new Exception($"  PATCHED: {node.DisplayName} -> {attackName} (import[{importIdx}])"));
+                            if (!string.Equals(oldSlotShort, newSlotShort, StringComparison.OrdinalIgnoreCase)
+                                && swappedSlotShorts.Add(oldSlotShort))
+                            {
+                                comboSwaps++;
+                                mainSwaps.Add((oldSlotShort, newSlotShort, attackPath));
+                                ErrorLog.Write("EXPORT", new Exception($"  COMBO MAP VALUE: {oldSlotShort} -> {newSlotShort}"));
+                            }
+                            found = true;
+                            break;
                         }
                         if (found) break;
                     }
 
                     if (!found)
-                        ErrorLog.Write("EXPORT", new Exception($"  NOT FOUND: {node.DisplayName} slot key '{normalizedSlotKey}'"));
+                    {
+                        skippedNoDb++;
+                        if (skippedNoDb <= 3)
+                            ErrorLog.Write("EXPORT", new Exception($"  NOT FOUND: {node.DisplayName} slot key '{normalizedSlotKey}' (in-place failed, no map entry)"));
+                    }
                 }
 
                 if (false)
@@ -1191,8 +1208,6 @@ public partial class ExportDialog : Window
 
                 ErrorLog.Write("EXPORT", new Exception($"Patched {patched}/{_modifiedNodes.Count} nodes (direct: {patched - patchedFallback}, fallback DB: {patchedFallback}, combo redirects: {redirectSkipped}, skipped empty DB: {skippedEmpty}, skipped no anim->db: {skippedNoDb})"));
 
-                int comboSwaps = 0;
-                var mainSwaps = new List<(string oldShortName, string newShortName, string newFullPath)>();
                 {
                     foreach (var node in _modifiedNodes)
                     {
@@ -1200,6 +1215,9 @@ public partial class ExportDialog : Window
                             continue;
 
                         string oldDbShortName = Path.GetFileNameWithoutExtension(node.DefaultDBPath);
+                        if (swappedSlotShorts.Contains(oldDbShortName))
+                            continue;
+
                         string newDbPath = string.IsNullOrEmpty(node.SourceDBPath) ? "" : node.SourceDBPath;
                         if (string.IsNullOrEmpty(newDbPath)) continue;
                         string newDbShortName = Path.GetFileNameWithoutExtension(newDbPath);
@@ -1216,7 +1234,7 @@ public partial class ExportDialog : Window
                             {
                                 string keyStr = GetKeyString(kvp.Key);
                                 string normalizedDefault = NormalizeSlotKey(node.DefaultDBPath);
-                                if (keyStr != normalizedDefault) continue;
+                                if (!SlotKeysMatch(keyStr, normalizedDefault)) continue;
 
                                 var valData = kvp.Value as ObjectPropertyData;
                                 if (valData?.Value == null) continue;
@@ -1246,7 +1264,8 @@ public partial class ExportDialog : Window
 
                                 comboSwaps++;
                                 swappedThis = true;
-                                mainSwaps.Add((oldDbShortName, newDbShortName, newDbFullPath));
+                                if (swappedSlotShorts.Add(oldDbShortName))
+                                    mainSwaps.Add((oldDbShortName, newDbShortName, newDbFullPath));
                                 ErrorLog.Write("EXPORT", new Exception($"  COMBO IMPORT SWAP: {oldDbShortName} -> {newDbShortName} (import[{curImportIdx}])"));
                                 break;
                             }
@@ -1267,7 +1286,7 @@ public partial class ExportDialog : Window
                                 foreach (var kvp in attacksMap.Value)
                                 {
                                     string keyStr = GetKeyString(kvp.Key);
-                                    if (keyStr != NormalizeSlotKey(node.DefaultDBPath)) continue;
+                                    if (!SlotKeysMatch(keyStr, NormalizeSlotKey(node.DefaultDBPath))) continue;
                                     if (kvp.Value is not ObjectPropertyData od || od.Value == null) continue;
                                     od.Value = FPackageIndex.FromImport(importIdx);
                                     mapPatched = true;
@@ -1279,7 +1298,8 @@ public partial class ExportDialog : Window
                             if (mapPatched)
                             {
                                 comboSwaps++;
-                                mainSwaps.Add((oldDbShortName, newDbShortName, newDbFullPath));
+                                if (swappedSlotShorts.Add(oldDbShortName))
+                                    mainSwaps.Add((oldDbShortName, newDbShortName, newDbFullPath));
                                 ErrorLog.Write("EXPORT", new Exception($"  COMBO MAP REPOINT: {oldDbShortName} -> {newDbShortName} (import[{importIdx}])"));
                             }
                         }
@@ -1408,7 +1428,7 @@ public partial class ExportDialog : Window
 
                 comboTreeModified = comboSwaps > 0 || comboTreeModified;
 
-                var swappedShortNames = new HashSet<string>(mainSwaps.Select(s => s.oldShortName), StringComparer.OrdinalIgnoreCase);
+                var swappedShortNames = new HashSet<string>(swappedSlotShorts, StringComparer.OrdinalIgnoreCase);
                 foreach (var node in redirectNodes)
                 {
                     string slotShort = Path.GetFileNameWithoutExtension(node.DefaultDBPath);
@@ -1534,7 +1554,7 @@ public partial class ExportDialog : Window
                                     {
                                         string keyStr = GetKeyString(kvp.Key);
                                         string normalizedDefault = NormalizeSlotKey(node.DefaultDBPath);
-                                        if (keyStr != normalizedDefault) continue;
+                                        if (!SlotKeysMatch(keyStr, normalizedDefault)) continue;
 
                                         var valData = kvp.Value as ObjectPropertyData;
                                         if (valData?.Value == null) continue;
@@ -2040,6 +2060,17 @@ public partial class ExportDialog : Window
         if (lastDot > lastSlash)
             path = path[..lastDot];
         return path;
+    }
+
+    private static bool SlotKeysMatch(string keyStr, string normalizedSlotKey)
+    {
+        if (string.IsNullOrEmpty(keyStr) || string.IsNullOrEmpty(normalizedSlotKey)) return false;
+        if (string.Equals(keyStr, normalizedSlotKey, StringComparison.OrdinalIgnoreCase)) return true;
+        if (string.Equals(NormalizeSlotKey(keyStr), normalizedSlotKey, StringComparison.OrdinalIgnoreCase)) return true;
+        return string.Equals(
+            Path.GetFileNameWithoutExtension(keyStr),
+            Path.GetFileNameWithoutExtension(normalizedSlotKey),
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private static string GetKeyString(PropertyData key)

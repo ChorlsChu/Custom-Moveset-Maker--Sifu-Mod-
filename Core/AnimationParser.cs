@@ -1618,6 +1618,8 @@ public class AnimationParser : IDisposable
                 return result;
             }
 
+            var mapOverrides = BuildAttackMapOverrides(asset);
+
             for (int i = 0; i < nodesArr.Value.Length; i++)
             {
                 if (nodesArr.Value[i] is not StructPropertyData nodeSp || nodeSp.Value == null) continue;
@@ -1646,6 +1648,11 @@ public class AnimationParser : IDisposable
                         if (string.IsNullOrEmpty(path) || path == "None" || !path.Contains('/'))
                             continue;
                         var norm = NormalizeAnimPath(path);
+                        if (mapOverrides.TryGetValue(norm, out var resolved) &&
+                            !string.Equals(resolved, norm, StringComparison.OrdinalIgnoreCase))
+                        {
+                            norm = resolved;
+                        }
                         if (seen.Add(norm))
                             info.AttackDbPaths.Add(norm);
                     }
@@ -1654,13 +1661,148 @@ public class AnimationParser : IDisposable
                 result.Add(info);
             }
 
-            LogDebug($"[IMPORT] ReadModdedComboNodes: {result.Count} nodes from {Path.GetFileName(uassetPath)}");
+            LogDebug($"[IMPORT] ReadModdedComboNodes: {result.Count} nodes, {mapOverrides.Count} map override(s) from {Path.GetFileName(uassetPath)}");
         }
         catch (Exception ex)
         {
             LogDebug($"[IMPORT] ReadModdedComboNodes failed for {uassetPath}: {ex.Message}");
         }
         return result;
+    }
+
+    private static Dictionary<string, string> BuildAttackMapOverrides(UAsset asset)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var exp in asset.Exports)
+        {
+            if (exp is not UAssetAPI.ExportTypes.NormalExport ne || ne.Data == null) continue;
+            foreach (var map in FindAllMapsNamed(ne.Data, "m_Attacks"))
+            {
+                if (map.Value == null) continue;
+                try
+                {
+                    foreach (var kvp in map.Value)
+                    {
+                        if (kvp.Value is not ObjectPropertyData op || op.Value == null) continue;
+                        var keyPath = GetPropertyKeyString(kvp.Key);
+                        if (string.IsNullOrEmpty(keyPath) || !keyPath.Contains('/')) continue;
+                        var resolved = ResolveImportObjectPath(asset, op.Value.Index);
+                        if (string.IsNullOrEmpty(resolved)) continue;
+                        result[NormalizeAnimPath(keyPath)] = NormalizeAnimPath(resolved);
+                    }
+                }
+                catch { }
+            }
+        }
+        return result;
+    }
+
+    private static string GetPropertyKeyString(PropertyData key)
+    {
+        if (key is StrPropertyData sp) return sp.Value?.ToString() ?? "";
+        if (key is NamePropertyData np) return np.Value?.Value?.ToString() ?? "";
+        return "";
+    }
+
+    private static string? ResolveImportObjectPath(UAsset asset, int index)
+    {
+        if (index > 0)
+        {
+            int exportIdx = index - 1;
+            if (exportIdx >= 0 && exportIdx < asset.Exports.Count)
+            {
+                var exp = asset.Exports[exportIdx];
+                string expName = exp.ObjectName?.Value?.ToString() ?? "";
+                int expOuterRaw = exp.OuterIndex?.Index ?? 0;
+                if (expOuterRaw < 0)
+                {
+                    int expOuterIdx = -expOuterRaw - 1;
+                    if (expOuterIdx >= 0 && expOuterIdx < asset.Exports.Count)
+                    {
+                        string outerName = asset.Exports[expOuterIdx].ObjectName?.Value?.ToString() ?? "";
+                        if (!string.IsNullOrEmpty(outerName))
+                            return outerName.EndsWith("." + expName, StringComparison.OrdinalIgnoreCase) ||
+                                   outerName.EndsWith("/" + expName, StringComparison.OrdinalIgnoreCase)
+                                ? outerName
+                                : outerName + "." + expName;
+                    }
+                    if (expOuterIdx >= 0 && expOuterIdx < asset.Imports.Count)
+                    {
+                        string pkgPath = asset.Imports[expOuterIdx].ObjectName?.Value?.ToString() ?? "";
+                        if (!string.IsNullOrEmpty(pkgPath))
+                            return pkgPath.EndsWith("." + expName, StringComparison.OrdinalIgnoreCase) ||
+                                   pkgPath.EndsWith("/" + expName, StringComparison.OrdinalIgnoreCase)
+                                ? pkgPath
+                                : pkgPath + "." + expName;
+                    }
+                }
+                return string.IsNullOrEmpty(expName) ? null : expName;
+            }
+            return null;
+        }
+        if (index >= 0) return null;
+        int importIdx = -index - 1;
+        if (importIdx < 0 || importIdx >= asset.Imports.Count) return null;
+        var imp = asset.Imports[importIdx];
+        string objName = imp.ObjectName?.Value?.ToString() ?? "";
+        int outerRaw = imp.OuterIndex?.Index ?? 0;
+        if (outerRaw < 0)
+        {
+            int outerIdx = -outerRaw - 1;
+            if (outerIdx >= 0 && outerIdx < asset.Imports.Count)
+            {
+                string pkgPath = asset.Imports[outerIdx].ObjectName?.Value?.ToString() ?? "";
+                if (!string.IsNullOrEmpty(pkgPath))
+                {
+                    if (string.IsNullOrEmpty(objName)) return pkgPath;
+                    if (pkgPath.EndsWith("." + objName, StringComparison.OrdinalIgnoreCase) ||
+                        pkgPath.EndsWith("/" + objName, StringComparison.OrdinalIgnoreCase))
+                        return pkgPath;
+                    return pkgPath + "." + objName;
+                }
+            }
+        }
+        return string.IsNullOrEmpty(objName) ? null : objName;
+    }
+
+    private static List<MapPropertyData> FindAllMapsNamed(
+        List<PropertyData> props, string mapName)
+    {
+        var results = new List<MapPropertyData>();
+        foreach (var p in props)
+        {
+            if (p is MapPropertyData mp &&
+                p.Name?.Value?.ToString() == mapName)
+                results.Add(mp);
+            RecurseFindMapsNamed(p, mapName, results);
+        }
+        return results;
+    }
+
+    private static void RecurseFindMapsNamed(
+        PropertyData p, string mapName,
+        List<MapPropertyData> results)
+    {
+        if (p is StructPropertyData sp && sp.Value != null)
+        {
+            foreach (var child in sp.Value)
+            {
+                if (child is MapPropertyData mp &&
+                    child.Name?.Value?.ToString() == mapName)
+                    results.Add(mp);
+                RecurseFindMapsNamed(child, mapName, results);
+            }
+        }
+        else if (p is ArrayPropertyData ap && ap.Value != null)
+        {
+            foreach (var elem in ap.Value)
+            {
+                if (elem is MapPropertyData mp &&
+                    elem.Name?.Value?.ToString() == mapName)
+                    results.Add(mp);
+                RecurseFindMapsNamed(elem, mapName, results);
+            }
+        }
     }
 
     private static string NormalizeNodeKey(string name)

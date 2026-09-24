@@ -59,3 +59,195 @@
 [18:36:27] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/FalconPunch/Grunt_attack_barehands_FalconPunch
 [18:36:27] [DT]   Sample: Game/Animations/Grunt/Attacks/Barehands/FalconPunch/Grunt_attack_barehands_FalconPunch
 [18:36:27] [DT] Built anim→timing mapping: 299 entries
+[16:36:46] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
+[16:36:46] [COMBO] Loaded Sifu/Content/DB/_MainChar/Combos/Attacks/Weapons/Staff/MainChar_Staff_ComboTree.MainChar_Staff_ComboTree: exportType=Combo, weapon=MainChar_Staff
+[16:36:46] [COMBO] Split tree node 0 into 2 direction variants: GetUp Attack [], GetUp Attack []
+[16:36:47] [COMBO] Split tree node 3 into 2 direction variants: KneeFlick_PP [FL], KneeFlick_PP [BR]
+[16:36:47] [COMBO] Split tree node 5 into 2 direction variants: FastStrike_DoubleHit_FR [FR], FastStrike_DoubleHit_FR [BR]
+[16:36:47] [COMBO] Split tree node 6 into 2 direction variants: VerticalSink_FL [FL], VerticalSink_FL [BL]
+[16:36:47] [COMBO] Split tree node 7 into 2 direction variants: Light_Finisher_FL [FL], Light_Finisher_FL [BR]
+[16:36:47] [COMBO] Split tree node 8 into 2 direction variants: LongSweep_FR [FR], LongSweep_FR [BL]
+[16:36:47] [COMBO] Split tree node 9 into 2 direction variants: VerticalCrush_FR [FR], VerticalCrush_FR [BL]
+[16:36:47] [COMBO] Split tree node 11 into 2 direction variants: HeadMill_PP [FL], HeadMill_PP [BR]
+[16:36:47] [COMBO] Split tree node 12 into 2 direction variants: HeadMill_FL [FL], HeadMill_FL [BL]
+[16:36:47] [COMBO] Split tree node 13 into 2 direction variants: KneeFlick_FL [FL], KneeFlick_FL [BR]
+[16:36:47] [COMBO] Split tree node 14 into 2 direction variants: KnockDown [FR], KnockDown [BL]
+[16:36:47] [COMBO] Split tree node 15 into 2 direction variants: Horizontal Mill [FR], Horizontal Mill [BL]
+[16:36:47] [COMBO] Split tree node 18 into 2 direction variants: PushBack [FL], PushBack [BL]
+[16:36:47] [COMBO] Split tree node 23 into 2 direction variants: EngageDelay [FL], EngageDelay [BL]
+[16:36:47] [COMBO] Split tree node 26 into 2 direction variants: Duck Push [FL], Duck Push [BR]
+[16:36:47] [COMBO] Parsed 45 raw nodes from 30 tree nodes
+[16:36:47] [COMBO] MainChar: stripped redirect flags (redirects are enemy-only)
+[16:36:47] [COMBO] Parsed 66 raw edges
+[16:36:47] [COMBO] After dedup: 66 raw edges
+[16:36:47] [COMBO] Final: 35 nodes, 44 edges (removed 10 conduits, kept 0 redirects)
+[16:36:47] [IMPORT] ReadModdedComboNodes: 30 nodes, 33 map override(s) from MainChar_Staff_ComboTree.uasset
+[16:36:47] [IMPORT] Tree size mismatch: 30 modded vs 20 vanilla tree indices (MainChar_Staff)
+[16:36:48] [IMPORT] ApplyModdedComboToVanilla: 11 moves, 0 retargets, 0 unmatched (MainChar_Staff)
+[16:36:48] [COMBO] Loaded Sifu/Content/DB/_MainChar/Combos/Attacks/Weapons/Blades/MainChar_Blades_ComboTree.MainChar_Blades_ComboTree: exportType=Combo, weapon=MainChar_Blade
+[16:36:48] [COMBO] Split tree node 1 into 2 direction variants: GetUp Attack [], GetUp Attack []
+[16:36:48] [COMBO] Split tree node 2 into 2 direction variants: WideDownSlash_FR [FR], WideDownSlash_FR [BL]
+[16:36:48] [COMBO] Split tree node 3 into 2 direction variants: WideUpSlash_FR [FR], WideUpSlash_FR [BL]
+[16:36:48] [COMBO] Split tree node 4 into 2 direction variants: Heavy_Finish_FR [FR], Heavy_Finish_FR [BL]
+[16:36:48] [COMBO] Split tree node 5 into 2 direction variants: TurnHeadDownSlash_FR [FR], TurnHeadDownSlash_FR [BL]
+[16:36:48] [COMBO] Split tree node 6 into 2 direction variants: DustBlow_FR [FR], DustBlow_FR [BL]
+[16:36:48] [COMBO] Split tree node 7 into 2 direction variants: PommelStroke_FR [FR], PommelStroke_FR [BL]
+[16:36:48] [COMBO] Split tree node 8 into 2 direction variants: ThroatPokeSlash_FR [FR], ThroatPokeSlash_FR [BL]
+[16:36:48] [COMBO] Split tree node 10 into 2 direction variants: LowKick [FL], LowKick [BR]
+[16:36:48] [COMBO] Split tree node 11 into 2 direction variants: Pushback Palm [FL], Pushback Palm [BL]
+[16:36:49] [COMBO] Split tree node 13 into 2 direction variants: Thrust Kick Slash [FR], Thrust Kick Slash [BL]
+[16:36:49] [COMBO] Parsed 28 raw nodes from 17 tree nodes
+[16:36:49] [COMBO] MainChar: stripped redirect flags (redirects are enemy-only)
+[16:36:49] [COMBO] Parsed 36 raw edges
+[16:36:49] [COMBO] After dedup: 36 raw edges
+[16:36:49] [COMBO] Final: 27 nodes, 36 edges (removed 1 conduits, kept 0 redirects)
+[16:36:49] [IMPORT] ReadModdedComboNodes: 17 nodes, 27 map override(s) from MainChar_Blades_ComboTree.uasset
+[16:36:49] [IMPORT] Tree size mismatch: 17 modded vs 16 vanilla tree indices (MainChar_Blade)
+[16:36:49] [IMPORT] ApplyModdedComboToVanilla: 15 moves, 0 retargets, 0 unmatched (MainChar_Blade)
+[16:36:49] [COMBO] Loaded Sifu/Content/DB/_MainChar/Combos/MainChar_ComboTree.MainChar_ComboTree: exportType=Combo, weapon=MainChar_Barehands
+[16:36:49] [COMBO] Split tree node 0 into 2 direction variants: GetUp Attack [], GetUp Attack []
+[16:36:49] [COMBO] Split tree node 4 into 2 direction variants: ShinKick [FR], ShinKick [BL]
+[16:36:49] [COMBO] Split tree node 5 into 2 direction variants: ThroatPunch [FL], ThroatPunch [BL]
+[16:36:49] [COMBO] Split tree node 7 into 2 direction variants: Palm02 [FL], Palm02 [BR]
+[16:36:49] [COMBO] Split tree node 8 into 2 direction variants: TripleHit [FL], TripleHit [BR]
+[16:36:49] [COMBO] Split tree node 9 into 2 direction variants: MultiHitClaws [FL], MultiHitClaws [BR]
+[16:36:49] [COMBO] Split tree node 10 into 2 direction variants: DoubleElbow [FL], DoubleElbow [BR]
+[16:36:49] [COMBO] Split tree node 11 into 2 direction variants: ClawsElbow [FL], ClawsElbow [BR]
+[16:36:49] [COMBO] Split tree node 12 into 2 direction variants: ElbowSync [FL], ElbowSync [BR]
+[16:36:49] [COMBO] Split tree node 14 into 2 direction variants: Ext02 [FR], Ext02 [BL]
+[16:36:49] [COMBO] Split tree node 15 into 2 direction variants: AoeKnockdown [FL], AoeKnockdown [BR]
+[16:36:49] [COMBO] Split tree node 16 into 2 direction variants: DelaySpinHighKick [FL], DelaySpinHighKick [BL]
+[16:36:49] [COMBO] Split tree node 30 into 2 direction variants: FrontKick [FR], FrontKick [BL]
+[16:36:49] [COMBO] Split tree node 31 into 2 direction variants: LowKick [FL], LowKick [BR]
+[16:36:49] [COMBO] Split tree node 32 into 2 direction variants: Palm Strike [FR], Palm Strike [BL]
+[16:36:49] [COMBO] Split tree node 33 into 2 direction variants: GuardBreak [FL], GuardBreak [BL]
+[16:36:49] [COMBO] Split tree node 36 into 2 direction variants: Thrust Kick [FL], Thrust Kick [BL]
+[16:36:49] [COMBO] Split tree node 39 into 2 direction variants: GroundPunch [FL], GroundPunch [BL]
+[16:36:49] [COMBO] Split tree node 44 into 2 direction variants: Jab(new) [FR], Jab(new) [BL]
+[16:36:49] [COMBO] Split tree node 45 into 2 direction variants: ThroatPlexus [FR], ThroatPlexus [BL]
+[16:36:49] [COMBO] Split tree node 48 into 2 direction variants: BellyPalm [FR], BellyPalm [BR]
+[16:36:49] [COMBO] Split tree node 50 into 2 direction variants: MultiHit [FL], MultiHit [BR]
+[16:36:49] [COMBO] Split tree node 51 into 2 direction variants: ResilientAttack [FL], ResilientAttack [BL]
+[16:36:49] [COMBO] Split tree node 54 into 2 direction variants: SpinHighKickFollowUp [FL], SpinHighKickFollowUp [BL]
+[16:36:49] [COMBO] Parsed 81 raw nodes from 57 tree nodes
+[16:36:49] [COMBO] MainChar: stripped redirect flags (redirects are enemy-only)
+[16:36:49] [COMBO] Parsed 110 raw edges
+[16:36:49] [COMBO] After dedup: 102 raw edges
+[16:36:49] [COMBO] Final: 60 nodes, 64 edges (removed 21 conduits, kept 0 redirects)
+[16:36:49] [COMBO] Injected Combat Stance root (barehands only)
+[16:36:49] [IMPORT] ReadModdedComboNodes: 57 nodes, 112 map override(s) from MainChar_ComboTree.uasset
+[16:36:49] [IMPORT] Tree size mismatch: 57 modded vs 36 vanilla tree indices (MainChar_Barehands)
+[16:36:50] [IMPORT] ApplyModdedComboToVanilla: 1 moves, 0 retargets, 0 unmatched (MainChar_Barehands)
+[16:38:27] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
+[16:38:27] [COMBO] Loaded Sifu/Content/DB/_MainChar/Combos/Attacks/Weapons/Staff/MainChar_Staff_ComboTree.MainChar_Staff_ComboTree: exportType=Combo, weapon=MainChar_Staff
+[16:38:27] [COMBO] Split tree node 0 into 2 direction variants: GetUp Attack [], GetUp Attack []
+[16:38:27] [COMBO] Split tree node 3 into 2 direction variants: KneeFlick_PP [FL], KneeFlick_PP [BR]
+[16:38:27] [COMBO] Split tree node 5 into 2 direction variants: FastStrike_DoubleHit_FR [FR], FastStrike_DoubleHit_FR [BR]
+[16:38:27] [COMBO] Split tree node 6 into 2 direction variants: VerticalSink_FL [FL], VerticalSink_FL [BL]
+[16:38:27] [COMBO] Split tree node 7 into 2 direction variants: Light_Finisher_FL [FL], Light_Finisher_FL [BR]
+[16:38:27] [COMBO] Split tree node 8 into 2 direction variants: LongSweep_FR [FR], LongSweep_FR [BL]
+[16:38:27] [COMBO] Split tree node 9 into 2 direction variants: VerticalCrush_FR [FR], VerticalCrush_FR [BL]
+[16:38:27] [COMBO] Split tree node 11 into 2 direction variants: HeadMill_PP [FL], HeadMill_PP [BR]
+[16:38:27] [COMBO] Split tree node 12 into 2 direction variants: HeadMill_FL [FL], HeadMill_FL [BL]
+[16:38:27] [COMBO] Split tree node 13 into 2 direction variants: KneeFlick_FL [FL], KneeFlick_FL [BR]
+[16:38:27] [COMBO] Split tree node 14 into 2 direction variants: KnockDown [FR], KnockDown [BL]
+[16:38:27] [COMBO] Split tree node 15 into 2 direction variants: Horizontal Mill [FR], Horizontal Mill [BL]
+[16:38:27] [COMBO] Split tree node 18 into 2 direction variants: PushBack [FL], PushBack [BL]
+[16:38:27] [COMBO] Split tree node 23 into 2 direction variants: EngageDelay [FL], EngageDelay [BL]
+[16:38:27] [COMBO] Split tree node 26 into 2 direction variants: Duck Push [FL], Duck Push [BR]
+[16:38:27] [COMBO] Parsed 45 raw nodes from 30 tree nodes
+[16:38:27] [COMBO] MainChar: stripped redirect flags (redirects are enemy-only)
+[16:38:27] [COMBO] Parsed 66 raw edges
+[16:38:27] [COMBO] After dedup: 66 raw edges
+[16:38:27] [COMBO] Final: 35 nodes, 44 edges (removed 10 conduits, kept 0 redirects)
+[16:38:28] [IMPORT] ReadModdedComboNodes: 30 nodes, 33 map override(s) from MainChar_Staff_ComboTree.uasset
+[16:38:28] [IMPORT] Tree size mismatch: 30 modded vs 20 vanilla tree indices (MainChar_Staff)
+[16:38:28] [IMPORT] ApplyModdedComboToVanilla: 11 moves, 0 retargets, 0 unmatched (MainChar_Staff)
+[16:38:28] [COMBO] Loaded Sifu/Content/DB/_MainChar/Combos/Attacks/Weapons/Blades/MainChar_Blades_ComboTree.MainChar_Blades_ComboTree: exportType=Combo, weapon=MainChar_Blade
+[16:38:28] [COMBO] Split tree node 1 into 2 direction variants: GetUp Attack [], GetUp Attack []
+[16:38:28] [COMBO] Split tree node 2 into 2 direction variants: WideDownSlash_FR [FR], WideDownSlash_FR [BL]
+[16:38:28] [COMBO] Split tree node 3 into 2 direction variants: WideUpSlash_FR [FR], WideUpSlash_FR [BL]
+[16:38:28] [COMBO] Split tree node 4 into 2 direction variants: Heavy_Finish_FR [FR], Heavy_Finish_FR [BL]
+[16:38:28] [COMBO] Split tree node 5 into 2 direction variants: TurnHeadDownSlash_FR [FR], TurnHeadDownSlash_FR [BL]
+[16:38:28] [COMBO] Split tree node 6 into 2 direction variants: DustBlow_FR [FR], DustBlow_FR [BL]
+[16:38:28] [COMBO] Split tree node 7 into 2 direction variants: PommelStroke_FR [FR], PommelStroke_FR [BL]
+[16:38:28] [COMBO] Split tree node 8 into 2 direction variants: ThroatPokeSlash_FR [FR], ThroatPokeSlash_FR [BL]
+[16:38:28] [COMBO] Split tree node 10 into 2 direction variants: LowKick [FL], LowKick [BR]
+[16:38:28] [COMBO] Split tree node 11 into 2 direction variants: Pushback Palm [FL], Pushback Palm [BL]
+[16:38:28] [COMBO] Split tree node 13 into 2 direction variants: Thrust Kick Slash [FR], Thrust Kick Slash [BL]
+[16:38:29] [COMBO] Parsed 28 raw nodes from 17 tree nodes
+[16:38:29] [COMBO] MainChar: stripped redirect flags (redirects are enemy-only)
+[16:38:29] [COMBO] Parsed 36 raw edges
+[16:38:29] [COMBO] After dedup: 36 raw edges
+[16:38:29] [COMBO] Final: 27 nodes, 36 edges (removed 1 conduits, kept 0 redirects)
+[16:38:29] [IMPORT] ReadModdedComboNodes: 17 nodes, 27 map override(s) from MainChar_Blades_ComboTree.uasset
+[16:38:29] [IMPORT] Tree size mismatch: 17 modded vs 16 vanilla tree indices (MainChar_Blade)
+[16:38:29] [IMPORT] ApplyModdedComboToVanilla: 15 moves, 0 retargets, 0 unmatched (MainChar_Blade)
+[16:38:29] [COMBO] Loaded Sifu/Content/DB/_MainChar/Combos/MainChar_ComboTree.MainChar_ComboTree: exportType=Combo, weapon=MainChar_Barehands
+[16:38:29] [COMBO] Split tree node 0 into 2 direction variants: GetUp Attack [], GetUp Attack []
+[16:38:29] [COMBO] Split tree node 4 into 2 direction variants: ShinKick [FR], ShinKick [BL]
+[16:38:29] [COMBO] Split tree node 5 into 2 direction variants: ThroatPunch [FL], ThroatPunch [BL]
+[16:38:29] [COMBO] Split tree node 7 into 2 direction variants: Palm02 [FL], Palm02 [BR]
+[16:38:29] [COMBO] Split tree node 8 into 2 direction variants: TripleHit [FL], TripleHit [BR]
+[16:38:29] [COMBO] Split tree node 9 into 2 direction variants: MultiHitClaws [FL], MultiHitClaws [BR]
+[16:38:29] [COMBO] Split tree node 10 into 2 direction variants: DoubleElbow [FL], DoubleElbow [BR]
+[16:38:29] [COMBO] Split tree node 11 into 2 direction variants: ClawsElbow [FL], ClawsElbow [BR]
+[16:38:29] [COMBO] Split tree node 12 into 2 direction variants: ElbowSync [FL], ElbowSync [BR]
+[16:38:29] [COMBO] Split tree node 14 into 2 direction variants: Ext02 [FR], Ext02 [BL]
+[16:38:29] [COMBO] Split tree node 15 into 2 direction variants: AoeKnockdown [FL], AoeKnockdown [BR]
+[16:38:29] [COMBO] Split tree node 16 into 2 direction variants: DelaySpinHighKick [FL], DelaySpinHighKick [BL]
+[16:38:29] [COMBO] Split tree node 30 into 2 direction variants: FrontKick [FR], FrontKick [BL]
+[16:38:29] [COMBO] Split tree node 31 into 2 direction variants: LowKick [FL], LowKick [BR]
+[16:38:29] [COMBO] Split tree node 32 into 2 direction variants: Palm Strike [FR], Palm Strike [BL]
+[16:38:29] [COMBO] Split tree node 33 into 2 direction variants: GuardBreak [FL], GuardBreak [BL]
+[16:38:29] [COMBO] Split tree node 36 into 2 direction variants: Thrust Kick [FL], Thrust Kick [BL]
+[16:38:29] [COMBO] Split tree node 39 into 2 direction variants: GroundPunch [FL], GroundPunch [BL]
+[16:38:29] [COMBO] Split tree node 44 into 2 direction variants: Jab(new) [FR], Jab(new) [BL]
+[16:38:29] [COMBO] Split tree node 45 into 2 direction variants: ThroatPlexus [FR], ThroatPlexus [BL]
+[16:38:29] [COMBO] Split tree node 48 into 2 direction variants: BellyPalm [FR], BellyPalm [BR]
+[16:38:29] [COMBO] Split tree node 50 into 2 direction variants: MultiHit [FL], MultiHit [BR]
+[16:38:29] [COMBO] Split tree node 51 into 2 direction variants: ResilientAttack [FL], ResilientAttack [BL]
+[16:38:29] [COMBO] Split tree node 54 into 2 direction variants: SpinHighKickFollowUp [FL], SpinHighKickFollowUp [BL]
+[16:38:29] [COMBO] Parsed 81 raw nodes from 57 tree nodes
+[16:38:29] [COMBO] MainChar: stripped redirect flags (redirects are enemy-only)
+[16:38:29] [COMBO] Parsed 110 raw edges
+[16:38:29] [COMBO] After dedup: 102 raw edges
+[16:38:29] [COMBO] Final: 60 nodes, 64 edges (removed 21 conduits, kept 0 redirects)
+[16:38:29] [COMBO] Injected Combat Stance root (barehands only)
+[16:38:29] [IMPORT] ReadModdedComboNodes: 57 nodes, 112 map override(s) from MainChar_ComboTree.uasset
+[16:38:29] [IMPORT] Tree size mismatch: 57 modded vs 36 vanilla tree indices (MainChar_Barehands)
+[16:38:29] [IMPORT] ApplyModdedComboToVanilla: 1 moves, 0 retargets, 0 unmatched (MainChar_Barehands)
+[16:38:29] [COMBO] Loaded Sifu/Content/DB/_MainChar/Combos/MainChar_ComboTree.MainChar_ComboTree: exportType=Combo, weapon=MainChar_Barehands
+[16:38:29] [COMBO] Split tree node 0 into 2 direction variants: GetUp Attack [], GetUp Attack []
+[16:38:29] [COMBO] Split tree node 4 into 2 direction variants: ShinKick [FR], ShinKick [BL]
+[16:38:29] [COMBO] Split tree node 5 into 2 direction variants: ThroatPunch [FL], ThroatPunch [BL]
+[16:38:29] [COMBO] Split tree node 7 into 2 direction variants: Palm02 [FL], Palm02 [BR]
+[16:38:29] [COMBO] Split tree node 8 into 2 direction variants: TripleHit [FL], TripleHit [BR]
+[16:38:29] [COMBO] Split tree node 9 into 2 direction variants: MultiHitClaws [FL], MultiHitClaws [BR]
+[16:38:29] [COMBO] Split tree node 10 into 2 direction variants: DoubleElbow [FL], DoubleElbow [BR]
+[16:38:29] [COMBO] Split tree node 11 into 2 direction variants: ClawsElbow [FL], ClawsElbow [BR]
+[16:38:30] [COMBO] Split tree node 12 into 2 direction variants: ElbowSync [FL], ElbowSync [BR]
+[16:38:30] [COMBO] Split tree node 14 into 2 direction variants: Ext02 [FR], Ext02 [BL]
+[16:38:30] [COMBO] Split tree node 15 into 2 direction variants: AoeKnockdown [FL], AoeKnockdown [BR]
+[16:38:30] [COMBO] Split tree node 16 into 2 direction variants: DelaySpinHighKick [FL], DelaySpinHighKick [BL]
+[16:38:30] [COMBO] Split tree node 30 into 2 direction variants: FrontKick [FR], FrontKick [BL]
+[16:38:30] [COMBO] Split tree node 31 into 2 direction variants: LowKick [FL], LowKick [BR]
+[16:38:30] [COMBO] Split tree node 32 into 2 direction variants: Palm Strike [FR], Palm Strike [BL]
+[16:38:30] [COMBO] Split tree node 33 into 2 direction variants: GuardBreak [FL], GuardBreak [BL]
+[16:38:30] [COMBO] Split tree node 36 into 2 direction variants: Thrust Kick [FL], Thrust Kick [BL]
+[16:38:30] [COMBO] Split tree node 39 into 2 direction variants: GroundPunch [FL], GroundPunch [BL]
+[16:38:30] [COMBO] Split tree node 44 into 2 direction variants: Jab(new) [FR], Jab(new) [BL]
+[16:38:30] [COMBO] Split tree node 45 into 2 direction variants: ThroatPlexus [FR], ThroatPlexus [BL]
+[16:38:30] [COMBO] Split tree node 48 into 2 direction variants: BellyPalm [FR], BellyPalm [BR]
+[16:38:30] [COMBO] Split tree node 50 into 2 direction variants: MultiHit [FL], MultiHit [BR]
+[16:38:30] [COMBO] Split tree node 51 into 2 direction variants: ResilientAttack [FL], ResilientAttack [BL]
+[16:38:30] [COMBO] Split tree node 54 into 2 direction variants: SpinHighKickFollowUp [FL], SpinHighKickFollowUp [BL]
+[16:38:30] [COMBO] Parsed 81 raw nodes from 57 tree nodes
+[16:38:30] [COMBO] MainChar: stripped redirect flags (redirects are enemy-only)
+[16:38:30] [COMBO] Parsed 110 raw edges
+[16:38:30] [COMBO] After dedup: 102 raw edges
+[16:38:30] [COMBO] Final: 60 nodes, 64 edges (removed 21 conduits, kept 0 redirects)
+[16:38:30] [COMBO] Injected Combat Stance root (barehands only)
+[16:38:30] [IMPORT] ReadModdedComboNodes: 52 nodes, 61 map override(s) from MainChar_ComboTree.uasset
+[16:38:30] [IMPORT] Tree size mismatch: 52 modded vs 36 vanilla tree indices (MainChar_Barehands)
+[16:38:30] [IMPORT] ApplyModdedComboToVanilla: 16 moves, 0 retargets, 0 unmatched (MainChar_Barehands)
