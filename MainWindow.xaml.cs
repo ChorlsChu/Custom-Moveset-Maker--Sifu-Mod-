@@ -1627,8 +1627,16 @@ public partial class MainWindow : Window
         if (_comboGraph == null || string.IsNullOrEmpty(_activeStance)) return;
 
         bool keyIsMainChar = string.Equals(_activeStance.Split('|')[0], "MainChar", StringComparison.OrdinalIgnoreCase);
-        bool graphIsMainChar = _comboGraph.Nodes.Any(n => n.Name == "MainChar_Stance");
-        if (keyIsMainChar != graphIsMainChar) return;
+        bool graphHasStance = _comboGraph.Nodes.Any(n => n.Name == "MainChar_Stance");
+        bool graphIsEnemy = _comboGraph.Nodes.Any(n =>
+            !string.IsNullOrEmpty(n.DefaultDBPath) &&
+            n.DefaultDBPath.Contains("/AI/Archetypes/", StringComparison.OrdinalIgnoreCase));
+        bool graphIsMainCharWeapon = !keyIsMainChar && _comboGraph.Nodes.Any(n =>
+            !string.IsNullOrEmpty(n.DefaultDBPath) &&
+            n.DefaultDBPath.Contains("/_MainChar/", StringComparison.OrdinalIgnoreCase));
+
+        if (keyIsMainChar && graphIsEnemy) return;
+        if (!keyIsMainChar && (graphHasStance || graphIsMainCharWeapon)) return;
 
         var key = GetUnitCacheKey();
         string archForWeapon = _activeStance.Split('|')[0];
@@ -2395,8 +2403,16 @@ public partial class MainWindow : Window
                     if (finalImported.Count > 0 || importedProps.Count > 0)
                         SaveCurrentUnitToCache();
 
-                    foreach (var (unitKey, graph, _, _, entry) in finalImported)
+                    foreach (var (unitKey, graph, moves, retargets, entry) in finalImported)
                     {
+                        if (graph != null && unitKey.StartsWith("MainChar", StringComparison.OrdinalIgnoreCase)
+                            && !string.IsNullOrEmpty(entry.ActiveWeapon))
+                        {
+                            graph.WeaponName = string.Equals(entry.ActiveWeapon, "MainChar_Barehands", StringComparison.OrdinalIgnoreCase)
+                                ? "BareHands"
+                                : entry.ActiveWeapon;
+                        }
+
                         _unitCaches[unitKey] = new UnitCacheEntry
                         {
                             Graph = graph,
@@ -2409,6 +2425,10 @@ public partial class MainWindow : Window
                                     ? old.Props
                                     : null
                         };
+                        ErrorLog.Write("IMPORT", new Exception(
+                            $"CACHE {unitKey}: {moves} move(s), {retargets} retarget(s), " +
+                            $"{graph?.Nodes?.Count ?? 0} nodes, weapon='{graph?.WeaponName}', " +
+                            $"activeWeapon='{entry.ActiveWeapon}'"));
                     }
 
                     if (fullCacheSnapshot != null)
@@ -4938,6 +4958,8 @@ public partial class MainWindow : Window
                 return;
             }
         }
+
+        ErrorLog.Write("WEAPON", new Exception($"Cache miss for {cacheKey} (imported keys: {string.Join(", ", _unitCaches.Keys)}). Loading vanilla {comboPath}"));
 
         graphLoadingText.Text = $"Loading {arch} {weaponTag}...";
         graphLoadingBorder.Visibility = Visibility.Visible;

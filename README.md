@@ -8,7 +8,13 @@ A modding tool for [Sifu](https://www.sloclap.com/games/sifu/) that lets you cre
 
 - **Animation Library** — Browse all loaded attack animations, search by name, and drag-and-drop to swap which animation a combo node plays. Filter by character, weapon type, and category (vanilla vs unused).
 
-- **Locomotion Tab** — View per-character combat stance animations for MainChar, Grunt, FireDisciple, FlashKick, BigGuy, BodyGuard, Fajar, Fengjie, Kuroki, Sean, Yang, and Servant. Switch stances via dropdown to swap BaseMovementDB + BP_TransitionAnimRequest.
+- **Edit Any Unit's Moveset** — Use **Change Unit** to switch between the player, enemies, and bosses. Works on MainChar weapon variants (Barehands, Bat, Staff, Blade) and on enemy/boss phases and weapon variants (Grunt, FireDisciple, FlashKick, BigGuy, BodyGuard, Fajar, Fengjie, Kuroki, Sean, Yang, Servant, Sifu). Edits on multiple units are kept in the project and export together in one pak.
+
+- **Unit Properties (enemies & bosses)** — Via the **Unit Properties** button (not available for MainChar), tweak:
+  - **ArchetypeDB**: Health and Structure
+  - **ContextDefense (experimental)**: Memory Limit, Hits Count, and Flush Limit — how aggressively the AI parries, dodges, or avoids
+
+- **Stance Tab** — View per-character combat stance animations for MainChar, Grunt, FireDisciple, FlashKick, BigGuy, BodyGuard, Fajar, Fengjie, Kuroki, Sean, Yang, and Servant. Switch stances via dropdown to apply BaseMovementDB + BP_TransitionAnimRequest.
 
 - **Auto-Extract on First Run** — When the app opens and cannot find any extracted game files, it will automatically locate Sifu's original `.pak` file and selectively extract only the needed assets (animations, combo trees, attack data) into the app's directory. No need to manually extract the full 30GB game — just the ~500MB needed for modding.
 
@@ -26,25 +32,29 @@ Sifu stores its combat system in UE4 combo tree data assets. This tool parses th
 
 1. **Launch the app** — If no extracted content is found, the app will prompt you to locate Sifu's original `.pak` file and automatically extract only the needed assets into the app directory. This takes just a few minutes instead of extracting the full game.
 
-2. **Visualize the combo tree** — See all 36 nodes and 21 edges of the MainChar's attack graph. Nodes are color-coded:
-   - **Green**: Animation matches vanilla
-   - **Orange**: Animation differs from vanilla
-   - **Blue**: Root/stance node
+2. **Visualize the combo tree** — See all nodes and edges of the Unit's attack graph. Nodes are color-coded:
+   - **Blue**: Vanilla Attack Move
+   - **Green**: Replaced Attack Move
 
-3. **Edit moves** — Drag animations from the library onto combo nodes, or right-click nodes to replace moves. Double-click to preview any animation in the 3D viewer. Shift+right-click to replace all nodes sharing the same default animation.
+3. **Pick the right unit** — Use **Change Unit** to select the player, an enemy, or a boss (and phase / weapon variant as needed) before editing.
 
-4. **Switch stances** — Use the Combat Stance dropdown to replace the player's movement/stance with any of 12 supported stances (MainChar, FireDisciple, Grunt, FlashKick, BigGuy, BodyGuard, Fajar, Fengjie, Kuroki, Sean, Yang, Servant). Each stance swaps:
+4. **Edit moves** — Drag animations from the library onto combo nodes to replace moves. Double-click to preview any animation in the 3D viewer. Repeat across as many units as you want — each unit’s graph is cached in the project.
+
+5. **Unit Properties (optional)** — For enemies and bosses (not MainChar), open **Unit Properties** to edit Health, Structure, and experimental AI defense fields (Memory Limit, Hits Count, Flush Limit). See [Unit Properties](#unit-properties).
+
+6. **Switch stances** — Use the Combat Stance dropdown to replace the player's movement/stance with any of 12 supported stances. Each stance swaps:
    - `BaseMovementDB` — movement database with transition anim references
    - `BP_TransitionAnimRequest` — animation graph for locomotion transitions
 
-5. **Export mod** — Generate a `.pak` + `.sig` file pair. The export pipeline:
-   - Patches `m_Attacks` maps in the combo tree to reference new AttackDB assets
+7. **Export mod** — Generate a `.pak` + `.sig` file pair. The export pipeline:
+   - Patches `m_Attacks` maps in each modified combo tree to reference new AttackDB assets
    - Copies/modifies animation `.uasset`/`.uexp` files (only modified ones)
+   - Patches unit properties (ArchetypeDB Health/Structure, ContextualDefense) when changed
    - Patches stance DBs if stance changed (via StanceGenerator)
-   - Builds UE4 pak using UnrealPak.exe
+   - Builds UE4 pak using UnrealPak.exe (multi-unit mods export as one pak)
    - Copies .sig file for pak integrity
 
-6. **Install** — Copy the generated pak+sig to `Sifu/Content/Paks/~mods/`
+8. **Install** — Copy the generated pak+sig to `Sifu/Content/Paks/~mods/`
 
 ### Data Model
 
@@ -83,9 +93,7 @@ Stance animation mappings are defined in `Core/StanceGenerator.Stances` dictiona
 - Windows 10/11
 - **.NET 10 Desktop Runtime** (framework-dependent build — install from Microsoft’s [dotnet.microsoft.com/download/dotnet/10.0](https://dotnet.microsoft.com/download/dotnet/10.0) if not present; Windows does **not** ship this by default)
 - WebView2 Runtime — (pre-installed with Edge on Windows 10 1803+ and Windows 11)
-- Sifu installed (via Epic Games Store)
-- **Optional**: Original Sifu `.pak` file (for auto-extract feature on first run)
-- `UnrealPak.exe` is included under `tools\ue4\UnrealPak\UnrealPak.exe` in the release (also used for extract/import/export)
+- Sifu installed (via Epic Games Store or Steam)
 - The app runs fully **offline** after install (3D viewer uses a local `viewer\three.min.js`; no CDN)
 
 ---
@@ -103,7 +111,7 @@ When you launch the app for the first time:
    - `DB/_MainChar/Combos/`
    - `DB/AI/Archetypes/*/Attacks/`
    - `DB/Movement/`
-   - *(Only ~500MB extracted vs 30GB full game)*
+   - *(Should take like around 1-2GB of space)*
 4. Once extraction completes, the app will proceed to load animations, build the combo tree, and populate the animation library.
 5. If extracted content is already present, the app will skip straight to loading.
 
@@ -112,16 +120,6 @@ When you launch the app for the first time:
 - The app remembers the extracted content location in `settings.json`.
 - On launch, it detects the content and proceeds directly to the main UI.
 - To change content or re-extract, delete `settings.json` and restart the app, or use the **Settings** button to select a different game folder.
-
-### Manual Setup (If Auto-Extract Fails)
-
-If the auto-extract feature cannot find or extract the needed files:
-
-1. Build the app with Visual Studio 2022+ (`dotnet build` or open the `.sln`).
-2. Run the app and point it to your Sifu `Content/` folder via the **Settings** dialog.
-   - Or click **Import Mod** → select a previously generated `.pak` file.
-3. The app will scan animations, build the combo tree, and populate the animation library.
-4. Edit moves, switch stances, and export your mod pak.
 
 ### Settings
 
@@ -136,16 +134,36 @@ The app writes `settings.json` in its installation directory on exit.
 
 ## Exporting a Mod
 
-1. **Drag animations** onto combo nodes (or use right-click → Replace linked nodes with Shift).
-2. **Switch stances** via the Combat Stance dropdown if desired.
-3. Click **Export Pak** — the Export dialog will show:
-   - **Review panel**: list of all changes (modified nodes + stance changes).
+1. **Drag animations** onto combo nodes (or use right-click → Replace linked nodes with Switch). Edit as many units as you like — the review list includes every modified unit.
+2. **Adjust Unit Properties** on enemies/bosses if desired (Health, Structure, AI defense).
+3. **Switch stances** via the Combat Stance dropdown if desired.
+4. Click **Export Pak** — the Export dialog will show:
+   - **Review panel**: list of all changes (modified nodes + unit property values + stance changes).
    - **Progress**: step-by-step build (copy files → patch imports → build pak).
    - **Complete**: shows pak size, change count, and install location.
-4. Copy the generated `MainCharComboMod.pak` + `.sig` to `Sifu/Content/Paks/~mods/`.
-5. Launch Sifu — your new moveset should be active!
+5. Copy the generated pak+sig (e.g. `MainCharComboMod.pak` or `MultiUnitComboMod.pak`) to `Sifu/Content/Paks/~mods/`.
+6. Launch Sifu — your new moveset should be active!
 
 **Note**: The export pipeline only packages assets that were actually modified. If you made no changes, it will prompt you to drag animations onto nodes first.
+
+---
+
+## Unit Properties
+
+Available for **enemies and bosses only** — the button is hidden when MainChar is active.
+
+| Section | Field | What it does |
+|---------|--------|----------------|
+| **ArchetypeDB** | Health | Max HP. At zero, the unit is defeated. |
+| **ArchetypeDB** | Structure | Posture bar. When full, the unit staggers and takes bonus damage; resets over time. |
+| **ContextDefense** *(experimental)* | Memory Limit | Seconds the AI “remembers” hits for defense triggers. |
+| **ContextDefense** *(experimental)* | Hits Count | How many hits within the window before it parries, dodges, or avoids. |
+| **ContextDefense** *(experimental)* | Flush Limit | Cooldown (seconds) after a defense before it can defend again. |
+
+- Values are read from the unit’s **ArchetypeDB** (Health/Structure) and **ContextualDefense** asset (AI fields).
+- Changes appear in the export review list and are patched into those assets on export.
+- **Reset to Defaults** restores vanilla values for the current unit.
+- AI defense is **experimental**: vanilla defaults differ by enemy, and some units expose fewer defense knobs than others. Test in-game after export.
 
 ---
 
@@ -163,7 +181,7 @@ The app writes `settings.json` in its installation directory on exit.
 
 ## Project Files
 
-- **`.sifu-edit`** — Project save format containing node animation swaps (JSON).
+- **`.sifu-edit`** — Project save format: node animation swaps per unit, unit properties, and multi-unit caches (JSON).
 - **`.pak` + `.sig`** — Mod package (UE4 pak + integrity signature).
 - **`settings.json`** — Persistent app settings (content path, output path, camera position, stance).
 
@@ -189,7 +207,7 @@ On first run, if the app cannot find valid extracted content:
 2. **Selective extraction** — The app runs UnrealPak with arguments to extract only needed directories:
    - `Animations/*/`, `DB/_MainChar/Combos/`, `DB/AI/Archetypes/*/Attacks/`, `DB/Movement/`
    - Files with `.uasset` and `.uexp` extensions only (`.bak` and other artifacts are skipped)
-   - Approximately 500MB of data extracted (vs 30GB full game)
+   - Approximately 1.2GB of data extracted
 3. **Placement** — Extracted files are placed in the app's directory structure, e.g.:
    ```
    SifuMovesetEditor/
@@ -209,7 +227,7 @@ On first run, if the app cannot find valid extracted content:
 
 **Requirements for auto-extract to work:**
 - User must have Sifu installed and the original `.pak` file accessible.
-- UnrealPak must be available (included at `tools\ue4\UnrealPak\UnrealPak.exe`, or set via Settings → Open Setup / PATH).
+- UnrealPak must be available (it should be in `tools\ue4\UnrealPak\UnrealPak.exe` already).
 - .NET 10 Runtime with WebView2 support.
 
 ---
@@ -228,15 +246,13 @@ This tool is provided as-is for educational and modding purposes. You must own a
 
 ## Status
 
-**Prototype / work in progress.** The combo graph viewer, animation library, locomotion viewer, auto-extract feature, import pipeline, and export pipeline are all functional. Ongoing refinements include: fixing getUp animations not working, adding tutorial for first-time users
+**Prototype / work in progress.** The import mod process might need more testing to make sure it is fully working on all mods.
 
----
 
 ## Planned Enhancements (future roadmap)
 
-- Editing enemy type's movesets
-- Custom chain attacks on enemy
-- Custom Arena level creator (Maybe I'll make this as a standalone, unsure)
+- Custom chain attacks on MainCharacter. Doing that on enemy movesets is causing the game to crash for some reason
+- Custom Arena level creator where you can modify the waves, enemy spawns and all that (Maybe I'll make this as a standalone, unsure)
 
 ---
 
@@ -246,7 +262,7 @@ This tool is provided as-is for educational and modding purposes. You must own a
 A: No! The auto-extract feature on first run will selectively extract only the ~500MB of assets needed (animations, combo trees, attack data). You do not need to extract the full 30GB game.
 
 **Q: What if I already extracted the game content manually?**  
-A: The app will detect the existing `Content/` folder and skip the auto-extract prompt. You can point the app directly to your manually extracted folder via Settings.
+A: You can point the app directly to your manually extracted folder via Settings.
 
 **Q: Can I use this tool without owning Sifu?**  
 A: No. You must own a legal copy of Sifu to use this modding tool, as it requires access to the game's original assets.
@@ -257,9 +273,12 @@ A. Yes, they persist between sessions to avoid re-extracting. If you want to re-
 **Q: Can I extract to a different location than the app directory?**  
 A: The auto-extract feature places extracted content in a subfolder within the app's directory. For custom locations, use the manual Setup workflow: point the app to your existing `Content/` folder via Settings.
 
-**Q: What if UnrealPak is not found?**  
-A: The app will fall back to showing the traditional Setup Wizard, where you manually point to your already-extracted `Content/` folder. The release ships `tools\ue4\UnrealPak\UnrealPak.exe`; you can also point the app at another UnrealPak via Settings.
+**Q: Can I edit boss or enemy health and defense?**  
+A: Yes — switch to the unit via Change Unit, then open **Unit Properties** (hidden for MainChar). You can edit Health and Structure, plus experimental AI defense fields (Memory Limit, Hits Count, Flush Limit). Changes export with your mod.
+
+**Q: Can I edit movesets for all enemies and bosses in one mod?**  
+A: Yes. Switch units with Change Unit, edit each moveset (and unit properties if you want), then export once — all modified units are packaged into a single pak.
 
 ---
 
-**Enjoy creating your Sifu movesets!** 🥋
+**Go wild with your movesets!** 🥋

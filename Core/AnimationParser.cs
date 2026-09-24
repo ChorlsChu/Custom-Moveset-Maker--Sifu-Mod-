@@ -1118,9 +1118,12 @@ public class AnimationParser : IDisposable
 
     private ComboGraph? ParseComboTreeFromObject(UObject obj, string weaponName = "BareHands")
     {
-        bool isMainChar = string.Equals(weaponName, "BareHands", StringComparison.OrdinalIgnoreCase) 
+        bool isMainChar = string.Equals(weaponName, "BareHands", StringComparison.OrdinalIgnoreCase)
                        || string.Equals(weaponName, "MainChar", StringComparison.OrdinalIgnoreCase)
                        || weaponName.StartsWith("MainChar_", StringComparison.OrdinalIgnoreCase);
+        bool isBarehands = string.Equals(weaponName, "BareHands", StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(weaponName, "MainChar", StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(weaponName, "MainChar_Barehands", StringComparison.OrdinalIgnoreCase);
         try
         {
             LogDebug($"[COMBO] Loaded {obj.GetPathName()}: exportType={obj.ExportType}, weapon={weaponName}");
@@ -1308,7 +1311,12 @@ public class AnimationParser : IDisposable
                 keptNodes[i].Id = i;
             }
 
-            var graph = new ComboGraph { WeaponName = isMainChar ? "BareHands" : weaponName };
+            string graphWeaponName = !isMainChar
+                ? weaponName
+                : isBarehands
+                    ? "BareHands"
+                    : weaponName;
+            var graph = new ComboGraph { WeaponName = graphWeaponName };
             graph.Nodes.AddRange(keptNodes);
 
             foreach (var edge in finalEdges)
@@ -1352,7 +1360,7 @@ public class AnimationParser : IDisposable
             LogDebug($"[COMBO] Final: {graph.Nodes.Count} nodes, {graph.Edges.Count} edges (removed {conduitIds.Count} conduits, kept {redirectNodeIds.Count} redirects)");
 
             var delayAnimNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (isMainChar)
+            if (isBarehands)
             {
                 delayAnimNames.Add("MainChar_Attack_Man_Barehands_Skill_MultiHit_FL");
                 delayAnimNames.Add("MainChar_Attack_Man_Barehands_Pressure_TripleHit_BR");
@@ -1388,7 +1396,7 @@ public class AnimationParser : IDisposable
                     node.InputLabel = string.Join(" / ", inputs.OrderBy(x => x));
             }
 
-            if (isMainChar)
+            if (isBarehands)
             {
                 var stanceNode = new ComboNode
                 {
@@ -1409,6 +1417,7 @@ public class AnimationParser : IDisposable
                     graph.Edges.Add(new ComboEdge { FromNodeId = -1, ToNodeId = rootId, InputName = "" });
 
                 graph.Nodes.Insert(0, stanceNode);
+                LogDebug("[COMBO] Injected Combat Stance root (barehands only)");
             }
 
             return graph;

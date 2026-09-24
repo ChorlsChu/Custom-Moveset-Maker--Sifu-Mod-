@@ -202,6 +202,8 @@ public static class ProjectManager
                         positions[nodeId] = new Point(p.Value.X, p.Value.Y);
             }
 
+            SanitizeMainCharCache(kvp.Key, graph, positions, saved);
+
             result[kvp.Key] = new UnitCacheEntry
             {
                 Graph = graph,
@@ -212,5 +214,40 @@ public static class ProjectManager
             };
         }
         return result;
+    }
+
+    private static void SanitizeMainCharCache(string unitKey, ComboGraph graph, Dictionary<int, Point> positions, SavedUnitCache saved)
+    {
+        var arch = unitKey.Contains('|') ? unitKey.Split('|')[0] : unitKey;
+        if (!string.Equals(arch, "MainChar", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var weaponTag = !string.IsNullOrEmpty(saved.ActiveWeapon)
+            ? saved.ActiveWeapon
+            : (unitKey.Contains('|') ? unitKey.Split('|').Last() : null);
+
+        bool isBarehands = string.IsNullOrEmpty(weaponTag)
+            || string.Equals(weaponTag, "MainChar", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(weaponTag, "BareHands", StringComparison.OrdinalIgnoreCase)
+            || weaponTag.EndsWith("Barehands", StringComparison.OrdinalIgnoreCase);
+
+        graph.WeaponName = isBarehands
+            ? "BareHands"
+            : weaponTag!;
+
+        if (isBarehands)
+            return;
+
+        var stanceIds = graph.Nodes
+            .Where(n => string.Equals(n.Name, "MainChar_Stance", StringComparison.Ordinal))
+            .Select(n => n.Id)
+            .ToHashSet();
+        if (stanceIds.Count == 0)
+            return;
+
+        graph.Nodes.RemoveAll(n => stanceIds.Contains(n.Id));
+        graph.Edges.RemoveAll(e => stanceIds.Contains(e.FromNodeId) || stanceIds.Contains(e.ToNodeId));
+        foreach (var id in stanceIds)
+            positions.Remove(id);
     }
 }
