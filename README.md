@@ -225,11 +225,6 @@ On first run, if the app cannot find valid extracted content:
    ```
 4. **Proceed** — The app loads the extracted content and shows the main UI. On subsequent launches, it detects the extracted content and skips the extraction prompt.
 
-**Requirements for auto-extract to work:**
-- User must have Sifu installed and the original `.pak` file accessible.
-- UnrealPak must be available (it should be in `tools\ue4\UnrealPak\UnrealPak.exe` already).
-- .NET 10 Runtime with WebView2 support.
-
 ---
 
 ## Credits
