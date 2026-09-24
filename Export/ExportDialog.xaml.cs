@@ -47,22 +47,8 @@ public partial class ExportDialog : Window
     private int _reviewChangeCount;
     private readonly HashSet<string> _expandedUnits = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, HashSet<string>> _expandedSections = new(StringComparer.OrdinalIgnoreCase);
-
-    private sealed class UnitSectionReview
-    {
-        public string Name = "";
-        public List<object> Rows = new();
-        public int Count => Rows.Count;
-    }
-
-    private sealed class UnitReview
-    {
-        public string Key = "";
-        public string DisplayName = "";
-        public string Subtitle = "";
-        public List<UnitSectionReview> Sections = new();
-        public int Total => Sections.Sum(s => s.Count);
-    }
+    private string? _currentExportVariant;
+    private readonly HashSet<string> _writtenArenaPaths = new(StringComparer.OrdinalIgnoreCase);
 
     private static Brush MakeBrush(string hex) =>
         (Brush)new BrushConverter().ConvertFrom(hex);
@@ -99,6 +85,7 @@ public partial class ExportDialog : Window
         _unitProps = unitProps;
         _activeVariant = activeVariant;
         _mainCharComboPath = string.IsNullOrEmpty(mainCharComboPath) ? DefaultMainCharComboPath : mainCharComboPath;
+        _outputPath = ResolveOutputPath(_outputPath);
 
         LoadReview();
     }
@@ -114,7 +101,7 @@ public partial class ExportDialog : Window
         InitializeComponent();
         _unitCaches = unitCaches;
         _contentPath = contentPath;
-        _outputPath = outputPath;
+        _outputPath = ResolveOutputPath(outputPath);
         _animToDbPath = animToDbPath;
         _animToTiming = animToTiming ?? new();
         _referenceModDir = referenceModDir;
@@ -186,7 +173,48 @@ public partial class ExportDialog : Window
             }
         }
 
+        DedupeSharedGraphs();
+
         LoadReview();
+    }
+
+    private void DedupeSharedGraphs()
+    {
+        if (_perUnitGraphs.Count < 2) return;
+
+        var groups = _perUnitGraphs
+            .GroupBy(kvp => kvp.Value.graph)
+            .Where(g => g.Count() > 1)
+            .ToList();
+
+        foreach (var group in groups)
+        {
+            var keys = group.Select(k => k.Key).ToList();
+            string keep = keys[0];
+            foreach (var key in keys.Skip(1))
+                keep = PreferUnitKey(keep, key);
+
+            foreach (var key in keys)
+            {
+                if (key == keep) continue;
+                _perUnitGraphs.Remove(key);
+                _perUnitModifiedNodes.Remove(key);
+                _perUnitProps.Remove(key);
+            }
+        }
+    }
+
+    private static string PreferUnitKey(string a, string b)
+    {
+        bool aMain = a.StartsWith("MainChar", StringComparison.OrdinalIgnoreCase);
+        bool bMain = b.StartsWith("MainChar", StringComparison.OrdinalIgnoreCase);
+        if (aMain != bMain) return aMain ? a : b;
+
+        bool aHasVariant = a.Contains('|');
+        bool bHasVariant = b.Contains('|');
+        if (aHasVariant != bHasVariant) return aHasVariant ? a : b;
+
+        return string.Compare(a, b, StringComparison.OrdinalIgnoreCase) <= 0 ? a : b;
     }
 
     private static string? ResolveComboFilePathForUnit(string variantTag)
@@ -256,7 +284,7 @@ public partial class ExportDialog : Window
                 var unit = new UnitReview
                 {
                     Key = unitKey,
-                    DisplayName = FormatUnitDisplayName(unitKey),
+                    DisplayName = ProjectChangeSummary.FormatUnitDisplayName(unitKey),
                     Subtitle = string.IsNullOrEmpty(comboPath)
                         ? ""
                         : comboPath[(comboPath.LastIndexOf('/') + 1)..]
@@ -267,12 +295,12 @@ public partial class ExportDialog : Window
                     var moveRows = modified
                         .OrderBy(n => n.TreeIndex)
                         .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase)
-                        .Cast<object>()
+                        .Select(ProjectChangeSummary.ToChangeRow)
                         .ToList();
                     unit.Sections.Add(new UnitSectionReview { Name = "Moves", Rows = moveRows });
                 }
 
-                var retargetRows = BuildRetargetRows(graph);
+                var retargetRows = ProjectChangeSummary.BuildRetargetRows(graph);
                 if (retargetRows.Count > 0)
                     unit.Sections.Add(new UnitSectionReview { Name = "Retargets", Rows = retargetRows });
 
@@ -281,7 +309,7 @@ public partial class ExportDialog : Window
                     var keyParts = unitKey.Split('|');
                     string variant = keyParts.Length > 1 ? keyParts[1] : unitKey;
                     var propRows = new List<object>();
-                    AddUnitPropsEntries(propRows, unitProps, _contentPath, variant);
+                    ProjectChangeSummary.AddUnitPropsEntries(propRows, unitProps, _contentPath, variant);
                     if (propRows.Count > 0)
                         unit.Sections.Add(new UnitSectionReview { Name = "Unit Props", Rows = propRows });
                 }
@@ -301,7 +329,7 @@ public partial class ExportDialog : Window
             var unit = new UnitReview
             {
                 Key = unitKey,
-                DisplayName = FormatUnitDisplayName(unitKey),
+                DisplayName = ProjectChangeSummary.FormatUnitDisplayName(unitKey),
                 Subtitle = _mainCharComboPath?.Split('/').LastOrDefault() ?? ""
             };
 
@@ -312,12 +340,10 @@ public partial class ExportDialog : Window
                     Name = "Stance",
                     Rows = new List<object>
                     {
-                        new
-                        {
-                            DisplayName = $"Combat Stance → {_activeStance}",
-                            DefaultAnimPath = "MainChar (vanilla)",
-                            AnimPath = $"{_activeStance} (BaseMovementDB + BP_TransitionAnimRequest)"
-                        }
+                        MakeValueRow(
+                            $"Combat Stance → {_activeStance}",
+                            "MainChar (vanilla)",
+                            $"{_activeStance} (BaseMovementDB + BP_TransitionAnimRequest)")
                     }
                 });
             }
@@ -327,14 +353,14 @@ public partial class ExportDialog : Window
                 var moveRows = _modifiedNodes
                     .OrderBy(n => n.TreeIndex)
                     .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase)
-                    .Cast<object>()
+                    .Select(ProjectChangeSummary.ToChangeRow)
                     .ToList();
                 unit.Sections.Add(new UnitSectionReview { Name = "Moves", Rows = moveRows });
             }
 
             if (_graph != null)
             {
-                var retargetRows = BuildRetargetRows(_graph);
+                var retargetRows = ProjectChangeSummary.BuildRetargetRows(_graph);
                 if (retargetRows.Count > 0)
                     unit.Sections.Add(new UnitSectionReview { Name = "Retargets", Rows = retargetRows });
             }
@@ -342,7 +368,7 @@ public partial class ExportDialog : Window
             if (_unitProps != null && !string.IsNullOrEmpty(_activeVariant))
             {
                 var propRows = new List<object>();
-                AddUnitPropsEntries(propRows, _unitProps, _contentPath, _activeVariant);
+                ProjectChangeSummary.AddUnitPropsEntries(propRows, _unitProps, _contentPath, _activeVariant);
                 if (propRows.Count > 0)
                     unit.Sections.Add(new UnitSectionReview { Name = "Unit Props", Rows = propRows });
             }
@@ -357,58 +383,22 @@ public partial class ExportDialog : Window
             .ToList();
     }
 
-    private static List<object> BuildRetargetRows(ComboGraph graph)
-    {
-        var rows = new List<object>();
-        foreach (var rd in graph.RedirectOriginalTargets)
-        {
-            var node = graph.Nodes.FirstOrDefault(n => n.Id == rd.Key);
-            if (node == null || node.ResolvedRedirectNodeId < 0 || node.ResolvedRedirectNodeId == rd.Value)
-                continue;
+    private static object ToChangeRow(ComboNode n) => ProjectChangeSummary.ToChangeRow(n);
 
-            var origTarget = graph.Nodes.FirstOrDefault(n => n.TreeIndex == rd.Value);
-            var newTarget = graph.Nodes.FirstOrDefault(n => n.Id == node.ResolvedRedirectNodeId);
-            rows.Add(new
-            {
-                DisplayName = $"Retarget: {node.DisplayName}",
-                DefaultAnimPath = $"m_NodeRedirect {rd.Value} → {origTarget?.DisplayName ?? "?"}",
-                AnimPath = $"m_NodeRedirect {rd.Value} → {newTarget?.DisplayName ?? "?"}"
-            });
-        }
-        return rows;
-    }
+    private static ChangeRow MakeValueRow(string title, string left, string right, string? toolTip = null)
+        => ProjectChangeSummary.MakeValueRow(title, left, right, toolTip);
+
+    private static List<object> BuildRetargetRows(ComboGraph graph)
+        => ProjectChangeSummary.BuildRetargetRows(graph);
 
     private static string FormatUnitDisplayName(string unitKey)
-    {
-        var parts = unitKey.Split('|', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0) return unitKey;
+        => ProjectChangeSummary.FormatUnitDisplayName(unitKey);
 
-        if (parts[0].Equals("MainChar", StringComparison.OrdinalIgnoreCase))
-        {
-            string weapon = parts.Length > 1 ? parts[1] : "";
-            if (weapon.StartsWith("MainChar_", StringComparison.OrdinalIgnoreCase))
-                weapon = weapon["MainChar_".Length..];
-            return string.IsNullOrEmpty(weapon) ? "MainChar" : $"MainChar | {weapon}";
-        }
+    private static int CountUnitPropsChanges(UnitProperties props, string contentPath, string variantTag)
+        => ProjectChangeSummary.CountUnitPropsChanges(props, contentPath, variantTag);
 
-        if (parts.Length == 1) return parts[0];
-
-        string variant = parts[1];
-        if (variant.StartsWith(parts[0] + "_", StringComparison.OrdinalIgnoreCase))
-            variant = variant[(parts[0].Length + 1)..];
-
-        string label = $"{parts[0]} | {variant}";
-        if (parts.Length > 2)
-        {
-            string weaponPart = parts[2];
-            if (weaponPart.Contains('_'))
-                weaponPart = weaponPart[(weaponPart.IndexOf('_') + 1)..];
-            if (!weaponPart.Equals(variant, StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(weaponPart, "Barehands", StringComparison.OrdinalIgnoreCase))
-                label += $" | {weaponPart}";
-        }
-        return label;
-    }
+    private static void AddUnitPropsEntries(List<object> entries, UnitProperties props, string contentPath, string variantTag)
+        => ProjectChangeSummary.AddUnitPropsEntries(entries, props, contentPath, variantTag);
 
     private bool IsSectionExpanded(string unitKey, string sectionName)
     {
@@ -466,12 +456,17 @@ public partial class ExportDialog : Window
 
         lstChanges.ItemsSource = BuildReviewList();
 
-        var outputDir = string.IsNullOrEmpty(_outputPath)
-            ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods")
-            : _outputPath;
+        var outputDir = ResolveOutputPath(_outputPath);
 
         txtModName.Text = isMulti ? "MultiUnitComboMod" : "MainCharComboMod";
         UpdateOutputPreview(outputDir);
+    }
+
+    private static string ResolveOutputPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods");
+        return path;
     }
 
     private void RebuildReviewList()
@@ -505,33 +500,6 @@ public partial class ExportDialog : Window
         RebuildReviewList();
     }
 
-    private static int CountUnitPropsChanges(UnitProperties props, string contentPath, string variantTag)
-    {
-        var vanilla = UnitPropertiesManager.Read(contentPath, variantTag);
-        int count = 0;
-        if (props.Health.HasValue && (!vanilla.Health.HasValue || Math.Abs(props.Health.Value - vanilla.Health.Value) > 0.01f)) count++;
-        if (props.Structure.HasValue && (!vanilla.Structure.HasValue || Math.Abs(props.Structure.Value - vanilla.Structure.Value) > 0.01f)) count++;
-        if (props.MemoryLimit.HasValue && (!vanilla.MemoryLimit.HasValue || Math.Abs(props.MemoryLimit.Value - vanilla.MemoryLimit.Value) > 0.01f)) count++;
-        if (props.HitsCount.HasValue && (!vanilla.HitsCount.HasValue || props.HitsCount.Value != vanilla.HitsCount.Value)) count++;
-        if (props.MemoryFlushLimit.HasValue && (!vanilla.MemoryFlushLimit.HasValue || Math.Abs(props.MemoryFlushLimit.Value - vanilla.MemoryFlushLimit.Value) > 0.01f)) count++;
-        return count;
-    }
-
-    private static void AddUnitPropsEntries(List<object> entries, UnitProperties props, string contentPath, string variantTag)
-    {
-        var vanilla = UnitPropertiesManager.Read(contentPath, variantTag);
-        if (props.Health.HasValue && (!vanilla.Health.HasValue || Math.Abs(props.Health.Value - vanilla.Health.Value) > 0.01f))
-            entries.Add(new { DisplayName = $"Unit Props: Health", DefaultAnimPath = $"{vanilla.Health?.ToString("F1") ?? "null"}", AnimPath = $"{props.Health.Value:F1}" });
-        if (props.Structure.HasValue && (!vanilla.Structure.HasValue || Math.Abs(props.Structure.Value - vanilla.Structure.Value) > 0.01f))
-            entries.Add(new { DisplayName = $"Unit Props: Structure", DefaultAnimPath = $"{vanilla.Structure?.ToString("F1") ?? "null"}", AnimPath = $"{props.Structure.Value:F1}" });
-        if (props.MemoryLimit.HasValue && (!vanilla.MemoryLimit.HasValue || Math.Abs(props.MemoryLimit.Value - vanilla.MemoryLimit.Value) > 0.01f))
-            entries.Add(new { DisplayName = $"Unit Props: MemoryLimit", DefaultAnimPath = $"{vanilla.MemoryLimit?.ToString("F1") ?? "null"}", AnimPath = $"{props.MemoryLimit.Value:F1}" });
-        if (props.HitsCount.HasValue && (!vanilla.HitsCount.HasValue || props.HitsCount.Value != vanilla.HitsCount.Value))
-            entries.Add(new { DisplayName = $"Unit Props: HitsCount", DefaultAnimPath = $"{vanilla.HitsCount?.ToString() ?? "null"}", AnimPath = $"{props.HitsCount.Value}" });
-        if (props.MemoryFlushLimit.HasValue && (!vanilla.MemoryFlushLimit.HasValue || Math.Abs(props.MemoryFlushLimit.Value - vanilla.MemoryFlushLimit.Value) > 0.01f))
-            entries.Add(new { DisplayName = $"Unit Props: FlushLimit", DefaultAnimPath = $"{vanilla.MemoryFlushLimit?.ToString("F1") ?? "null"}", AnimPath = $"{props.MemoryFlushLimit.Value:F1}" });
-    }
-
     private void UpdateOutputPreview(string outputDir)
     {
         var name = GetModFileName();
@@ -556,9 +524,7 @@ public partial class ExportDialog : Window
 
     private void txtModName_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {
-        var outputDir = string.IsNullOrEmpty(_outputPath)
-            ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods")
-            : _outputPath;
+        var outputDir = ResolveOutputPath(_outputPath);
         UpdateOutputPreview(outputDir);
     }
 
@@ -576,9 +542,7 @@ public partial class ExportDialog : Window
                 return;
             }
 
-            var outputPath = string.IsNullOrEmpty(_outputPath)
-                ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods")
-                : _outputPath;
+            var outputPath = ResolveOutputPath(_outputPath);
             _outputDir = outputPath;
             Directory.CreateDirectory(outputPath);
 
@@ -590,6 +554,8 @@ public partial class ExportDialog : Window
             }
 
             var fileEntries = new List<(string src, string dest)>();
+            _writtenArenaPaths.Clear();
+            _currentExportVariant = null;
 
             if (_unitCaches != null && _perUnitGraphs.Count > 0)
             {
@@ -600,6 +566,7 @@ public partial class ExportDialog : Window
                 var savedTrans = _charTransitionPath;
                 var savedMove = _charBaseMovementDBPath;
                 var savedMainCharCombo = _mainCharComboPath;
+                var savedVariant = _activeVariant;
 
                 foreach (var kvp in _perUnitGraphs)
                 {
@@ -621,11 +588,14 @@ public partial class ExportDialog : Window
                     _charBaseMovementDBPath = kvp.Value.charBaseMovementDBPath;
                     _activeStance = string.Equals(arch, "MainChar", StringComparison.OrdinalIgnoreCase) ? null : arch;
 
+                    var keyParts = kvp.Key.Split('|');
+                    _currentExportVariant = keyParts.Length > 1 ? keyParts[1] : kvp.Key;
+                    _activeVariant = _currentExportVariant;
+
                     await PatchComboAndStanceForCurrentState(fileEntries, gameRoot, outputPath);
 
                     if (_perUnitProps.TryGetValue(kvp.Key, out var unitProps))
                     {
-                        var keyParts = kvp.Key.Split('|');
                         string variant = keyParts.Length > 1 ? keyParts[1] : kvp.Key;
                         PatchUnitProperties(unitProps, variant, fileEntries, gameRoot, outputPath);
                     }
@@ -638,10 +608,14 @@ public partial class ExportDialog : Window
                 _charTransitionPath = savedTrans;
                 _charBaseMovementDBPath = savedMove;
                 _mainCharComboPath = savedMainCharCombo;
+                _activeVariant = savedVariant;
+                _currentExportVariant = null;
             }
             else
             {
+                _currentExportVariant = _activeVariant;
                 await PatchComboAndStanceForCurrentState(fileEntries, gameRoot, outputPath);
+                _currentExportVariant = null;
 
                 if (_unitProps != null && !string.IsNullOrEmpty(_activeVariant))
                 {
@@ -680,13 +654,13 @@ public partial class ExportDialog : Window
 
             ErrorLog.Write("EXPORT", new Exception($"Filelist content:\n{filelistContent}"));
 
-            var pakExe = @"C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\4.26\UE4\UnrealPak\UnrealPak.exe";
+            var pakExe = Setup.ContentExtractor.FindUnrealPak();
             var pakFileName = GetModFileName();
             _pakPath = Path.Combine(outputPath, pakFileName);
 
-            if (!File.Exists(pakExe))
+            if (string.IsNullOrEmpty(pakExe) || !File.Exists(pakExe))
             {
-                ShowError($"UnrealPak not found at:\n{pakExe}");
+                ShowError("UnrealPak not found. Place it in tools\\ue4\\UnrealPak\\UnrealPak.exe or set path via Settings → Open Setup.");
                 return;
             }
 
@@ -701,7 +675,8 @@ public partial class ExportDialog : Window
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
-                RedirectStandardError = true
+                RedirectStandardError = true,
+                WorkingDirectory = Setup.ContentExtractor.EnsureUnrealPakWorkingDirectory()
             };
 
             using var proc = Process.Start(psi);
@@ -715,7 +690,10 @@ public partial class ExportDialog : Window
 
             if (proc.ExitCode != 0)
             {
-                ShowError($"UnrealPak failed (exit {proc.ExitCode}):\n\n{stderr}\n{stdout}");
+                if (proc.ExitCode == -1073741515)
+                    ShowError("UnrealPak failed to start (missing DLLs).\n\nEnsure all UnrealPak-*.dll files sit next to UnrealPak.exe in tools\\ue4\\UnrealPak\\.");
+                else
+                    ShowError($"UnrealPak failed (exit {proc.ExitCode}):\n\n{stderr}\n{stdout}");
                 return;
             }
 
@@ -740,14 +718,6 @@ public partial class ExportDialog : Window
 
             try { Directory.Delete(tempDir, true); } catch { }
 
-            var sigSource = @"C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\4.26\UE4\UnrealPak\pakchunk0-WindowsNoEditor.sig";
-            var sigDest = Path.Combine(outputPath, Path.ChangeExtension(pakFileName, ".sig"));
-            if (File.Exists(sigSource))
-                File.Copy(sigSource, sigDest, true);
-
-            SetProgress(100);
-            UpdateStep(3, "done");
-
             string gameInstallDir = null;
             var searchDir = _contentPath;
             while (searchDir != null)
@@ -759,6 +729,36 @@ public partial class ExportDialog : Window
                 }
                 searchDir = Path.GetDirectoryName(searchDir);
             }
+
+            string sigSource = null;
+            var pakExeDir = Path.GetDirectoryName(pakExe);
+            if (!string.IsNullOrEmpty(pakExeDir))
+            {
+                var beside = Path.Combine(pakExeDir, "pakchunk0-WindowsNoEditor.sig");
+                if (File.Exists(beside)) sigSource = beside;
+            }
+            if (sigSource == null && gameInstallDir != null)
+            {
+                var gameSig = Path.Combine(gameInstallDir, "Content", "Paks", "pakchunk0-WindowsNoEditor.sig");
+                if (File.Exists(gameSig)) sigSource = gameSig;
+            }
+            if (sigSource == null)
+            {
+                var appSig = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tools", "ue4", "UnrealPak", "pakchunk0-WindowsNoEditor.sig");
+                if (File.Exists(appSig)) sigSource = appSig;
+                if (sigSource == null)
+                {
+                    appSig = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Tools", "pakchunk0-WindowsNoEditor.sig");
+                    if (File.Exists(appSig)) sigSource = appSig;
+                }
+            }
+
+            var sigDest = Path.Combine(outputPath, Path.ChangeExtension(pakFileName, ".sig"));
+            if (sigSource != null)
+                File.Copy(sigSource, sigDest, true);
+
+            SetProgress(100);
+            UpdateStep(3, "done");
 
             var installedTo = "";
             if (gameInstallDir != null)
@@ -1466,7 +1466,7 @@ public partial class ExportDialog : Window
 
             if (!string.IsNullOrEmpty(_enemyComboPath))
             {
-                var enemyComboRelPath = _enemyComboPath.Replace("Game/", "");
+                var enemyComboRelPath = GamePathToContentRel(_enemyComboPath);
                 var enemyVanillaPath = Path.Combine(gameRoot, enemyComboRelPath + ".uasset");
                 if (File.Exists(enemyVanillaPath))
                 {
@@ -1720,7 +1720,11 @@ public partial class ExportDialog : Window
                         {
                             string charRoot = string.Join("/", comboPathParts.Take(archetypesIdx + 2));
                             string charArenaDir = Path.Combine(gameRoot, charRoot, "_Arena");
-                            if (Directory.Exists(charArenaDir))
+                            if (enemyComboBinSwaps.Count == 0)
+                            {
+                                ErrorLog.Write("EXPORT", new Exception("  ARENA SKIP: no attack swaps for this unit"));
+                            }
+                            else if (Directory.Exists(charArenaDir))
                             {
                                 var arenaComboFiles = Directory.GetFiles(charArenaDir, "*.uasset", SearchOption.AllDirectories)
                                     .Where(f => Path.GetFileNameWithoutExtension(f).Contains("Combo", StringComparison.OrdinalIgnoreCase))
@@ -1731,6 +1735,24 @@ public partial class ExportDialog : Window
                                     var arenaComboRelFromContent = Path.GetRelativePath(Path.Combine(gameRoot), arenaComboVanilla).Replace('\\', '/');
                                     if (arenaComboRelFromContent.EndsWith(".uasset"))
                                         arenaComboRelFromContent = arenaComboRelFromContent[..^7];
+
+                                    string arenaFileName = Path.GetFileNameWithoutExtension(arenaComboVanilla);
+                                    var arenaOutDirCheck = Path.Combine(outputPath, "Sifu", "Content", Path.GetDirectoryName(arenaComboRelFromContent)!);
+                                    var arenaOutUassetCheck = Path.Combine(arenaOutDirCheck, Path.GetFileName(arenaComboRelFromContent) + ".uasset");
+
+                                    if (_writtenArenaPaths.Contains(arenaOutUassetCheck))
+                                    {
+                                        ErrorLog.Write("EXPORT", new Exception($"  ARENA SKIP already written: {arenaFileName}"));
+                                        continue;
+                                    }
+
+                                    int arenaPhase = ExtractPhaseFromName(arenaFileName);
+                                    int unitPhase = ExtractPhaseFromName(_currentExportVariant ?? "");
+                                    if (arenaPhase != 0 && arenaPhase != unitPhase)
+                                    {
+                                        ErrorLog.Write("EXPORT", new Exception($"  ARENA SKIP phase mismatch: {arenaFileName} (arena P{arenaPhase} vs unit '{_currentExportVariant}' P{unitPhase})"));
+                                        continue;
+                                    }
 
                                     try
                                     {
@@ -1748,7 +1770,7 @@ public partial class ExportDialog : Window
                                         }
                                         if (arenaComboExport == null)
                                         {
-                                            ErrorLog.Write("EXPORT", new Exception($"  ARENA SKIP: no combo export in {Path.GetFileName(arenaComboVanilla)}"));
+                                            ErrorLog.Write("EXPORT", new Exception($"  ARENA SKIP: no combo export in {arenaFileName}"));
                                             continue;
                                         }
 
@@ -1756,7 +1778,7 @@ public partial class ExportDialog : Window
                                             .FirstOrDefault(p => p.Name.Value.ToString() == "m_Nodes");
                                         if (arenaNodesArr?.Value == null || arenaNodesArr.Value.Length == 0)
                                         {
-                                            ErrorLog.Write("EXPORT", new Exception($"  ARENA SKIP: no m_Nodes in {Path.GetFileName(arenaComboVanilla)}"));
+                                            ErrorLog.Write("EXPORT", new Exception($"  ARENA SKIP: no m_Nodes in {arenaFileName}"));
                                             continue;
                                         }
 
@@ -1839,10 +1861,17 @@ public partial class ExportDialog : Window
                                             arenaMap.Value = rebuilt;
                                         }
 
+                                        if (arenaFNamesPatched == 0 && arenaProcessedSwaps.Count == 0)
+                                        {
+                                            ErrorLog.Write("EXPORT", new Exception($"  ARENA SKIP no matching attacks: {arenaFileName}"));
+                                            continue;
+                                        }
+
                                         var arenaOutDir = Path.Combine(outputPath, "Sifu", "Content", Path.GetDirectoryName(arenaComboRelFromContent)!);
                                         Directory.CreateDirectory(arenaOutDir);
                                         var arenaOutUasset = Path.Combine(arenaOutDir, Path.GetFileName(arenaComboRelFromContent) + ".uasset");
                                         arenaAsset.Write(arenaOutUasset);
+                                        _writtenArenaPaths.Add(arenaOutUasset);
                                         var arenaOutUexp = Path.ChangeExtension(arenaOutUasset, ".uexp");
 
                                         fileEntries.Add((arenaOutUasset,
@@ -1850,11 +1879,11 @@ public partial class ExportDialog : Window
                                         fileEntries.Add((arenaOutUexp,
                                             "../../../Sifu/Content/" + arenaComboRelFromContent + ".uexp"));
 
-                                        ErrorLog.Write("EXPORT", new Exception($"  ARENA: patched {Path.GetFileName(arenaComboVanilla)} ({new FileInfo(arenaOutUasset).Length} bytes .uasset, {arenaFNamesPatched} FNames, map keys rebuilt)"));
+                                        ErrorLog.Write("EXPORT", new Exception($"  ARENA: patched {arenaFileName} ({new FileInfo(arenaOutUasset).Length} bytes .uasset, {arenaFNamesPatched} FNames, {arenaProcessedSwaps.Count} import swaps, unit '{_currentExportVariant}')"));
                                     }
                                     catch (Exception ex)
                                     {
-                                        ErrorLog.Write("EXPORT", new Exception($"  ARENA FAIL: {Path.GetFileName(arenaComboVanilla)}: {ex.Message}"));
+                                        ErrorLog.Write("EXPORT", new Exception($"  ARENA FAIL: {arenaFileName}: {ex.Message}"));
                                     }
                                 }
                             }
@@ -1964,6 +1993,31 @@ public partial class ExportDialog : Window
         if (rel.StartsWith("Game/", StringComparison.OrdinalIgnoreCase))
             rel = rel.Substring(5);
         return rel;
+    }
+
+    private static int ExtractPhaseFromName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return 0;
+        if (name.Contains("phase3", StringComparison.OrdinalIgnoreCase) || HasPhaseToken(name, "P3")) return 3;
+        if (name.Contains("phase2", StringComparison.OrdinalIgnoreCase) || HasPhaseToken(name, "P2")) return 2;
+        if (name.Contains("phase1", StringComparison.OrdinalIgnoreCase) || HasPhaseToken(name, "P1")) return 1;
+        return 0;
+    }
+
+    private static bool HasPhaseToken(string name, string token)
+    {
+        int i = 0;
+        while (i <= name.Length - token.Length)
+        {
+            int found = name.IndexOf(token, i, StringComparison.OrdinalIgnoreCase);
+            if (found < 0) return false;
+            bool startOk = found == 0 || !char.IsLetterOrDigit(name[found - 1]);
+            int after = found + token.Length;
+            bool endOk = after >= name.Length || !char.IsLetterOrDigit(name[after]);
+            if (startOk && endOk) return true;
+            i = found + 1;
+        }
+        return false;
     }
 
     private static bool NeedsComboRedirect(ComboNode node)

@@ -81,10 +81,12 @@ Stance animation mappings are defined in `Core/StanceGenerator.Stances` dictiona
 ## Requirements
 
 - Windows 10/11
-- .NET 10 SDK (or later) — for building/running
+- **.NET 10 Desktop Runtime** (framework-dependent build — install from Microsoft’s [dotnet.microsoft.com/download/dotnet/10.0](https://dotnet.microsoft.com/download/dotnet/10.0) if not present; Windows does **not** ship this by default)
 - WebView2 Runtime — (pre-installed with Edge on Windows 10 1803+ and Windows 11)
 - Sifu installed (via Epic Games Store)
 - **Optional**: Original Sifu `.pak` file (for auto-extract feature on first run)
+- `UnrealPak.exe` is included under `tools\ue4\UnrealPak\UnrealPak.exe` in the release (also used for extract/import/export)
+- The app runs fully **offline** after install (3D viewer uses a local `viewer\three.min.js`; no CDN)
 
 ---
 
@@ -207,7 +209,7 @@ On first run, if the app cannot find valid extracted content:
 
 **Requirements for auto-extract to work:**
 - User must have Sifu installed and the original `.pak` file accessible.
-- UnrealPak must be available (included with the app, located at `Sifu Modding\Unreal Pak Extracter and Creator\4.26\UE4\UnrealPak\UnrealPak.exe` relative to the app, or detected via registry/settings).
+- UnrealPak must be available (included at `tools\ue4\UnrealPak\UnrealPak.exe`, or set via Settings → Open Setup / PATH).
 - .NET 10 Runtime with WebView2 support.
 
 ---
@@ -256,7 +258,7 @@ A. Yes, they persist between sessions to avoid re-extracting. If you want to re-
 A: The auto-extract feature places extracted content in a subfolder within the app's directory. For custom locations, use the manual Setup workflow: point the app to your existing `Content/` folder via Settings.
 
 **Q: What if UnrealPak is not found?**  
-A: The app will fall back to showing the traditional Setup Wizard, where you manually point to your already-extracted `Content/` folder. You can also download UnrealPak separately or ensure the included UnrealPak executable is accessible.
+A: The app will fall back to showing the traditional Setup Wizard, where you manually point to your already-extracted `Content/` folder. The release ships `tools\ue4\UnrealPak\UnrealPak.exe`; you can also point the app at another UnrealPak via Settings.
 
 ---
 

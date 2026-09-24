@@ -35,6 +35,28 @@ public class MoveInfo
     public bool IsValid { get; set; } = true;
     public string EnemyType { get; set; } = "";
 
+    public string SourceType => SourceTypeFromPath(FullPath, Category);
+
+    public static string SourceTypeFromPath(string? fullPath, string? category = null)
+    {
+        if (string.Equals(category, "Custom", StringComparison.OrdinalIgnoreCase))
+            return "Custom";
+
+        if (!string.IsNullOrEmpty(fullPath) &&
+            fullPath.StartsWith("Game/Animations/", StringComparison.OrdinalIgnoreCase))
+            return "Animation File";
+
+        if (IsAttackDbGamePath(fullPath))
+            return "Attack DB";
+
+        return "Other";
+    }
+
+    public static bool IsAttackDbGamePath(string? fullPath) =>
+        !string.IsNullOrEmpty(fullPath) &&
+        (fullPath.Contains("DB/AI/Archetypes", StringComparison.OrdinalIgnoreCase) ||
+         fullPath.Contains("DB/_MainChar", StringComparison.OrdinalIgnoreCase));
+
     public string DisplayNameClean
     {
         get
@@ -243,9 +265,7 @@ public class AnimationParser : IDisposable
     private DefaultFileProvider? _overlayProvider;
     private string _gameRootPath = "";
     private string _contentPath = "";
-    private string ContentDir => _contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase)
-        ? _contentPath
-        : Path.Combine(_contentPath, "Content");
+    private string ContentDir => Setup.ContentDetector.ResolveContentDir(_contentPath);
     public bool IsLoaded => _provider != null;
     public ConcurrentDictionary<string, string> AnimToDbPath { get; } = new();
     public Dictionary<string, (float hitFrame, int buildupFrame)> AnimToTiming { get; } = new();
@@ -299,17 +319,29 @@ public class AnimationParser : IDisposable
     {
         try
         {
-            var parentDir = Directory.GetParent(gameRootPath)?.FullName;
-            if (parentDir == null) return;
-
-            var engineContentDir = Path.Combine(parentDir, "Engine", "Content");
-            if (!Directory.Exists(engineContentDir))
+            var candidates = new[]
             {
-                LogDebug($"Engine content not found at: {engineContentDir}");
+                Path.Combine(gameRootPath, "Engine", "Content"),
+                Path.Combine(Directory.GetParent(gameRootPath)?.FullName ?? "", "Engine", "Content"),
+            };
+
+            string? engineContentDir = null;
+            foreach (var candidate in candidates)
+            {
+                if (!string.IsNullOrEmpty(candidate) && Directory.Exists(candidate))
+                {
+                    engineContentDir = candidate;
+                    break;
+                }
+            }
+
+            if (engineContentDir == null)
+            {
+                LogDebug($"Engine content not found at: {candidates[0]} or parent path");
                 return;
             }
 
-            var engineRoot = Path.Combine(parentDir, "Engine");
+            var engineRoot = Path.GetDirectoryName(engineContentDir)!;
             var baseDir = new DirectoryInfo(engineRoot);
             var filesAdded = 0;
 
@@ -559,34 +591,122 @@ public class AnimationParser : IDisposable
         AnimToDbPath.Clear();
         if (_provider == null) return;
 
-        var dbPath = Path.Combine(ContentDir, "DB");
-        if (!Directory.Exists(dbPath)) return;
-
-        foreach (var charDir in Directory.GetDirectories(Path.Combine(dbPath, "AI", "Archetypes")))
+        var archetypesRoot = Path.Combine(ContentDir, "DB", "AI", "Archetypes");
+        if (Directory.Exists(archetypesRoot))
         {
-            var attacksDir = Path.Combine(charDir, "Attacks");
-            if (!Directory.Exists(attacksDir)) continue;
-
-            foreach (var weaponDir in Directory.GetDirectories(attacksDir))
+            foreach (var charDir in Directory.GetDirectories(archetypesRoot))
             {
-                foreach (var subDir in Directory.GetDirectories(weaponDir))
-                    ScanDbDirForMapping(subDir);
-                ScanDbDirForMapping(weaponDir);
+                if (SkipDirectories.Contains(Path.GetFileName(charDir))) continue;
+                var attacksDir = Path.Combine(charDir, "Attacks");
+                if (Directory.Exists(attacksDir))
+                    ScanDbDirForMapping(attacksDir);
             }
         }
 
-        var mainCharCombos = Path.Combine(dbPath, "_MainChar", "Combos", "Attacks");
+        var mainCharCombos = Path.Combine(ContentDir, "DB", "_MainChar", "Combos", "Attacks");
         if (Directory.Exists(mainCharCombos))
-        {
-            foreach (var weaponDir in Directory.GetDirectories(mainCharCombos))
-            {
-                foreach (var subDir in Directory.GetDirectories(weaponDir))
-                    ScanDbDirForMapping(subDir);
-                ScanDbDirForMapping(weaponDir);
-            }
-        }
+            ScanDbDirForMapping(mainCharCombos);
 
         LogDebug($"[MAP] Built anim→DB mapping: {AnimToDbPath.Count} entries");
+    }
+
+    private static bool IsNonAttackDbAsset(string fileName)
+    {
+        var lower = fileName.ToLowerInvariant();
+        return lower.Contains("hitboxdata")
+            || lower.Contains("datatable")
+            || lower.Contains("playratecurve");
+    }
+
+    public List<MoveInfo> ScanArchetypeAttackDbs()
+    {
+        var moves = new List<MoveInfo>();
+        if (_provider == null) return moves;
+
+        var archetypesDir = Path.Combine(ContentDir, "DB", "AI", "Archetypes");
+        if (Directory.Exists(archetypesDir))
+        {
+            foreach (var charDir in Directory.GetDirectories(archetypesDir))
+            {
+                var character = Path.GetFileName(charDir);
+                if (SkipDirectories.Contains(character)) continue;
+                character = CanonicalCharacterName(character);
+                ScanAttackDbDir(charDir, character, moves);
+            }
+        }
+
+        var mainCharAttacks = Path.Combine(ContentDir, "DB", "_MainChar", "Combos", "Attacks");
+        if (Directory.Exists(mainCharAttacks))
+            ScanAttackDbDir(mainCharAttacks, "MainChar", moves);
+
+        return moves
+            .OrderBy(m => m.Character, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(m => m.WeaponType, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(m => m.Category, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(m => m.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private void ScanAttackDbDir(string dir, string character, List<MoveInfo> moves)
+    {
+        foreach (var file in Directory.GetFiles(dir, "*.uasset"))
+        {
+            var fileName = Path.GetFileNameWithoutExtension(file);
+            if (IsNonAttackDbAsset(fileName)) continue;
+
+            string baseDir;
+            if (string.Equals(character, "MainChar", StringComparison.OrdinalIgnoreCase))
+                baseDir = Path.Combine(ContentDir, "DB", "_MainChar", "Combos", "Attacks");
+            else
+                baseDir = Path.Combine(ContentDir, "DB", "AI", "Archetypes", character);
+
+            var relDir = Path.GetRelativePath(baseDir, Path.GetDirectoryName(file)!).Replace('\\', '/');
+
+            var category = EnemyAttackScanner.DetermineCategory(relDir, fileName);
+            var weaponType = EnemyAttackScanner.WeaponTypeFromRelDir(relDir);
+
+            var relPath = file.Substring(_contentPath.Length).TrimStart('\\', '/').Replace('\\', '/');
+            var gamePath = "Game/" + relPath.Replace(".uasset", "");
+
+            if (!HasAttackStruct(gamePath)) continue;
+
+            moves.Add(new MoveInfo
+            {
+                DisplayName = fileName,
+                FullPath = gamePath,
+                Character = character,
+                WeaponType = weaponType,
+                Category = category,
+                IsUsed = true,
+                EnemyType = character
+            });
+        }
+
+        foreach (var subDir in Directory.GetDirectories(dir))
+        {
+            var dirName = Path.GetFileName(subDir);
+            if (SkipDirectories.Contains(dirName)) continue;
+            ScanAttackDbDir(subDir, character, moves);
+        }
+    }
+
+    private bool HasAttackStruct(string gamePath)
+    {
+        try
+        {
+            var dbObj = _provider?.SafeLoadPackageObject<UObject>(gamePath);
+            if (dbObj == null && _overlayProvider != null)
+                dbObj = _overlayProvider.SafeLoadPackageObject<UObject>(gamePath);
+            if (dbObj == null) return false;
+
+            var mAttack = dbObj.Properties.FirstOrDefault(p => p.Name.Text == "m_Attack");
+            return mAttack?.Tag is StructProperty attackStruct &&
+                   attackStruct.Value.StructType is FStructFallback;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private void ScanDbDirForMapping(string dir)
@@ -870,6 +990,16 @@ public class AnimationParser : IDisposable
     public List<string> GetAvailableCharacters()
     {
         return CharacterMeshPaths.Keys.OrderBy(k => k).ToList();
+    }
+
+    private static string CanonicalCharacterName(string character)
+    {
+        foreach (var key in CharacterMeshPaths.Keys)
+        {
+            if (string.Equals(key, character, StringComparison.OrdinalIgnoreCase))
+                return key;
+        }
+        return character;
     }
 
     public ComboGraph? LoadMainCharComboTree()
@@ -1881,24 +2011,47 @@ public class AnimationParser : IDisposable
             "Game/Animations/MainChar/Attacks/Man/Barehands/LightCombo/MainChar_Attack_Man_Barehands_Pressure_TripleHit_BR"
     };
 
+    private UAnimSequence? LoadAnimSequence(string gamePath)
+    {
+        var obj = _provider!.SafeLoadPackageObject<UAnimSequence>(gamePath);
+        if (obj != null) return obj;
+
+        try
+        {
+            if (_provider.TryLoadPackage(gamePath, out var package) && package != null)
+            {
+                foreach (var export in package.GetExports())
+                {
+                    if (export is UAnimSequence anim)
+                    {
+                        LogDebug($"[ANIM] Export-name fallback OK: {gamePath}");
+                        return anim;
+                    }
+                }
+            }
+        }
+        catch { }
+        return null;
+    }
+
     public bool ValidateAnimation(string gamePath)
     {
         if (_provider == null) return false;
         try
         {
-            if (gamePath.Contains("DB/AI/Archetypes", StringComparison.OrdinalIgnoreCase))
+            if (MoveInfo.IsAttackDbGamePath(gamePath))
             {
                 var resolved = ResolveAnimationFromDB(gamePath);
                 if (string.IsNullOrEmpty(resolved)) return false;
-                var obj = _provider.SafeLoadPackageObject<UAnimSequence>(resolved);
+                var obj = LoadAnimSequence(resolved);
                 if (obj == null) return false;
                 var skeletonObj = obj.Skeleton?.Load<USkeleton>();
                 return skeletonObj != null;
             }
 
-            var animObj = _provider.SafeLoadPackageObject<UAnimSequence>(gamePath);
+            var animObj = LoadAnimSequence(gamePath);
             if (animObj == null && AnimFallbacks.TryGetValue(gamePath, out var fallback))
-                animObj = _provider.SafeLoadPackageObject<UAnimSequence>(fallback);
+                animObj = LoadAnimSequence(fallback);
             if (animObj == null) return false;
 
             var skeleton = animObj.Skeleton?.Load<USkeleton>();
@@ -1911,7 +2064,7 @@ public class AnimationParser : IDisposable
     {
         if (_provider == null) return null;
 
-        if (gamePath.Contains("DB/AI/Archetypes", StringComparison.OrdinalIgnoreCase))
+        if (MoveInfo.IsAttackDbGamePath(gamePath))
         {
             var resolved = ResolveAnimationFromDB(gamePath);
             if (string.IsNullOrEmpty(resolved)) return null;
@@ -1921,11 +2074,11 @@ public class AnimationParser : IDisposable
         try
         {
             LogDebug($"[ANIM] Loading: {gamePath}");
-            var obj = _provider.SafeLoadPackageObject<UAnimSequence>(gamePath);
+            var obj = LoadAnimSequence(gamePath);
             LogDebug($"[ANIM] Direct load: {(obj != null ? "OK" : "null")}");
 
             if (obj == null && AnimFallbacks.TryGetValue(gamePath, out var fallback))
-                obj = _provider.SafeLoadPackageObject<UAnimSequence>(fallback);
+                obj = LoadAnimSequence(fallback);
 
             if (obj == null) return null;
 
@@ -1947,6 +2100,7 @@ public class AnimationParser : IDisposable
                         }
                     }
                 }
+                LogDebug($"[ANIM] Skeleton load failed for {gamePath}");
                 return null;
             }
 

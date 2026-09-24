@@ -84,7 +84,18 @@ public static class EnemyAttackScanner
         }
     }
 
-    private static string DetermineCategory(string relDir, string fileName)
+    internal static string WeaponTypeFromRelDir(string relDir)
+    {
+        if (relDir.Contains("Staff")) return "Staff";
+        if (relDir.Contains("Blade") || relDir.Contains("Machete") || relDir.Contains("Dagger")) return "Blades";
+        if (relDir.Contains("Bat") || relDir.Contains("Blunt")) return "Bats";
+        if (relDir.Contains("Meteor") || relDir.Contains("Hammer")) return "MeteorHammer";
+        if (relDir.Contains("TriStaff")) return "TriStaff";
+        if (relDir.Contains("P1Attack") || relDir.Contains("P2Attack") || relDir.Contains("P3Attack")) return "BareHands";
+        return "BareHands";
+    }
+
+    internal static string DetermineCategory(string relDir, string fileName)
     {
         string lower = (relDir + "/" + fileName).ToLowerInvariant();
 

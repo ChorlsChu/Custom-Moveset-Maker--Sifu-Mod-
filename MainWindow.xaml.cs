@@ -52,7 +52,7 @@ public partial class MainWindow : Window
     private List<MoveInfo> _allLocomotion = [];
     private string _settingsPath;
     private string _contentPath = "";
-    private string _outputPath = "";
+    private string _outputPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods");
     private bool _initialized = false;
     private ComboGraph? _comboGraph;
     private Dictionary<int, Point> _nodePositions = new();
@@ -71,8 +71,8 @@ public partial class MainWindow : Window
     private DateTime _lastPanTick = DateTime.UtcNow;
     private readonly DispatcherTimer _searchDebounceTimer;
 
-    private readonly HashSet<string> _expandedEnemies = new();
-    private readonly Dictionary<string, HashSet<string>> _expandedWeapons = new();
+    private readonly HashSet<string> _expandedEnemies = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, HashSet<string>> _expandedWeapons = new(StringComparer.OrdinalIgnoreCase);
 
     private Border? _selectedMoveBorder;
     private int _selectedNodeId = -1;
@@ -189,7 +189,6 @@ public partial class MainWindow : Window
             _searchDebounceTimer.Stop();
             FilterMoves();
         };
-        Loaded += MainWindow_Loaded;
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -205,15 +204,15 @@ public partial class MainWindow : Window
 
         cmbSpeed.SelectedIndex = 2;
 
-        PreviewKeyDown += MainWindow_PreviewKeyDown;
-        PreviewKeyUp += MainWindow_PreviewKeyUp;
-
         _panTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
         _panTimer.Tick += PanTimer_Tick;
         _panTimer.Start();
 
         await LoadSettingsAsync();
+        if (!_initInProgress)
+            loadingOverlay.Visibility = Visibility.Collapsed;
         _initialized = true;
+        tabMoves.SelectedIndex = TabVanilla;
     }
 
     private void WebView_NavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
@@ -245,28 +244,61 @@ public partial class MainWindow : Window
             {
                 var json = File.ReadAllText(_settingsPath);
                 var settings = JsonConvert.DeserializeObject<Settings>(json);
-                if (settings != null && !string.IsNullOrEmpty(settings.ContentPath))
+                if (settings != null)
                 {
-                    _contentPath = settings.ContentPath;
-                    if (!string.IsNullOrEmpty(settings.OutputPath))
-                        _outputPath = settings.OutputPath;
+                    if (!string.IsNullOrEmpty(settings.UnrealPakPath))
+                        Setup.ContentExtractor.CustomUnrealPakPath = settings.UnrealPakPath;
+                    if (!string.IsNullOrEmpty(settings.CryptoJsonPath))
+                        Setup.ContentExtractor.CustomCryptoJsonPath = settings.CryptoJsonPath;
 
-                    chkShowLines.IsChecked = settings.ShowLines;
-                    _savedCameraPos = settings.CameraPosition;
-                    _savedCameraTarget = settings.CameraTarget;
-
-                    var detection = ContentDetector.Detect(_contentPath);
-                    if (detection.IsValid)
+                    if (!string.IsNullOrEmpty(settings.ContentPath))
                     {
-                        await InitializeParserAsync();
-                        return settings;
+                        _contentPath = settings.ContentPath;
+                        if (!string.IsNullOrWhiteSpace(settings.OutputPath) && Directory.Exists(settings.OutputPath))
+                            _outputPath = settings.OutputPath;
+                        else
+                            _outputPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods");
+
+                        chkShowLines.IsChecked = settings.ShowLines;
+                        _savedCameraPos = settings.CameraPosition;
+                        _savedCameraTarget = settings.CameraTarget;
+
+                        var detection = ContentDetector.Detect(_contentPath);
+                        if (detection.IsValid)
+                        {
+                            await InitializeParserAsync();
+                            return settings;
+                        }
+
+                        var failedReason = detection.Reason;
+                        var failedPath = _contentPath;
+
+                        var localContent = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "GameContent");
+                        var localDetection = ContentDetector.Detect(localContent);
+                        if (localDetection.IsValid)
+                        {
+                            _contentPath = localContent;
+                            SaveSettings();
+                            await InitializeParserAsync();
+                            return settings;
+                        }
+
+                        return await ShowSetupWizardAsync(SetupMode.Repair, failedReason, failedPath);
                     }
 
-                    var localContent = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "GameContent");
-                    var localDetection = ContentDetector.Detect(localContent);
-                    if (localDetection.IsValid)
+                    // Empty ContentPath — still try local GameContent before first-run wizard
+                    var emptyFallback = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "GameContent");
+                    if (ContentDetector.Detect(emptyFallback).IsValid)
                     {
-                        _contentPath = localContent;
+                        _contentPath = emptyFallback;
+                        if (!string.IsNullOrWhiteSpace(settings.OutputPath) && Directory.Exists(settings.OutputPath))
+                            _outputPath = settings.OutputPath;
+                        else
+                            _outputPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods");
+                        chkShowLines.IsChecked = settings.ShowLines;
+                        _savedCameraPos = settings.CameraPosition;
+                        _savedCameraTarget = settings.CameraTarget;
+                        SaveSettings();
                         await InitializeParserAsync();
                         return settings;
                     }
@@ -278,14 +310,20 @@ public partial class MainWindow : Window
             }
         }
 
-        return await ShowSetupWizardAsync();
+        return await ShowSetupWizardAsync(SetupMode.FirstRun);
     }
 
-    private async Task<Settings> ShowSetupWizardAsync()
+    private async Task<Settings> ShowSetupWizardAsync(
+        SetupMode mode = SetupMode.FirstRun,
+        string? repairReason = null,
+        string? previousPath = null)
     {
         var wizard = new SetupWizard
         {
             Owner = this,
+            Mode = mode,
+            RepairReason = repairReason,
+            PreviousContentPath = previousPath,
         };
 
         if (wizard.ShowDialog() == true && !string.IsNullOrEmpty(wizard.SelectedContentPath))
@@ -301,8 +339,16 @@ public partial class MainWindow : Window
             return new Settings { ContentPath = _contentPath, OutputPath = _outputPath };
         }
 
-        // User skipped or cancelled — app will run with limited functionality
-        txtStatus.Text = "No game content loaded. Some features won't be available.";
+        if (mode == SetupMode.Repair)
+        {
+            txtStatus.Text = "Vanilla files still missing. Some features won't be available.";
+            ShowToast("Vanilla files missing — open Setup anytime from Settings");
+        }
+        else
+        {
+            txtStatus.Text = "No game content loaded. Some features won't be available.";
+        }
+        loadingOverlay.Visibility = Visibility.Collapsed;
         return new Settings { ContentPath = _contentPath };
     }
 
@@ -317,7 +363,9 @@ public partial class MainWindow : Window
             OutputPath = _outputPath,
             ShowLines = chkShowLines.IsChecked == true,
             CameraPosition = _savedCameraPos,
-            CameraTarget = _savedCameraTarget
+            CameraTarget = _savedCameraTarget,
+            UnrealPakPath = Setup.ContentExtractor.CustomUnrealPakPath ?? "",
+            CryptoJsonPath = Setup.ContentExtractor.CustomCryptoJsonPath ?? "",
         };
         File.WriteAllText(_settingsPath, JsonConvert.SerializeObject(settings, Formatting.Indented));
     }
@@ -328,8 +376,11 @@ public partial class MainWindow : Window
         loadingDetail.Text = detail;
     }
 
+    private bool _initInProgress;
     private async Task InitializeParserAsync()
     {
+        if (_initInProgress) return;
+        _initInProgress = true;
         try
         {
             var contentPath = Path.Combine(_contentPath, "Content");
@@ -347,10 +398,15 @@ public partial class MainWindow : Window
             foreach (var move in _allMoves)
                 move.IsUsed = usedPaths.Contains(move.FullPath);
 
+            UpdateLoading("Scanning attack DBs...", "Finding archetype attack moves...");
+            var attackDbMoves = await Task.Run(() => _parser.ScanArchetypeAttackDbs());
+            _allMoves.AddRange(attackDbMoves);
+
             UpdateLoading("Scanning get-up animations...", "Finding enemy get-up moves...");
             var getUpMoves = await Task.Run(() => _parser.ScanGetUpAnims());
             _allMoves.AddRange(getUpMoves);
             _allMoves = _allMoves.GroupBy(m => m.FullPath).Select(g => g.First()).ToList();
+            _allMoves = PreferAttackDbEntries(_allMoves);
 
             UpdateLoading($"Validating animations (0/{_allMoves.Count})...", "");
             var totalMoves = _allMoves.Count;
@@ -400,6 +456,7 @@ public partial class MainWindow : Window
         }
         finally
         {
+            _initInProgress = false;
             loadingOverlay.Visibility = Visibility.Collapsed;
             SetWebViewVisible(true);
         }
@@ -430,15 +487,26 @@ public partial class MainWindow : Window
 
     private async void ResetSettings_Click(object sender, RoutedEventArgs e)
     {
-        var res = MessageBox.Show("Delete settings.json and vanilla game files in app directory to save space?\n\nThis will remove settings.json and folder: " + Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Vanilla") + "\n\nYou will be asked to browse pak file again.", "Confirm Reset", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        var res = MessageBox.Show(
+            "Delete settings.json and vanilla game files in app directory to save space?\n\n" +
+            "This will remove settings.json and folders: Vanilla, VanillaBackup, extractedPaks.\n\n" +
+            "Setup will open so you can re-extract vanilla files (folder or pak).",
+            "Confirm Reset", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
         if (res != MessageBoxResult.OK) return;
         try {
             if (File.Exists(_settingsPath)) File.Delete(_settingsPath);
             var vanillaDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Vanilla");
             var vanillaAlt = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "VanillaBackup");
             var extractedDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "extractedPaks");
-            foreach (var dir in new[]{ vanillaDir, vanillaAlt, extractedDir })
+            var vanillaExtract = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "VanillaExtract");
+            foreach (var dir in new[]{ vanillaDir, vanillaAlt, extractedDir, vanillaExtract })
                 if (Directory.Exists(dir)) Directory.Delete(dir, true);
+            try
+            {
+                var tempStage = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "SifuPakStage");
+                if (Directory.Exists(tempStage)) Directory.Delete(tempStage, true);
+            }
+            catch { }
         } catch (Exception ex) { ErrorLog.Write("RESET", ex); }
         _contentPath = "";
         _outputPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods");
@@ -447,10 +515,27 @@ public partial class MainWindow : Window
         SaveSettings();
         settingsOverlay.Visibility = Visibility.Collapsed;
         SetWebViewVisible(true);
-        txtStatus.Text = "Settings reset — No vanilla game files found";
-        ShowToast("Settings reset — browse pak file to extract needed files");
+        txtStatus.Text = "Settings reset — open Setup to restore vanilla files";
+        ShowToast("Settings reset — Setup will open to re-extract vanilla files");
         try { _parser?.Dispose(); } catch {}
-        await InitializeParserAsync();
+
+        var wizard = new Setup.SetupWizard
+        {
+            Owner = this,
+            Mode = Setup.SetupMode.FirstRun,
+            RepairReason = "Settings and vanilla files were reset.",
+        };
+        if (wizard.ShowDialog() == true && !string.IsNullOrEmpty(wizard.SelectedContentPath))
+        {
+            _contentPath = wizard.SelectedContentPath;
+            SaveSettings();
+            await InitializeParserAsync();
+        }
+        else
+        {
+            txtStatus.Text = "No game content loaded. Open Settings → Open Setup to restore.";
+            loadingOverlay.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void BrowseContent_Click(object sender, RoutedEventArgs e)
@@ -460,6 +545,37 @@ public partial class MainWindow : Window
         {
             var sel = dlg.FolderName;
             txtSettingsContentPath.Text = sel;
+        }
+    }
+
+    private async void OpenSetup_Click(object sender, RoutedEventArgs e)
+    {
+        settingsOverlay.Visibility = Visibility.Collapsed;
+        SetWebViewVisible(true);
+
+        var detect = ContentDetector.Detect(_contentPath);
+        var mode = Setup.SetupMode.Repair;
+        var reason = detect.IsValid
+            ? "Re-point or re-extract vanilla content."
+            : detect.Reason;
+
+        var wizard = new Setup.SetupWizard
+        {
+            Owner = this,
+            Mode = mode,
+            RepairReason = reason,
+            PreviousContentPath = _contentPath,
+        };
+
+        if (wizard.ShowDialog() == true && !string.IsNullOrEmpty(wizard.SelectedContentPath))
+        {
+            _contentPath = wizard.SelectedContentPath;
+            txtSettingsContentPath.Text = _contentPath;
+            SaveSettings();
+            try { _parser?.Dispose(); } catch { }
+            await InitializeParserAsync();
+            txtStatus.Text = $"Content path updated: {_contentPath}";
+            ShowToast("Vanilla content refreshed");
         }
     }
 
@@ -478,7 +594,7 @@ public partial class MainWindow : Window
             ShowToast("Content Path does not exist");
             return;
         }
-        if (!string.IsNullOrEmpty(newContent) && !File.Exists(Path.Combine(newContent.EndsWith("Content", StringComparison.OrdinalIgnoreCase) ? newContent : Path.Combine(newContent, "Content"), "DB/_MainChar/Combos/MainChar_ComboTree.uasset")) && !Directory.Exists(Path.Combine(newContent, "Sifu")))
+        if (!string.IsNullOrEmpty(newContent) && !File.Exists(Path.Combine(Setup.ContentDetector.ResolveContentDir(newContent), "DB/_MainChar/Combos/MainChar_ComboTree.uasset")) && !Directory.Exists(Path.Combine(newContent, "Sifu")))
         {
             // validation: try to find pakchunk0 marker
             if (!Directory.Exists(Path.Combine(newContent, "Engine")) && !File.Exists(Path.Combine(newContent, "DB/_MainChar/Combos/MainChar_ComboTree.uasset")))
@@ -487,7 +603,7 @@ public partial class MainWindow : Window
         _contentPath = newContent;
         _outputPath = newOutput;
         SaveSettings();
-        try { _parser?.Dispose(); var cDir = _contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase) ? _contentPath : Path.Combine(_contentPath, "Content"); var fresh = new AnimationParser(); fresh.Initialize(_contentPath, cDir); fresh.MountCustomIntoProvider(TempCustomMovesRoot); _parser = fresh; } catch (Exception ex) { ErrorLog.Write("SETTINGS", ex); }
+        try { _parser?.Dispose(); var cDir = Setup.ContentDetector.ResolveContentDir(_contentPath); var fresh = new AnimationParser(); fresh.Initialize(_contentPath, cDir); fresh.MountCustomIntoProvider(TempCustomMovesRoot); _parser = fresh; } catch (Exception ex) { ErrorLog.Write("SETTINGS", ex); }
         settingsOverlay.Visibility = Visibility.Collapsed;
         SetWebViewVisible(true);
         txtStatus.Text = "Settings saved — provider re-initialized";
@@ -572,8 +688,14 @@ public partial class MainWindow : Window
 
         bool IsCustom(MoveInfo m) => string.Equals(m.Category, "Custom", StringComparison.OrdinalIgnoreCase);
         var customMoves = filtered.Where(m => IsCustom(m) && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
-        var vanillaMoves = filtered.Where(m => !IsCustom(m) && m.IsUsed && m.IsValid && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
-        var unusedMoves = filtered.Where(m => !IsCustom(m) && !m.IsUsed && m.IsValid && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
+        var vanillaMoves = filtered.Where(m =>
+            !IsCustom(m) && m.IsUsed && m.IsValid && !string.IsNullOrWhiteSpace(m.DisplayName) &&
+            IsVanillaLibraryCard(m)).ToList();
+        // Other: everything non-custom that isn't a valid used vanilla card
+        // (includes !IsValid so a missing dependency can't blank the whole library)
+        var unusedMoves = filtered.Where(m =>
+            !IsCustom(m) && !string.IsNullOrWhiteSpace(m.DisplayName) &&
+            !(m.IsUsed && m.IsValid && IsVanillaLibraryCard(m))).ToList();
 
         bool useAccordion = string.IsNullOrEmpty(searchText);
 
@@ -606,7 +728,7 @@ public partial class MainWindow : Window
         txtMoveCount.Text = $"{vanillaMoves.Count} vanilla / {unusedMoves.Count} other / {filteredLoco.Count} stances / {customMoves.Count} custom";
     }
 
-    private static readonly string[] MainCharWeaponOrder = ["BareHands", "Bat", "Staff", "Knife"];
+    private static readonly string[] MainCharWeaponOrder = ["BareHands", "Bat", "Staff", "Knife", "Special", "Special Combos"];
 
     private void BuildMainCharLibraryMoves()
     {
@@ -625,18 +747,110 @@ public partial class MainWindow : Window
             if (graph == null) continue;
 
             var list = new List<MoveInfo>();
-            foreach (var node in graph.Nodes.Where(n => !n.IsRoot && !string.IsNullOrEmpty(n.DefaultAnimPath)))
+            foreach (var node in graph.Nodes.Where(n => !n.IsRoot &&
+                (!string.IsNullOrEmpty(n.DefaultDBPath) || !string.IsNullOrEmpty(n.DefaultAnimPath))))
             {
-                var match = _allMoves.FirstOrDefault(m => m.FullPath == node.DefaultAnimPath);
-                if (match != null && !list.Contains(match))
+                var match =
+                    (!string.IsNullOrEmpty(node.DefaultDBPath)
+                        ? _allMoves.FirstOrDefault(m => m.FullPath == node.DefaultDBPath)
+                        : null)
+                    ?? (!string.IsNullOrEmpty(node.DefaultAnimPath)
+                        ? _allMoves.FirstOrDefault(m => m.FullPath == node.DefaultAnimPath)
+                        : null);
+                if (match != null && !list.Contains(match) && !IsMainCharSpecialGroupCard(match))
                     list.Add(match);
             }
             if (list.Count > 0)
                 _mainCharWeaponMoves[label] = list;
         }
 
+        var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var list in _mainCharWeaponMoves.Values)
+        {
+            foreach (var m in list)
+            {
+                if (!string.IsNullOrEmpty(m.FullPath))
+                    claimed.Add(m.FullPath);
+            }
+        }
+
+        var specials = new List<MoveInfo>();
+        var specialCombos = new List<MoveInfo>();
+        foreach (var m in _allMoves)
+        {
+            if (string.IsNullOrEmpty(m.FullPath) || claimed.Contains(m.FullPath)) continue;
+            if (IsSpecialComboDb(m))
+                specialCombos.Add(m);
+            else if (IsSpecialDb(m))
+                specials.Add(m);
+        }
+
+        if (specials.Count > 0)
+            _mainCharWeaponMoves["Special"] = specials
+                .OrderBy(m => m.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        if (specialCombos.Count > 0)
+            _mainCharWeaponMoves["Special Combos"] = specialCombos
+                .OrderBy(m => m.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
         ErrorLog.Write("LIBRARY", new Exception(
             $"MainChar library: {string.Join(", ", _mainCharWeaponMoves.Select(kv => $"{kv.Key}={kv.Value.Count}"))}"));
+    }
+
+    private static bool IsAttackDbPath(string fullPath) =>
+        MoveInfo.IsAttackDbGamePath(fullPath);
+
+    private static bool IsMainCharSpecialCombo(MoveInfo m)
+    {
+        var p = m.FullPath ?? "";
+        if (p.Contains("/MainChar/Attacks/SpecialCombos/", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var file = p[(p.LastIndexOf('/') + 1)..];
+        return file.StartsWith("MainChar_Attack_SpecialCombo", StringComparison.OrdinalIgnoreCase)
+            || file.StartsWith("MainChar_Special_Combo", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSpecialComboDb(MoveInfo m)
+    {
+        var p = m.FullPath ?? "";
+        if (!p.Contains("DB/_MainChar", StringComparison.OrdinalIgnoreCase)) return false;
+        if (IsMainCharSpecialCombo(m)) return true;
+        return p.Contains("_SpecialCombo", StringComparison.OrdinalIgnoreCase)
+            || p.Contains("SpecialCombos", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSpecialDb(MoveInfo m)
+    {
+        var p = m.FullPath ?? "";
+        if (!p.Contains("DB/_MainChar", StringComparison.OrdinalIgnoreCase)) return false;
+        if (IsSpecialComboDb(m)) return false;
+        return p.Contains("/_Special/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsMainCharSpecialGroupCard(MoveInfo m) =>
+        IsSpecialComboDb(m) || IsSpecialDb(m) || IsMainCharSpecialCombo(m);
+
+    private static bool IsVanillaLibraryCard(MoveInfo m) =>
+        IsAttackDbPath(m.FullPath ?? "")
+        || string.Equals(m.Category, "GetUp", StringComparison.OrdinalIgnoreCase);
+
+    private static List<MoveInfo> PreferAttackDbEntries(List<MoveInfo> moves)
+    {
+        var dbKeys = new HashSet<(string character, string name)>(
+            moves
+                .Where(m => IsAttackDbPath(m.FullPath))
+                .Select(m => (m.Character.ToLowerInvariant(), m.DisplayName.ToLowerInvariant())));
+
+        return moves
+            .Where(m =>
+            {
+                if (IsAttackDbPath(m.FullPath)) return true;
+                var key = (m.Character.ToLowerInvariant(), m.DisplayName.ToLowerInvariant());
+                return !dbKeys.Contains(key);
+            })
+            .ToList();
     }
 
     private List<object> BuildAccordionList(List<MoveInfo> moves, bool includeComboTreeMoves = true)
@@ -683,11 +897,15 @@ public partial class MainWindow : Window
         }
 
         var enemyGroups = moves
-            .GroupBy(m => m.Character)
-            .OrderBy(g => g.Key);
+            .GroupBy(m => m.Character, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase);
 
         foreach (var enemyGroup in enemyGroups)
         {
+            if (includeComboTreeMoves &&
+                string.Equals(enemyGroup.Key, "MainChar", StringComparison.OrdinalIgnoreCase))
+                continue;
+
             var enemyExpanded = _expandedEnemies.Contains(enemyGroup.Key);
 
             result.Add(new GroupHeader
@@ -733,8 +951,12 @@ public partial class MainWindow : Window
     {
         bool IsCustom(MoveInfo m) => string.Equals(m.Category, "Custom", StringComparison.OrdinalIgnoreCase);
         var customMoves = moves.Where(m => IsCustom(m) && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
-        var vanillaMoves = moves.Where(m => !IsCustom(m) && m.IsUsed && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
-        var unusedMoves = moves.Where(m => !IsCustom(m) && !m.IsUsed && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
+        var vanillaMoves = moves.Where(m =>
+            !IsCustom(m) && m.IsUsed && !string.IsNullOrWhiteSpace(m.DisplayName) &&
+            IsVanillaLibraryCard(m)).ToList();
+        var unusedMoves = moves.Where(m =>
+            !IsCustom(m) && !string.IsNullOrWhiteSpace(m.DisplayName) &&
+            (!m.IsUsed || !IsVanillaLibraryCard(m))).ToList();
 
         listVanilla.ItemsSource = BuildAccordionList(vanillaMoves);
         listUnused.ItemsSource = BuildAccordionList(unusedMoves, includeComboTreeMoves: false);
@@ -753,8 +975,8 @@ public partial class MainWindow : Window
     {
         var result = new List<object>();
         var grouped = moves
-            .GroupBy(m => m.Character)
-            .OrderBy(g => g.Key);
+            .GroupBy(m => m.Character, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase);
 
         foreach (var charGroup in grouped)
         {
@@ -914,6 +1136,7 @@ public partial class MainWindow : Window
             SelectMoveCard(border);
 
             txtStatus.Text = $"Loading: {move.DisplayName}...";
+            SetSourceTypeDisplay(move.SourceType);
             txtDisplayName.Text = "Display: -";
             ShowPreviewOverlay();
 
@@ -964,6 +1187,14 @@ public partial class MainWindow : Window
             badges.Children.Add(CreateTagBadge(move.WeaponType));
         if (!string.IsNullOrEmpty(move.Category))
             badges.Children.Add(CreateTagBadge(move.Category));
+        if (string.Equals(move.SourceType, "Animation File", StringComparison.OrdinalIgnoreCase))
+        {
+            var animBadge = CreateTagBadge("Anim");
+            animBadge.Background = new SolidColorBrush(Color.FromRgb(0xa6, 0xe3, 0xa1));
+            if (animBadge.Child is TextBlock animLabel)
+                animLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x1e, 0x1e, 0x2e));
+            badges.Children.Add(animBadge);
+        }
 
         var nameBlock = new TextBlock
         {
@@ -1009,6 +1240,25 @@ public partial class MainWindow : Window
                 _dragPopup.PlacementRectangle = new Rect(pt.X + 16, pt.Y + 16, 0, 0);
         };
         _dragTimer.Start();
+    }
+
+    private void SetSourceTypeDisplay(string sourceType)
+    {
+        txtSourceType.Text = $"Type: {sourceType}";
+        txtSourceType.Foreground = sourceType switch
+        {
+            "Attack DB" => new SolidColorBrush(Color.FromRgb(0x89, 0xb4, 0xfa)),
+            "Animation File" => new SolidColorBrush(Color.FromRgb(0xa6, 0xe3, 0xa1)),
+            "Custom" => new SolidColorBrush(Color.FromRgb(0xcb, 0xa6, 0xf7)),
+            _ => new SolidColorBrush(Color.FromRgb(0xa6, 0xad, 0xc8)),
+        };
+    }
+
+    private static string ComboNodeTypePath(ComboNode node)
+    {
+        if (!string.IsNullOrEmpty(node.DefaultDBPath)) return node.DefaultDBPath;
+        if (!string.IsNullOrEmpty(node.SourceDBPath)) return node.SourceDBPath;
+        return node.AnimPath;
     }
 
     private static Border CreateTagBadge(string text)
@@ -1249,13 +1499,86 @@ public partial class MainWindow : Window
         }
     }
 
+    private static bool IsBarehandsWeaponTag(string? weaponTag) =>
+        !string.IsNullOrEmpty(weaponTag) && weaponTag.EndsWith("Barehands", StringComparison.OrdinalIgnoreCase);
+
+    private static string? NormalizeWeaponForCache(string arch, string? weaponTag)
+    {
+        if (string.IsNullOrEmpty(weaponTag)) return null;
+        if (string.Equals(arch, "MainChar", StringComparison.OrdinalIgnoreCase)) return weaponTag;
+        return IsBarehandsWeaponTag(weaponTag) ? null : weaponTag;
+    }
+
+    private static bool IsActiveBarehands(string arch, string weaponTag)
+    {
+        if (string.Equals(arch, "MainChar", StringComparison.OrdinalIgnoreCase))
+            return string.Equals(weaponTag, "MainChar_Barehands", StringComparison.OrdinalIgnoreCase);
+        return IsBarehandsWeaponTag(weaponTag);
+    }
+
     private string GetUnitCacheKey()
     {
         var arch = _activeStance?.Split('|')[0] ?? "MainChar";
+        var weapon = NormalizeWeaponForCache(arch, _activeWeapon);
         var parts = new List<string> { arch };
         if (!string.IsNullOrEmpty(_activeVariant)) parts.Add(_activeVariant);
-        if (!string.IsNullOrEmpty(_activeWeapon)) parts.Add(_activeWeapon);
+        if (!string.IsNullOrEmpty(weapon)) parts.Add(weapon);
         return string.Join("|", parts);
+    }
+
+    private string? ResolveProjectUnitCacheKey(
+        Dictionary<string, UnitCacheEntry> caches,
+        string savedStance,
+        string? savedVariant,
+        string? savedWeapon)
+    {
+        if (caches == null || caches.Count == 0) return null;
+
+        string arch = savedStance.Split('|')[0];
+
+        var preferredParts = new List<string> { arch };
+        if (!string.IsNullOrEmpty(savedVariant)) preferredParts.Add(savedVariant);
+        if (!string.IsNullOrEmpty(savedWeapon)) preferredParts.Add(savedWeapon);
+        string preferredKey = string.Join("|", preferredParts);
+        if (caches.ContainsKey(preferredKey)) return preferredKey;
+
+        if (!string.IsNullOrEmpty(_activeStance))
+        {
+            string currentArch = _activeStance.Split('|')[0];
+            if (string.Equals(currentArch, arch, StringComparison.OrdinalIgnoreCase))
+            {
+                string currentKey = GetUnitCacheKey();
+                if (caches.ContainsKey(currentKey)) return currentKey;
+            }
+        }
+
+        var candidates = caches.Keys
+            .Where(k => k.Equals(arch, StringComparison.OrdinalIgnoreCase)
+                || k.StartsWith(arch + "|", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (candidates.Count == 0) return null;
+
+        if (!string.IsNullOrEmpty(savedWeapon))
+        {
+            var byWeapon = candidates.FirstOrDefault(k =>
+                k.EndsWith("|" + savedWeapon, StringComparison.OrdinalIgnoreCase)
+                || k.IndexOf(savedWeapon, StringComparison.OrdinalIgnoreCase) >= 0);
+            if (byWeapon != null) return byWeapon;
+        }
+
+        if (!string.IsNullOrEmpty(savedVariant))
+        {
+            var byVariant = candidates.FirstOrDefault(k =>
+                k.IndexOf(savedVariant, StringComparison.OrdinalIgnoreCase) >= 0);
+            if (byVariant != null) return byVariant;
+        }
+
+        var byDefault = candidates.FirstOrDefault(k =>
+            k.EndsWith("Barehands", StringComparison.OrdinalIgnoreCase)
+            || k.EndsWith("_Base", StringComparison.OrdinalIgnoreCase));
+        if (byDefault != null) return byDefault;
+
+        return candidates[0];
     }
 
     private Dictionary<string, Dictionary<int, Point>> CaptureAllUnitPositions()
@@ -1302,13 +1625,19 @@ public partial class MainWindow : Window
     private void SaveCurrentUnitToCache()
     {
         if (_comboGraph == null || string.IsNullOrEmpty(_activeStance)) return;
+
+        bool keyIsMainChar = string.Equals(_activeStance.Split('|')[0], "MainChar", StringComparison.OrdinalIgnoreCase);
+        bool graphIsMainChar = _comboGraph.Nodes.Any(n => n.Name == "MainChar_Stance");
+        if (keyIsMainChar != graphIsMainChar) return;
+
         var key = GetUnitCacheKey();
+        string archForWeapon = _activeStance.Split('|')[0];
         _unitCaches[key] = new UnitCacheEntry
         {
             Graph = _comboGraph,
             Positions = new Dictionary<int, Point>(_nodePositions),
             ActiveVariant = _activeVariant,
-            ActiveWeapon = _activeWeapon,
+            ActiveWeapon = NormalizeWeaponForCache(archForWeapon, _activeWeapon),
             Props = _currentUnitProps
         };
     }
@@ -1319,10 +1648,13 @@ public partial class MainWindow : Window
         _comboGraph = cached.Graph;
         _nodePositions = new Dictionary<int, Point>(cached.Positions);
         _activeVariant = cached.ActiveVariant;
-        _activeWeapon = cached.ActiveWeapon;
+        _activeWeapon = NormalizeWeaponForCache(
+            key.Contains('|') ? key.Split('|')[0] : key,
+            cached.ActiveWeapon);
         _currentUnitProps = cached.Props;
         _activeStance = key.Contains('|') ? key.Split('|')[0] : key;
         txtComboInfo.Text = $"{key} - {_comboGraph.WeaponName} ({_comboGraph.Nodes.Count} nodes, {_comboGraph.Edges.Count} edges)";
+        UpdateUnitPropertiesButtonVisibility();
         if (_comboGraph.Nodes.Count > 0 &&
             _comboGraph.Nodes.Any(n => !_nodePositions.ContainsKey(n.Id)))
         {
@@ -1355,8 +1687,11 @@ public partial class MainWindow : Window
             try
             {
                 var project = new EditorProject { Name = Path.GetFileNameWithoutExtension(dialog.FileName) };
-                ProjectManager.SaveWithCaches(project, _unitCaches, _activeStance, _activeVariant, dialog.FileName);
+                string saveArch = _activeStance?.Split('|')[0] ?? "MainChar";
+                ProjectManager.SaveWithCaches(project, _unitCaches, _activeStance, _activeVariant,
+                    NormalizeWeaponForCache(saveArch, _activeWeapon), dialog.FileName);
                 txtStatus.Text = $"Saved project: {dialog.FileName} ({_unitCaches.Count} units)";
+                ShowProjectFeedbackDialog(true, dialog.FileName, project.Name);
             }
             catch (Exception ex)
             {
@@ -1385,31 +1720,54 @@ public partial class MainWindow : Window
 
                 string savedStance = project.ActiveStance ?? "MainChar";
                 string? savedVariant = project.ActiveVariant;
+                string? savedWeapon = project.ActiveWeapon;
 
-                bool stanceMatches = string.Equals(_activeStance, savedStance, StringComparison.OrdinalIgnoreCase);
-                bool variantMatches = string.Equals(_activeVariant, savedVariant, StringComparison.OrdinalIgnoreCase);
-
-                if (!stanceMatches || (!variantMatches && savedVariant != null))
+                bool restoredFromCache = false;
+                string? restoredKey = null;
+                if (loadedCaches != null && _unitCaches.Count > 0)
                 {
-                    if (string.Equals(savedStance, "MainChar", StringComparison.OrdinalIgnoreCase))
+                    string? targetKey = ResolveProjectUnitCacheKey(_unitCaches, savedStance, savedVariant, savedWeapon);
+                    if (targetKey != null && TryRestoreUnitFromCache(targetKey))
                     {
-                        await SwitchStanceAsync(savedStance);
+                        restoredFromCache = true;
+                        restoredKey = targetKey;
+                        _comboTranslate.X = 0;
+                        _comboTranslate.Y = 0;
+                        SetStanceSelection(_activeStance);
+                        UpdateVariantButtonVisibility();
+                        UpdateWeaponButtonVisibility();
+                        UpdateUnitPropertiesButtonVisibility();
                     }
-                    else
+                }
+
+                if (!restoredFromCache)
+                {
+                    bool stanceMatches = string.Equals(_activeStance, savedStance, StringComparison.OrdinalIgnoreCase);
+                    bool variantMatches = string.Equals(_activeVariant, savedVariant, StringComparison.OrdinalIgnoreCase);
+
+                    if (!stanceMatches || (!variantMatches && savedVariant != null))
                     {
-                        SetStanceSelection(savedStance);
-                        _activeStance = savedStance;
-                        _activeWeapon = null;
-            UpdateVariantButtonVisibility();
-            UpdateWeaponButtonVisibility();
-            btnUnitProperties.Visibility = _activeStance == "MainChar" ? Visibility.Collapsed : Visibility.Visible;
-                        if (!string.IsNullOrEmpty(savedVariant))
+                        if (string.Equals(savedStance, "MainChar", StringComparison.OrdinalIgnoreCase))
                         {
-                            await LoadVariantComboGraphAsync(savedVariant);
+                            await SwitchStanceAsync(savedStance);
                         }
                         else
                         {
-                            await LoadArchetypeGraphAsync(savedStance);
+                            SetStanceSelection(savedStance);
+                            _activeStance = savedStance;
+                            _activeVariant = savedVariant;
+                            _activeWeapon = savedWeapon;
+                            UpdateVariantButtonVisibility();
+                            UpdateWeaponButtonVisibility();
+                            UpdateUnitPropertiesButtonVisibility();
+                            if (!string.IsNullOrEmpty(savedVariant))
+                            {
+                                await LoadVariantComboGraphAsync(savedVariant, saveCurrent: false);
+                            }
+                            else
+                            {
+                                await LoadArchetypeGraphAsync(savedStance);
+                            }
                         }
                     }
                 }
@@ -1507,12 +1865,38 @@ public partial class MainWindow : Window
 
                 LayoutComboGraph();
                 RenderComboGraph();
-                txtStatus.Text = $"Loaded project: {project.Name} ({swaps.Count} swaps, {savedEdges.Count} edges, {customNodes.Count} custom nodes)";
+                string restoredNote = restoredKey != null ? $", restored {restoredKey}" : "";
+                txtStatus.Text = $"Loaded project: {project.Name} ({_unitCaches.Count} units{restoredNote}, {swaps.Count} swaps, {savedEdges.Count} edges, {customNodes.Count} custom nodes)";
+                ShowProjectFeedbackDialog(false, dialog.FileName, project.Name, restoredKey);
             }
             catch (Exception ex)
             {
+                ErrorLog.Write("PROJECT", ex);
                 MessageBox.Show($"Failed to load project:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+    }
+
+    private void ShowProjectFeedbackDialog(bool isSave, string filePath, string projectName, string? restoredKey = null)
+    {
+        try
+        {
+            var units = ProjectChangeSummary.BuildFromUnitCaches(_unitCaches, _contentPath);
+            var mode = isSave ? "Save" : "Load";
+            var dlg = new ProjectFeedbackDialog(
+                mode,
+                isSave ? "Saved project changes" : "Loaded project changes",
+                projectName,
+                units,
+                restoredKey)
+            {
+                Owner = this
+            };
+            dlg.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write(isSave ? "PROJECT_FEEDBACK_SAVE" : "PROJECT_FEEDBACK_LOAD", ex);
         }
     }
 
@@ -1522,6 +1906,13 @@ public partial class MainWindow : Window
         {
             txtStatus.Text = "No combo graph loaded";
             return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_outputPath) || !Directory.Exists(_outputPath))
+        {
+            _outputPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods");
+            Directory.CreateDirectory(_outputPath);
+            SaveSettings();
         }
 
         SaveCurrentUnitToCache();
@@ -1697,7 +2088,7 @@ public partial class MainWindow : Window
             if (unrealPakPath == null)
             {
                 importDialog.ShowError("UnrealPak not found. Cannot extract mod pak.",
-                    "Missing: UnrealPak executable");
+                    "Missing: UnrealPak executable — place it in tools\\ue4\\UnrealPak\\UnrealPak.exe or set path via Settings → Open Setup");
                 return;
             }
 
@@ -1730,12 +2121,11 @@ public partial class MainWindow : Window
 
                 UI(() => importDialog.SetProgress(15));
 
-                // Step 3: Extract pak with CryptoKeys
+                // Step 3: Extract pak (decryption keys auto-provisioned)
                 UI(() => { importDialog.SetCurrentAction("Extracting pak file..."); importDialog.SetProgress(18); });
 
-                var unrealPakDir = Path.GetDirectoryName(unrealPakPath) ?? "";
-                var cryptoKeysPath = Path.Combine(unrealPakDir, "Crypto.json");
-                var hasCryptoKeys = File.Exists(cryptoKeysPath);
+                var cryptoKeysPath = Setup.ContentExtractor.EnsurePakKeysFile();
+                var hasCryptoKeys = cryptoKeysPath != null && File.Exists(cryptoKeysPath);
 
                 var extractArgs = hasCryptoKeys
                     ? $"\"{pakCopy}\" -CryptoKeys=\"{cryptoKeysPath}\" -Extract \"{stagingDir}\""
@@ -1751,6 +2141,7 @@ public partial class MainWindow : Window
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     CreateNoWindow = true,
+                    WorkingDirectory = Setup.ContentExtractor.EnsureUnrealPakWorkingDirectory(),
                 };
 
                 using var process = System.Diagnostics.Process.Start(psi);
@@ -2143,7 +2534,7 @@ public partial class MainWindow : Window
 
                         UpdateVariantButtonVisibility();
                         UpdateWeaponButtonVisibility();
-                        btnUnitProperties.Visibility = _activeStance == "MainChar" ? Visibility.Collapsed : Visibility.Visible;
+                        UpdateUnitPropertiesButtonVisibility();
 
                         if (!hasComboTree && detectedStanceLocal != null && _stanceMap.ContainsKey(detectedStanceLocal))
                         {
@@ -2185,7 +2576,7 @@ public partial class MainWindow : Window
 
                         UpdateVariantButtonVisibility();
                         UpdateWeaponButtonVisibility();
-                        btnUnitProperties.Visibility = Visibility.Visible;
+                        UpdateUnitPropertiesButtonVisibility();
                         txtComboInfo.Text = $"MOD ({arch} {variant}): Unit Properties only ({importedProps.Count})";
                         LayoutComboGraph();
                         RenderComboGraph();
@@ -2286,9 +2677,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            var vanillaContent = _contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase)
-                ? _contentPath
-                : Path.Combine(_contentPath, "Content");
+            var vanillaContent = Setup.ContentDetector.ResolveContentDir(_contentPath);
 
             int copied = 0;
             foreach (var animsDir in Directory.GetDirectories(extractRoot, "Animations", SearchOption.AllDirectories))
@@ -2532,7 +2921,7 @@ public partial class MainWindow : Window
             btnExport.IsEnabled = true;
             btnResetMode.Visibility = Visibility.Visible;
             btnResetAll.Visibility = Visibility.Visible;
-            btnUnitProperties.Visibility = Visibility.Collapsed;
+            UpdateUnitPropertiesButtonVisibility();
 
             cmbStance.Items.Clear();
             foreach (var key in _stanceMap.Keys)
@@ -2890,7 +3279,11 @@ public partial class MainWindow : Window
         _nodeBorders.Clear();
         _nodeLabels.Clear();
         _nodeInputBgs.Clear();
-        if (_comboGraph == null) return;
+        if (_comboGraph == null)
+        {
+            UpdateComboCanvasSize();
+            return;
+        }
 
         var existingNodeIds = new HashSet<int>(_comboGraph.Nodes.Select(n => n.Id));
         var nodeIdsWithEdges = new HashSet<int>();
@@ -3186,6 +3579,8 @@ public partial class MainWindow : Window
                 }
             }
         }
+
+        UpdateComboCanvasSize();
     }
 
     private void UpdateEdgesForNode(int nodeId)
@@ -3317,6 +3712,7 @@ public partial class MainWindow : Window
     private void ComboCanvas_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _canvasHitNode = false;
+        if (!comboCanvas.IsHitTestVisible) return;
         var hit = VisualTreeHelper.HitTest(comboCanvas, e.GetPosition(comboCanvas));
         if (hit != null)
         {
@@ -3335,13 +3731,14 @@ public partial class MainWindow : Window
 
     private void ComboCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (_canvasHitNode) return;
+        if (!comboCanvas.IsHitTestVisible || _canvasHitNode) return;
 
         _isPanning = true;
         _panMoved = false;
         _panStart = e.GetPosition(this);
         var hwnd = new WindowInteropHelper(this).Handle;
         SetCapture(hwnd);
+        comboBorder.CaptureMouse();
         comboToolbar.IsHitTestVisible = false;
         PreviewMouseLeftButtonUp += ComboPan_PreviewMouseLeftButtonUp;
         e.Handled = true;
@@ -3379,6 +3776,8 @@ public partial class MainWindow : Window
             return;
         }
         if (!_isPanning) return;
+        if (!comboBorder.IsMouseCaptured)
+            comboBorder.CaptureMouse();
         var panPos = e.GetPosition(this);
         var dx = panPos.X - _panStart.X;
         var dy = panPos.Y - _panStart.Y;
@@ -3396,6 +3795,7 @@ public partial class MainWindow : Window
             _dragCandidate = false;
             _dragNodeId = -1;
             if (comboCanvas.IsMouseCaptured) comboCanvas.ReleaseMouseCapture();
+            UpdateComboCanvasSize();
             e.Handled = true;
             return;
         }
@@ -3418,6 +3818,31 @@ public partial class MainWindow : Window
         }
         if (_selectedNodeId >= 0)
             ClearNodeSelection();
+    }
+
+    private void ComboBorder_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateComboCanvasSize();
+    }
+
+    private void UpdateComboCanvasSize()
+    {
+        double maxRight = 0;
+        double maxBottom = 0;
+        foreach (var pos in _nodePositions.Values)
+        {
+            maxRight = Math.Max(maxRight, pos.X + NODE_WIDTH);
+            maxBottom = Math.Max(maxBottom, pos.Y + NODE_HEIGHT);
+            maxBottom = Math.Max(maxBottom, pos.Y - 10 + INPUT_HEIGHT);
+        }
+
+        const double pad = 160;
+        double viewportW = comboBorder.ActualWidth;
+        double viewportH = comboBorder.ActualHeight;
+        double w = Math.Max(Math.Max(maxRight + pad, viewportW), 600);
+        double h = Math.Max(Math.Max(maxBottom + pad, viewportH), 400);
+        comboCanvas.Width = w;
+        comboCanvas.Height = h;
     }
 
     private int? HitTestNode(Point canvasPos)
@@ -3467,6 +3892,7 @@ public partial class MainWindow : Window
     {
         _isPanning = false;
         ReleaseCapture();
+        if (comboBorder.IsMouseCaptured) comboBorder.ReleaseMouseCapture();
         comboToolbar.IsHitTestVisible = true;
         PreviewMouseLeftButtonUp -= ComboPan_PreviewMouseLeftButtonUp;
     }
@@ -3612,6 +4038,20 @@ public partial class MainWindow : Window
             b.Tag is MoveInfo mi && mi.FullPath != null &&
             mi.FullPath.Equals(path, StringComparison.OrdinalIgnoreCase);
 
+        var searchPaths = new List<string>();
+        void AddSearchPath(string? p)
+        {
+            if (!string.IsNullOrEmpty(p) &&
+                !searchPaths.Any(s => s.Equals(p, StringComparison.OrdinalIgnoreCase)))
+                searchPaths.Add(p);
+        }
+
+        AddSearchPath(sourceNode?.DefaultDBPath);
+        AddSearchPath(sourceNode?.SourceDBPath);
+        if (_parser.AnimToDbPath.TryGetValue(animPath, out var mappedDb))
+            AddSearchPath(mappedDb);
+        AddSearchPath(animPath);
+
         if (!string.IsNullOrEmpty(txtSearch.Text))
         {
             txtSearch.Text = "";
@@ -3626,6 +4066,19 @@ public partial class MainWindow : Window
             {
                 weapons = new HashSet<string>();
                 _expandedWeapons[move.Character] = weapons;
+            }
+            if (string.Equals(move.Character, "MainChar", StringComparison.OrdinalIgnoreCase))
+            {
+                if (IsSpecialComboDb(move))
+                {
+                    weapons.Add("Special Combos");
+                    return;
+                }
+                if (IsSpecialDb(move))
+                {
+                    weapons.Add("Special");
+                    return;
+                }
             }
             if (!string.IsNullOrEmpty(move.WeaponType))
                 weapons.Add(move.WeaponType);
@@ -3691,20 +4144,31 @@ public partial class MainWindow : Window
             }
         }
 
-        var samePath = _allMoves
-            .Where(m => !string.IsNullOrEmpty(m.FullPath) && m.FullPath.Equals(animPath, StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        MoveInfo? match = null;
+        string? matchPath = null;
+        foreach (var path in searchPaths)
+        {
+            var samePath = _allMoves
+                .Where(m => !string.IsNullOrEmpty(m.FullPath) && m.FullPath.Equals(path, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (samePath.Count == 0) continue;
 
-        var match =
-            samePath.FirstOrDefault(m => string.Equals(m.Category, "Custom", StringComparison.OrdinalIgnoreCase))
-            ?? samePath.FirstOrDefault(m => m.IsUsed)
-            ?? samePath.FirstOrDefault();
+            match =
+                samePath.FirstOrDefault(m => string.Equals(m.Category, "Custom", StringComparison.OrdinalIgnoreCase))
+                ?? samePath.FirstOrDefault(m => m.IsUsed)
+                ?? samePath.FirstOrDefault();
+            matchPath = path;
+            break;
+        }
 
         if (match != null)
         {
+            SetSourceTypeDisplay(match.SourceType);
+            var highlightPath = matchPath ?? animPath;
+
             bool inMainCharTree = _mainCharWeaponMoves.Any(kv =>
                 kv.Value.Any(m => m.FullPath != null &&
-                    m.FullPath.Equals(animPath, StringComparison.OrdinalIgnoreCase)));
+                    m.FullPath.Equals(highlightPath, StringComparison.OrdinalIgnoreCase)));
 
             int preferredTab;
             if (string.Equals(match.Category, "Custom", StringComparison.OrdinalIgnoreCase))
@@ -3726,7 +4190,7 @@ public partial class MainWindow : Window
                 foreach (var kv in _mainCharWeaponMoves)
                 {
                     if (kv.Value.Any(m => m.FullPath != null &&
-                            m.FullPath.Equals(animPath, StringComparison.OrdinalIgnoreCase)))
+                            m.FullPath.Equals(highlightPath, StringComparison.OrdinalIgnoreCase)))
                     {
                         weaponLabel = kv.Key;
                         break;
@@ -3753,13 +4217,14 @@ public partial class MainWindow : Window
             {
                 ExpandGroups(match);
                 FilterMoves();
-                preferredTab = match.IsUsed ? TabVanilla : TabOther;
+                preferredTab = (match.IsUsed && IsVanillaLibraryCard(match))
+                    ? TabVanilla : TabOther;
             }
 
             await System.Threading.Tasks.Task.Delay(50);
 
             Border? FindIn(System.Windows.Controls.ItemsControl list) =>
-                FindVisualChild<Border>(list, b => CardMatches(b, animPath));
+                FindVisualChild<Border>(list, b => CardMatches(b, highlightPath));
 
             var targetBorder = preferredTab switch
             {
@@ -4059,12 +4524,14 @@ public partial class MainWindow : Window
                         SelectNode(targetBorder, targetNode);
                         if (_nodePositions.TryGetValue(targetNode.Id, out var targetPos))
                         {
-                            var canvasW = comboCanvas.ActualWidth;
-                            var canvasH = comboCanvas.ActualHeight;
-                            _comboTranslate.X = canvasW / 2 - targetPos.X - NODE_WIDTH / 2;
-                            _comboTranslate.Y = canvasH / 2 - targetPos.Y - NODE_HEIGHT / 2;
+                            var viewportW = comboBorder.ActualWidth;
+                            var viewportH = comboBorder.ActualHeight;
+                            _comboTranslate.X = viewportW / 2 - targetPos.X - NODE_WIDTH / 2;
+                            _comboTranslate.Y = viewportH / 2 - targetPos.Y - NODE_HEIGHT / 2;
                         }
                         txtStatus.Text = $"Jumped to redirect target: {targetNode.DisplayName}";
+                        if (!string.IsNullOrEmpty(targetNode.AnimPath) || !string.IsNullOrEmpty(targetNode.DefaultDBPath))
+                            SetSourceTypeDisplay(MoveInfo.SourceTypeFromPath(ComboNodeTypePath(targetNode)));
                         if (!string.IsNullOrEmpty(targetNode.AnimPath))
                         {
                             txtStatus.Text = $"Loading: {targetNode.DisplayName} ({targetNode.AnimPath})...";
@@ -4115,6 +4582,12 @@ public partial class MainWindow : Window
 
             ClearMoveSelection();
             SelectNode(border, node);
+
+            var typePath = ComboNodeTypePath(node);
+            if (!string.IsNullOrEmpty(typePath))
+                SetSourceTypeDisplay(MoveInfo.SourceTypeFromPath(typePath));
+            else
+                SetSourceTypeDisplay("Other");
 
             txtDisplayName.Text = node.IsRedirect
                 ? $"Redirect → {(_comboGraph?.Nodes.FirstOrDefault(n => n.Id == node.ResolvedRedirectNodeId)?.DisplayName ?? "?")}"
@@ -4316,7 +4789,8 @@ public partial class MainWindow : Window
                 variantPopupBorder.Visibility = Visibility.Collapsed;
                 SetWebViewVisible(true);
                 if (variantTag == _activeVariant) return;
-                await LoadVariantComboGraphAsync(variantTag);
+                SaveCurrentUnitToCache();
+                await LoadVariantComboGraphAsync(variantTag, saveCurrent: false);
             };
             if (tag == _activeVariant)
             {
@@ -4330,7 +4804,12 @@ public partial class MainWindow : Window
     private void UpdateWeaponButtonVisibility()
     {
         var arch = _activeStance?.Split('|')[0];
-        if (string.IsNullOrEmpty(arch)) { btnWeaponVariant.Visibility = Visibility.Collapsed; return; }
+        if (string.IsNullOrEmpty(arch))
+        {
+            btnWeaponVariant.Visibility = Visibility.Collapsed;
+            UpdateUnitPropertiesButtonVisibility();
+            return;
+        }
         var hasWeapons = GetWeaponVariantsForArchetype(arch).Length > 0;
         btnWeaponVariant.Visibility = hasWeapons ? Visibility.Visible : Visibility.Collapsed;
         if (!hasWeapons)
@@ -4338,6 +4817,14 @@ public partial class MainWindow : Window
             _activeWeapon = null;
             weaponPopupBorder.Visibility = Visibility.Collapsed;
         }
+        UpdateUnitPropertiesButtonVisibility();
+    }
+
+    private void UpdateUnitPropertiesButtonVisibility()
+    {
+        var arch = _activeStance?.Split('|')[0] ?? "";
+        bool isMainChar = string.Equals(arch, "MainChar", StringComparison.OrdinalIgnoreCase);
+        btnUnitProperties.Visibility = isMainChar ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void BtnWeaponVariant_Click(object sender, RoutedEventArgs e)
@@ -4393,12 +4880,16 @@ public partial class MainWindow : Window
             {
                 weaponPopupBorder.Visibility = Visibility.Collapsed;
                 SetWebViewVisible(true);
-                if (weaponTag == _activeWeapon) return;
+                bool alreadyActive = string.Equals(weaponTag, _activeWeapon, StringComparison.OrdinalIgnoreCase)
+                    || (IsActiveBarehands(arch, weaponTag) && string.IsNullOrEmpty(_activeWeapon));
+                if (alreadyActive) return;
                 await LoadWeaponComboGraphAsync(weaponTag);
             };
-            if (tag == _activeWeapon)
+            bool highlight = string.Equals(tag, _activeWeapon, StringComparison.OrdinalIgnoreCase)
+                || (IsActiveBarehands(arch, tag) && string.IsNullOrEmpty(_activeWeapon));
+            if (highlight)
             {
-                card.BorderBrush = new SolidColorBrush(Color.FromRgb(0x89,0xb4,0xfa));
+                card.BorderBrush = new SolidColorBrush(Color.FromRgb(0x89, 0xb4, 0xfa));
                 card.BorderThickness = new Thickness(2);
             }
             weaponWrapPanel.Children.Add(card);
@@ -4421,7 +4912,7 @@ public partial class MainWindow : Window
 
         SaveCurrentUnitToCache();
         _currentUnitProps = null;
-        _activeWeapon = weaponTag;
+        _activeWeapon = NormalizeWeaponForCache(arch, weaponTag);
 
         string cacheKey = GetUnitCacheKey();
         if (TryRestoreUnitFromCache(cacheKey))
@@ -4430,6 +4921,22 @@ public partial class MainWindow : Window
             _comboTranslate.X = 0;
             _comboTranslate.Y = 0;
             return;
+        }
+
+        if (IsActiveBarehands(arch, weaponTag))
+        {
+            var barehandsParts = new List<string> { arch };
+            if (!string.IsNullOrEmpty(_activeVariant)) barehandsParts.Add(_activeVariant);
+            string barehandsKey = string.Join("|", barehandsParts);
+            if (!string.Equals(barehandsKey, cacheKey, StringComparison.OrdinalIgnoreCase)
+                && TryRestoreUnitFromCache(barehandsKey))
+            {
+                _activeWeapon = NormalizeWeaponForCache(arch, weaponTag);
+                UpdateWeaponButtonVisibility();
+                _comboTranslate.X = 0;
+                _comboTranslate.Y = 0;
+                return;
+            }
         }
 
         graphLoadingText.Text = $"Loading {arch} {weaponTag}...";
@@ -4444,7 +4951,7 @@ public partial class MainWindow : Window
                 return;
             }
             _comboGraph = graph;
-            _activeWeapon = weaponTag;
+            _activeWeapon = NormalizeWeaponForCache(arch, weaponTag);
             UpdateWeaponButtonVisibility();
             txtComboInfo.Text = $"{arch} {weaponTag} - {graph.Nodes.Count} nodes";
             _comboTranslate.X = 0;
@@ -4453,6 +4960,7 @@ public partial class MainWindow : Window
             LayoutComboGraph();
             RenderComboGraph();
             txtStatus.Text = $"Loaded {arch} {weaponTag} ({graph.Nodes.Count} nodes)";
+            UpdateUnitPropertiesButtonVisibility();
         }
         catch (Exception ex)
         {
@@ -4641,14 +5149,15 @@ public partial class MainWindow : Window
         _ => null
     };
 
-    private async Task LoadVariantComboGraphAsync(string variantTag)
+    private async Task LoadVariantComboGraphAsync(string variantTag, bool saveCurrent = true)
     {
         ClearNodeSelection();
         var comboPath = ResolveComboFilePath(variantTag);
         if (comboPath == null) { txtStatus.Text = $"No combo file for {variantTag}"; return; }
         string arch = _activeStance.Split('|')[0];
 
-        SaveCurrentUnitToCache();
+        if (saveCurrent)
+            SaveCurrentUnitToCache();
         _currentUnitProps = null;
         _activeWeapon = null;
         _activeVariant = variantTag;
@@ -4661,6 +5170,7 @@ public partial class MainWindow : Window
                 _activeWeapon = null;
             UpdateVariantButtonVisibility();
             UpdateWeaponButtonVisibility();
+            UpdateUnitPropertiesButtonVisibility();
             _comboTranslate.X = 0;
             _comboTranslate.Y = 0;
             return;
@@ -4688,7 +5198,7 @@ public partial class MainWindow : Window
             LayoutComboGraph();
             RenderComboGraph();
             txtStatus.Text = $"Loaded {arch} {variantTag} ({graph.Nodes.Count} nodes)";
-            btnUnitProperties.Visibility = arch == "MainChar" ? Visibility.Collapsed : Visibility.Visible;
+            UpdateUnitPropertiesButtonVisibility();
         }
         catch (Exception ex)
         {
@@ -4736,13 +5246,16 @@ public partial class MainWindow : Window
                 }
                 else
                 {
+                    SaveCurrentUnitToCache();
                     _activeStance = selArch;
+                    _activeVariant = null;
                     _activeWeapon = null;
                     UpdateVariantButtonVisibility();
                     UpdateWeaponButtonVisibility();
+                    UpdateUnitPropertiesButtonVisibility();
                     var variants = GetVariantsForArchetype(selArch);
                     if (variants.Length > 0)
-                        await LoadVariantComboGraphAsync(variants[0].tag);
+                        await LoadVariantComboGraphAsync(variants[0].tag, saveCurrent: false);
                 }
             };
             string activeArch = _activeStance.Split('|')[0];
@@ -4865,9 +5378,11 @@ public partial class MainWindow : Window
             }
 
             _activeStance = stance;
+            _activeVariant = null;
             _activeWeapon = "MainChar_Barehands";
             UpdateVariantButtonVisibility();
             UpdateWeaponButtonVisibility();
+            UpdateUnitPropertiesButtonVisibility();
 
             string cacheKey = GetUnitCacheKey();
             if (!TryRestoreUnitFromCache(cacheKey))
@@ -4914,7 +5429,7 @@ public partial class MainWindow : Window
         finally
         {
             // re-initialize provider that was disposed at start
-            try { var fresh = new AnimationParser(); var cDir = _contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase) ? _contentPath : Path.Combine(_contentPath, "Content"); fresh.Initialize(_contentPath, cDir); fresh.MountCustomIntoProvider(TempCustomMovesRoot); _parser = fresh; } catch { }
+            try { var fresh = new AnimationParser(); var cDir = Setup.ContentDetector.ResolveContentDir(_contentPath); fresh.Initialize(_contentPath, cDir); fresh.MountCustomIntoProvider(TempCustomMovesRoot); _parser = fresh; } catch { }
             graphLoadingBorder.Visibility = Visibility.Collapsed;
             comboCanvas.IsHitTestVisible = true;
             btnChangeUnit.IsEnabled = true;
@@ -4950,6 +5465,7 @@ public partial class MainWindow : Window
         _currentUnitProps = null;
         _activeStance = arch;
         _activeWeapon = null;
+        UpdateUnitPropertiesButtonVisibility();
 
         string cacheKey = GetUnitCacheKey();
         if (TryRestoreUnitFromCache(cacheKey))
@@ -4957,6 +5473,7 @@ public partial class MainWindow : Window
             _activeStance = arch;
             UpdateVariantButtonVisibility();
             UpdateWeaponButtonVisibility();
+            UpdateUnitPropertiesButtonVisibility();
             _comboTranslate.X = 0;
             _comboTranslate.Y = 0;
             return;
@@ -4976,6 +5493,7 @@ public partial class MainWindow : Window
             _comboGraph = graph;
             UpdateVariantButtonVisibility();
             UpdateWeaponButtonVisibility();
+            UpdateUnitPropertiesButtonVisibility();
             txtComboInfo.Text = $"{arch} - {graph.Nodes.Count} attacks (DataTable rows)";
             _comboTranslate.X = 0;
             _comboTranslate.Y = 0;
@@ -5032,6 +5550,18 @@ public partial class MainWindow : Window
             node.ImportedDisplayName = newName;
         else
             node.ImportedDisplayName = "";
+    }
+
+    private void ApplyMoveSourceDbPath(ComboNode node, MoveInfo move)
+    {
+        if (IsAttackDbPath(move.FullPath ?? ""))
+        {
+            node.SourceDBPath = move.FullPath;
+            return;
+        }
+
+        if (_parser.AnimToDbPath.TryGetValue(move.FullPath, out var srcDb))
+            node.SourceDBPath = srcDb;
     }
 
     private void ResetNodeToVanilla(ComboNode node)
@@ -5112,6 +5642,7 @@ public partial class MainWindow : Window
         _moddedGraph = null;
         _nodeDiffs = new();
         ClearNodeSelection();
+        UpdateUnitPropertiesButtonVisibility();
 
         try { _parser.SetOverlayProvider(null); } catch { }
 
@@ -5122,9 +5653,7 @@ public partial class MainWindow : Window
 
         try
         {
-            var contentDir = _contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase)
-                ? _contentPath
-                : Path.Combine(_contentPath, "Content");
+            var contentDir = Setup.ContentDetector.ResolveContentDir(_contentPath);
             var fresh = new AnimationParser();
             fresh.Initialize(_contentPath, contentDir);
             _parser = fresh;
@@ -5270,8 +5799,7 @@ public partial class MainWindow : Window
                             ln.IsImportedFromMod = false;
                             ln.AnimPath = move.FullPath;
                             ApplyLocalChangeName(ln, move.DisplayName);
-                            if (_parser.AnimToDbPath.TryGetValue(move.FullPath, out var srcDb))
-                                ln.SourceDBPath = srcDb;
+                            ApplyMoveSourceDbPath(ln, move);
                         }
                         RenderComboGraph();
                         txtStatus.Text = $"Replaced {linkedNodes.Count} linked nodes -> {move.DisplayName}";
@@ -5280,8 +5808,7 @@ public partial class MainWindow : Window
                     {
                         node.AnimPath = move.FullPath;
                         ApplyLocalChangeName(node, move.DisplayName);
-                        if (_parser.AnimToDbPath.TryGetValue(move.FullPath, out var srcDb))
-                            node.SourceDBPath = srcDb;
+                        ApplyMoveSourceDbPath(node, move);
                         RenderComboGraph();
                         txtStatus.Text = $"Replaced: {node.Name} -> {move.DisplayName}";
                     }
@@ -5365,7 +5892,8 @@ public partial class MainWindow : Window
         string arch = _activeStance?.Split('|')[0] ?? "";
         string variantTag = _activeVariant ?? $"{arch}_Base";
 
-        _currentUnitProps ??= UnitPropertiesManager.Read(_contentPath, variantTag);
+        if (_currentUnitProps == null || !UnitPropertiesManager.HasAnyValue(_currentUnitProps))
+            _currentUnitProps = UnitPropertiesManager.Read(_contentPath, variantTag);
         _unitPropsDefaults = UnitPropertiesManager.Read(_contentPath, variantTag);
 
         unitPropsTitle.Text = $"Unit Properties \u2014 {variantTag}";
@@ -5430,6 +5958,8 @@ public class Settings
     public bool ShowLines { get; set; } = true;
     public double[]? CameraPosition { get; set; }
     public double[]? CameraTarget { get; set; }
+    public string UnrealPakPath { get; set; } = "";
+    public string CryptoJsonPath { get; set; } = "";
 }
 
 public class WebViewMessage

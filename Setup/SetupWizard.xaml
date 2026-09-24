@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Sifu Moveset Editor — Setup"
-        Width="520" Height="420"
+        Width="560" Height="500"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         Background="#1e1e2e"
@@ -76,7 +76,7 @@
             <DockPanel>
                 <TextBlock Text="Sifu Moveset Editor" FontSize="15" FontWeight="Bold"
                            Foreground="#89b4fa" VerticalAlignment="Center"/>
-                <TextBlock Text="— Setup" Foreground="#6c7086" FontSize="15"
+                <TextBlock x:Name="txtHeaderMode" Text="— Setup" Foreground="#6c7086" FontSize="15"
                            VerticalAlignment="Center" Margin="8,0,0,0"/>
             </DockPanel>
         </Border>
@@ -97,27 +97,51 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="12"/>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
                 <RowDefinition Height="16"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Description -->
-            <TextBlock Grid.Row="0" TextWrapping="Wrap" FontSize="13" Foreground="#cdd6f4">
-                <Run Text="This tool requires game assets from "/>
-                <Run Text="Sifu" FontWeight="Bold"/>
-                <Run Text=". You must own the game."/>
-            </TextBlock>
+            <!-- Description / repair reason -->
+            <StackPanel Grid.Row="0" Margin="0,0,0,8">
+                <TextBlock Grid.Row="0" TextWrapping="Wrap" FontSize="13" Foreground="#cdd6f4"
+                           x:Name="txtDescription">
+                    <Run Text="This tool requires game assets from "/>
+                    <Run Text="Sifu" FontWeight="Bold"/>
+                    <Run Text=". You must own the game."/>
+                </TextBlock>
+                <Border x:Name="borderRepair" Visibility="Collapsed"
+                        Background="#313244" CornerRadius="4" Padding="10,8" Margin="0,8,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Missing Vanilla Files" FontWeight="Bold"
+                                   Foreground="#fab387" FontSize="12"/>
+                        <TextBlock x:Name="txtRepairReason" TextWrapping="Wrap"
+                                   Foreground="#f38ba8" FontSize="11" Margin="0,4,0,0"/>
+                        <TextBlock x:Name="txtRepairOldPath" TextWrapping="Wrap"
+                                   Foreground="#6c7086" FontSize="10" Margin="0,2,0,0"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
 
             <!-- Radio buttons -->
             <StackPanel Grid.Row="2">
                 <RadioButton x:Name="rbGameDir" Content="I have Sifu installed (select game folder)"
-                             IsChecked="True" Style="{StaticResource RadioDark}"/>
+                             IsChecked="True" Style="{StaticResource RadioDark}"
+                             Checked="SourceRadio_Checked"/>
                 <RadioButton x:Name="rbExtractedDir" Content="I already have extracted game content"
-                             Style="{StaticResource RadioDark}"/>
+                             Style="{StaticResource RadioDark}"
+                             Checked="SourceRadio_Checked"/>
+                <RadioButton x:Name="rbPakFile" Content="Browse pak file (pakchunk0*.pak)"
+                             Style="{StaticResource RadioDark}"
+                             Checked="SourceRadio_Checked"/>
+                <TextBlock x:Name="txtDiskHint" Text="Requires around 2GB"
+                           Foreground="#6c7086" FontSize="11" Margin="2,6,0,0"
+                           Visibility="Visible"/>
             </StackPanel>
 
-            <!-- Folder selector -->
+            <!-- Folder / file selector -->
             <Grid Grid.Row="4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -130,7 +154,7 @@
                              IsReadOnly="True" Padding="8,6" FontSize="13"
                              VerticalContentAlignment="Center"/>
                 </Border>
-                <Button Grid.Column="2" Content="Browse" Style="{StaticResource DarkButton}"
+                <Button Grid.Column="2" x:Name="btnBrowse" Content="Browse" Style="{StaticResource DarkButton}"
                         Click="Browse_Click" Padding="16,6"/>
             </Grid>
 
@@ -142,9 +166,9 @@
 
             <!-- Buttons -->
             <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="Skip" Style="{StaticResource DarkButton}"
-                        Click="Skip_Click" Padding="16,6"/>
-                <Button x:Name="btnExtract" Content="Extract ~460 MB"
+                <Button x:Name="btnCancel" Content="Cancel" Style="{StaticResource DarkButton}"
+                        Click="Cancel_Click" Padding="16,6"/>
+                <Button x:Name="btnExtract" Content="Extract"
                         Style="{StaticResource AccentButton}" Click="Extract_Click"
                         IsEnabled="False" Padding="16,6"/>
             </StackPanel>

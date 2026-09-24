@@ -13,7 +13,7 @@ using UAssetAPI.UnrealTypes;
 var contentPath = args.Length > 0 ? args[0] :
     @"C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Sifu";
 
-var contentDir = contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase)
+var contentDir = Path.GetFileName(contentPath.TrimEnd('\\', '/')).Equals("Content", StringComparison.OrdinalIgnoreCase)
     ? contentPath
     : Path.Combine(contentPath, "Content");
 

@@ -110,10 +110,11 @@ public static class ProjectManager
         File.WriteAllText(filePath, json);
     }
 
-    public static void SaveWithCaches(EditorProject project, Dictionary<string, UnitCacheEntry> caches, string activeStance, string? activeVariant, string filePath)
+    public static void SaveWithCaches(EditorProject project, Dictionary<string, UnitCacheEntry> caches, string activeStance, string? activeVariant, string? activeWeapon, string filePath)
     {
         project.ActiveStance = activeStance;
         project.ActiveVariant = activeVariant;
+        project.ActiveWeapon = activeWeapon;
         project.UnitCaches = new Dictionary<string, SavedUnitCache>();
 
         foreach (var kvp in caches)

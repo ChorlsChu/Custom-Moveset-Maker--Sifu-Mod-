@@ -109,7 +109,8 @@ public static class UnitPropertiesManager
 
     private static string ResolveContentDir(string contentPath)
     {
-        return contentPath.EndsWith("Content", StringComparison.OrdinalIgnoreCase)
+        var leaf = Path.GetFileName(contentPath.TrimEnd('\\', '/'));
+        return leaf.Equals("Content", StringComparison.OrdinalIgnoreCase)
             ? contentPath
             : Path.Combine(contentPath, "Content");
     }

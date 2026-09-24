@@ -120,6 +120,15 @@
             <Setter Property="Padding" Value="5,1"/>
             <Setter Property="Margin" Value="0,0,4,0"/>
         </Style>
+        <Style x:Key="AnimSourceBadge" TargetType="Border" BasedOn="{StaticResource TagBadge}">
+            <Setter Property="Background" Value="#a6e3a1"/>
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding SourceType}" Value="Animation File">
+                    <Setter Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
 
         <DataTemplate x:Key="EnemyHeaderTemplate">
             <Border Style="{StaticResource MoveCard}" MouseLeftButtonDown="EnemyHeader_Click" Tag="{Binding}">
@@ -223,6 +232,9 @@
                                 <TextBlock Text="{Binding Category}"
                                            Foreground="#a6adc8" FontSize="9"/>
                             </Border>
+                            <Border Style="{StaticResource AnimSourceBadge}">
+                                <TextBlock Text="Anim" Foreground="#1e1e2e" FontSize="9"/>
+                            </Border>
                         </StackPanel>
                     </StackPanel>
                 </DockPanel>
@@ -278,15 +290,16 @@
                 <!-- Combo Graph -->
                 <Border x:Name="comboBorder" Grid.Row="0" Background="#181825" CornerRadius="0" Margin="0" ClipToBounds="True"
                         Focusable="True" PreviewMouseDown="ComboGraphBorder_PreviewMouseDown"
-                        PreviewKeyDown="ComboBorder_PreviewKeyDown">
+                        PreviewKeyDown="ComboBorder_PreviewKeyDown"
+                        SizeChanged="ComboBorder_SizeChanged"
+                        PreviewMouseLeftButtonDown="ComboCanvas_PreviewMouseLeftButtonDown"
+                        MouseLeftButtonDown="ComboCanvas_MouseLeftButtonDown"
+                        MouseMove="ComboCanvas_MouseMove"
+                        MouseLeftButtonUp="ComboCanvas_MouseLeftButtonUp"
+                        PreviewMouseRightButtonDown="ComboCanvas_PreviewMouseRightButtonDown">
                     <Grid>
                         <Canvas Name="comboCanvas"
-                                Background="Transparent"
-                                PreviewMouseLeftButtonDown="ComboCanvas_PreviewMouseLeftButtonDown"
-                                MouseLeftButtonDown="ComboCanvas_MouseLeftButtonDown"
-                                MouseMove="ComboCanvas_MouseMove"
-                                MouseLeftButtonUp="ComboCanvas_MouseLeftButtonUp"
-                                PreviewMouseRightButtonDown="ComboCanvas_PreviewMouseRightButtonDown"
+                                Background="#1e1e2e"
                                 MinWidth="600" MinHeight="400">
                             <Canvas.RenderTransform>
                                 <TranslateTransform x:Name="_comboTranslate" X="0" Y="0"/>
@@ -400,8 +413,10 @@
 
                                 <TextBlock Text="Animation Info" FontWeight="Bold"
                                            Foreground="#a6e3a1" FontSize="12" Margin="0,0,0,6"/>
-                                <TextBlock Name="txtDisplayName" Text="Display: -" Foreground="#89b4fa"
+                                <TextBlock Name="txtSourceType" Text="Type: -" Foreground="#a6adc8"
                                            FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <TextBlock Name="txtDisplayName" Text="Display: -" Foreground="#89b4fa"
+                                           FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,4,0,0"/>
                                 <TextBlock Name="txtAnimName" Text="Name: -" Foreground="#cdd6f4"
                                            FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
                                 <TextBlock Name="txtAnimFrames" Text="Frames: -" Foreground="#cdd6f4"
@@ -616,7 +631,9 @@
                     <TextBox Name="txtSettingsOutputPath" Background="#313244" Foreground="#cdd6f4" Padding="6,3" FontSize="11"/>
                 </DockPanel>
                 <CheckBox Name="chkVerboseLog" Content="Verbose ErrorLog" Foreground="#6c7086" FontSize="11" Margin="0,0,0,12"/>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
+                    <Button Content="Open Setup…" Padding="12,4" Click="OpenSetup_Click" Style="{StaticResource DarkButton}" Margin="0,0,6,0"
+                            ToolTip="Re-open setup to browse folder or pak and refresh vanilla content"/>
                     <Button Content="Cancel" Padding="12,4" Click="CancelSettings_Click" Style="{StaticResource DarkButton}" Margin="0,0,6,0"/>
                     <Button Content="Save" Padding="12,4" Click="SaveSettings_Click" Style="{StaticResource DarkButton}"/>
                 </StackPanel>

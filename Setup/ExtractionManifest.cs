@@ -12,6 +12,7 @@ public static class ExtractionManifest
     public static readonly string[] DirectoryPatterns =
     [
         "Animations",           // All character animations (~405 MB)
+        "Characters/Skeleton",  // Base_skeleton — every animation imports this
         "DB/_MainChar/Combos",  // Combo tree definitions (~3.3 MB)
         "DB/AI/Archetypes",     // NPC/Boss attack tables (~14.6 MB)
         "DB/Attacks",           // Global attack DBs like WUGUAN (~0.1 MB)
@@ -82,17 +83,58 @@ public static class ExtractionManifest
             }
         }
 
-        // 3. Engine content
+        // 3. Engine content — may live under extractedRoot or its parent
+        // (browse root is often ...\Sifu while Engine sits at ...\pakchunk0\Engine)
         foreach (var enginePath in EnginePaths)
         {
-            var fullPath = Path.Combine(extractedRoot, enginePath + ".uasset");
-            if (File.Exists(fullPath))
-            {
+            if (EngineAssetExists(extractedRoot, enginePath))
                 paths.Add(enginePath);
-            }
         }
 
         return paths.OrderBy(p => p).ToList();
+    }
+
+    /// <summary>
+    /// True if the Engine asset exists under root or parent(root).
+    /// </summary>
+    public static bool EngineAssetExists(string root, string enginePath)
+    {
+        if (File.Exists(Path.Combine(root, enginePath + ".uasset")))
+            return true;
+        var parent = Directory.GetParent(root)?.FullName;
+        return !string.IsNullOrEmpty(parent) &&
+               File.Exists(Path.Combine(parent, enginePath + ".uasset"));
+    }
+
+    /// <summary>
+    /// Absolute source path for a manifest entry (handles Engine living one level up).
+    /// </summary>
+    public static string ResolveSourceFile(string extractedRoot, string gamePath, string ext)
+    {
+        var path = gamePath.Replace('\\', '/').TrimStart('/');
+        if (path.StartsWith("Game/", StringComparison.OrdinalIgnoreCase))
+            path = "Content/" + path.Substring(5);
+        else if (!path.StartsWith("Content/", StringComparison.OrdinalIgnoreCase) &&
+                 !path.StartsWith("Engine/", StringComparison.OrdinalIgnoreCase))
+            path = "Content/" + path;
+        var relative = path.Replace('/', Path.DirectorySeparatorChar) + ext;
+
+        var direct = Path.Combine(extractedRoot, relative);
+        if (File.Exists(direct))
+            return direct;
+
+        if (gamePath.StartsWith("Engine/", StringComparison.OrdinalIgnoreCase))
+        {
+            var parent = Directory.GetParent(extractedRoot)?.FullName;
+            if (!string.IsNullOrEmpty(parent))
+            {
+                var viaParent = Path.Combine(parent, relative);
+                if (File.Exists(viaParent))
+                    return viaParent;
+            }
+        }
+
+        return direct;
     }
 
     /// <summary>
@@ -106,8 +148,8 @@ public static class ExtractionManifest
         var paths = GetAllNeededPaths(extractedRoot);
         foreach (var path in paths)
         {
-            var uassetPath = Path.Combine(extractedRoot, path.Replace("Game/", "Content/") + ".uasset");
-            var uexpPath = Path.Combine(extractedRoot, path.Replace("Game/", "Content/") + ".uexp");
+            var uassetPath = ResolveSourceFile(extractedRoot, path, ".uasset");
+            var uexpPath = ResolveSourceFile(extractedRoot, path, ".uexp");
 
             if (File.Exists(uassetPath))
             {

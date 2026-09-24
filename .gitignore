@@ -1,0 +1,30 @@
+## Build output
+[Bb]in/
+[Oo]bj/
+[Pp]ublish/
+*.user
+*.suo
+
+## Game content / extracts / temp
+GameContent/
+Engine/
+tools/ue4/
+tools/_*/
+temp_mod/
+debug_export/
+VanillaBackup/
+ExportedMods/
+setup.log
+error.log
+
+## Release artifacts
+*.zip
+*.pdb
+
+## WebView2 / runtime caches
+*.WebView2/
+
+## VS / Rider
+.vs/
+.idea/
+*.DotSettings.user
