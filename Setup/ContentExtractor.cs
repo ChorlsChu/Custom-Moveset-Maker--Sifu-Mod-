@@ -746,6 +746,7 @@ public static class ContentExtractor
    - Animations/ (all characters)
    - DB/_MainChar/Combos/
    - DB/AI/Archetypes/
+   - DB/AI/_Shared/
    - DB/Attacks/
    - DB/Movement/
    - Characters/MainChar/M/Meshes/SK_M_MainChar_01.*

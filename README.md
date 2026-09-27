@@ -13,6 +13,9 @@ A modding tool for [Sifu](https://www.sloclap.com/games/sifu/) that lets you cre
 - **Unit Properties (enemies & bosses)** — Via the **Unit Properties** button (not available for MainChar), tweak:
   - **ArchetypeDB**: Health and Structure
   - **ContextDefense (experimental)**: Memory Limit, Hits Count, and Flush Limit — how aggressively the AI parries, dodges, or avoids
+  - **Immune to Focus Attacks**: one flag per unit family, applied on export by repointing the family's shared ArchetypeDB at Yang's empty VitalPointDB
+
+  Values persist while you switch between weapon variants and tiers of the same unit.
 
 - **Stance Tab** — View per-character combat stance animations for MainChar, Grunt, FireDisciple, FlashKick, BigGuy, BodyGuard, Fajar, Fengjie, Kuroki, Sean, Yang, and Servant. Switch stances via dropdown to apply BaseMovementDB + BP_TransitionAnimRequest.
 
@@ -110,6 +113,7 @@ When you launch the app for the first time:
    - `Animations/` subfolders for all characters
    - `DB/_MainChar/Combos/`
    - `DB/AI/Archetypes/*/Attacks/`
+   - `DB/AI/_Shared/`
    - `DB/Movement/`
    - *(Should take like around 1-2GB of space)*
 4. Once extraction completes, the app will proceed to load animations, build the combo tree, and populate the animation library.
@@ -159,11 +163,29 @@ Available for **enemies and bosses only** — the button is hidden when MainChar
 | **ContextDefense** *(experimental)* | Memory Limit | Seconds the AI “remembers” hits for defense triggers. |
 | **ContextDefense** *(experimental)* | Hits Count | How many hits within the window before it parries, dodges, or avoids. |
 | **ContextDefense** *(experimental)* | Flush Limit | Cooldown (seconds) after a defense before it can defend again. |
+| **Focus** | Immune to Focus Attacks | Repoints the family's shared ArchetypeDB at Yang's empty VitalPointDB, so the unit has no Focus target. |
 
 - Values are read from the unit’s **ArchetypeDB** (Health/Structure) and **ContextualDefense** asset (AI fields).
 - Changes appear in the export review list and are patched into those assets on export.
+- Edits are remembered per unit while you switch between its weapon variants and tiers; they are written to disk only when you export (or save a project, for the `.sifu-edit` round-trip).
+- **Immune to Focus Attacks** is a *family* flag: all variants that resolve their VitalPointDB from the same ArchetypeDB share it, and checking it on any of them checks it for all. The export writes that one file and the rest inherit. Owner families (BigGuy, FireDisciple, Fengjie, Kuroki, Sean, Yang) are separate; Grunt, Bodyguard, FlashKick, Fajar, Sifu, and Servant all share the root `DB/AI/_Shared/BP_Base_ArchetypeDB`, so one toggle covers those 13. Un-checking a member cannot undo a write that was never made for it — use **Reset to Defaults** while any member is active.
 - **Reset to Defaults** restores vanilla values for the current unit.
 - AI defense is **experimental**: vanilla defaults differ by enemy, and some units expose fewer defense knobs than others. Test in-game after export.
+
+---
+
+## Attack DB
+
+The right sidebar shows an **Attack DB** panel when the selected combo node has an attack card:
+
+| Field | What it does |
+|---------|--------|
+| **Buildup frames** | How many frames the attack charges before it can hit (`m_iWantedBuildupFrames`). Lower = faster startup. |
+| **Gameplay range** | Attack reach in Unreal units (`m_fGameplayRange`). Higher = hits from farther away. |
+
+- The hint line below the fields shows the card's **vanilla values**, with `— edited` appended when your value differs from vanilla.
+- Edits are remembered per node in the project (`.sifu-edit`) and written into the node's AttackDB asset on export. Importing a mod seeds the fields when the modded card differs from vanilla.
+- **Right-click → Reset to Vanilla** restores the node's original attack card; if the card was already correct, your tuned values are kept (the hint still shows what vanilla is).
 
 ---
 
@@ -269,7 +291,7 @@ A. Yes, they persist between sessions to avoid re-extracting. If you want to re-
 A: The auto-extract feature places extracted content in a subfolder within the app's directory. For custom locations, use the manual Setup workflow: point the app to your existing `Content/` folder via Settings.
 
 **Q: Can I edit boss or enemy health and defense?**  
-A: Yes — switch to the unit via Change Unit, then open **Unit Properties** (hidden for MainChar). You can edit Health and Structure, plus experimental AI defense fields (Memory Limit, Hits Count, Flush Limit). Changes export with your mod.
+A: Yes — switch to the unit via Change Unit, then open **Unit Properties** (hidden for MainChar). You can edit Health and Structure, plus experimental AI defense fields (Memory Limit, Hits Count, Flush Limit) and an **Immune to Focus Attacks** checkbox, which repoints the family's shared ArchetypeDB at Yang's empty VitalPointDB on export so the unit has no Focus target. It is one flag per family: checking it on any member checks it for all, and the export writes the shared ArchetypeDB once so the rest inherit - the info panel and export review list who else is affected. Values are remembered while you switch between that unit's weapon variants and tiers. Use Reset to Defaults while any member of that family is active to clear it. Changes export with your mod.
 
 **Q: Can I edit movesets for all enemies and bosses in one mod?**  
 A: Yes. Switch units with Change Unit, edit each moveset (and unit properties if you want), then export once — all modified units are packaged into a single pak.

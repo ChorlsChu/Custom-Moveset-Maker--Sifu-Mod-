@@ -15,6 +15,7 @@ public static class ExtractionManifest
         "Characters/Skeleton",  // Base_skeleton — every animation imports this
         "DB/_MainChar/Combos",  // Combo tree definitions (~3.3 MB)
         "DB/AI/Archetypes",     // NPC/Boss attack tables (~14.6 MB)
+        "DB/AI/_Shared",        // Focus immunity: BP_Base_ArchetypeDB (parent-chain root) + shared VitalPointDefinitionDataAsset (~0.4 MB)
         "DB/Attacks",           // Global attack DBs like WUGUAN (~0.1 MB)
         "DB/Movement",          // Stance movement DBs (BaseMovementDB, transitions)
     ];

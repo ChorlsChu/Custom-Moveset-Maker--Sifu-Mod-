@@ -159,6 +159,9 @@ public class ComboNode
     public bool IsRedirect { get; set; }
     public int RedirectTargetTreeIndex { get; set; } = -1;
     public int ResolvedRedirectNodeId { get; set; } = -1;
+    // AttackDB tuning (m_iWantedBuildupFrames / m_fGameplayRange). Null = leave vanilla as-is.
+    public int? AttackBuildupFrames { get; set; }
+    public float? AttackGameplayRange { get; set; }
     [Newtonsoft.Json.JsonIgnore]
     public bool IsImportedFromMod { get; set; }
 }
@@ -174,6 +177,7 @@ public class ComboEdge
 public class ComboGraph
 {
     public string WeaponName { get; set; } = "";
+    public int RawNodeCount { get; set; }
     public List<ComboNode> Nodes { get; set; } = [];
     public List<ComboEdge> Edges { get; set; } = [];
     public Dictionary<int, int> RedirectOriginalTargets { get; set; } = new();
@@ -274,7 +278,7 @@ public class AnimationParser : IDisposable
     {
         "System", "01_FacialPoseAsset", "Weapon", "Activities",
         "Barks", "Dash", "Death", "Deflect", "Detection",
-        "DialogGestures", "DizzyState", "Dizzy", "Fidget", "GiveUp",
+        "DialogGestures", "DizzyState", "Fidget", "GiveUp",
         "Guard", "HitReactions", "HitsAnims", "IncapacitatedState",
         "KnockDownState", "Locomotion", "Parry", "PushedState",
         "StructureBrokenState", "Traversal", "Turns", "WeaponActions",
@@ -668,7 +672,10 @@ public class AnimationParser : IDisposable
             var relPath = file.Substring(_contentPath.Length).TrimStart('\\', '/').Replace('\\', '/');
             var gamePath = "Game/" + relPath.Replace(".uasset", "");
 
-            if (!HasAttackStruct(gamePath)) continue;
+            var hasStruct = HasAttackStruct(gamePath);
+            if (fileName.Contains("Grab", StringComparison.OrdinalIgnoreCase))
+                LogDebug($"[GRAB_SCAN] {gamePath}: hasStruct={hasStruct} cat={category} weapon={weaponType}");
+            if (!hasStruct) continue;
 
             moves.Add(new MoveInfo
             {
@@ -685,7 +692,13 @@ public class AnimationParser : IDisposable
         foreach (var subDir in Directory.GetDirectories(dir))
         {
             var dirName = Path.GetFileName(subDir);
-            if (SkipDirectories.Contains(dirName)) continue;
+            if (SkipDirectories.Contains(dirName))
+            {
+                if (dirName.Contains("Grab", StringComparison.OrdinalIgnoreCase) ||
+                    dirName.Contains("FarGrab", StringComparison.OrdinalIgnoreCase))
+                    LogDebug($"[GRAB_SCAN] skipped dir: {subDir}");
+                continue;
+            }
             ScanAttackDbDir(subDir, character, moves);
         }
     }
@@ -697,14 +710,24 @@ public class AnimationParser : IDisposable
             var dbObj = _provider?.SafeLoadPackageObject<UObject>(gamePath);
             if (dbObj == null && _overlayProvider != null)
                 dbObj = _overlayProvider.SafeLoadPackageObject<UObject>(gamePath);
-            if (dbObj == null) return false;
+            if (dbObj == null)
+            {
+                if (gamePath.Contains("Grab", StringComparison.OrdinalIgnoreCase))
+                    LogDebug($"[GRAB_SCAN] {gamePath}: dbObj=null");
+                return false;
+            }
 
             var mAttack = dbObj.Properties.FirstOrDefault(p => p.Name.Text == "m_Attack");
-            return mAttack?.Tag is StructProperty attackStruct &&
-                   attackStruct.Value.StructType is FStructFallback;
+            var ok = mAttack?.Tag is StructProperty attackStruct &&
+                     attackStruct.Value.StructType is FStructFallback;
+            if (gamePath.Contains("Grab", StringComparison.OrdinalIgnoreCase))
+                LogDebug($"[GRAB_SCAN] {gamePath}: m_Attack={(mAttack == null ? "missing" : mAttack.Tag?.GetType().Name ?? "null-tag")} structType={(mAttack?.Tag is StructProperty sp ? sp.Value.StructType?.GetType().Name ?? "null" : "n/a")} ok={ok}");
+            return ok;
         }
-        catch
+        catch (Exception ex)
         {
+            if (gamePath.Contains("Grab", StringComparison.OrdinalIgnoreCase))
+                LogDebug($"[GRAB_SCAN] {gamePath}: exception {ex.Message}");
             return false;
         }
     }
@@ -1316,7 +1339,7 @@ public class AnimationParser : IDisposable
                 : isBarehands
                     ? "BareHands"
                     : weaponName;
-            var graph = new ComboGraph { WeaponName = graphWeaponName };
+            var graph = new ComboGraph { WeaponName = graphWeaponName, RawNodeCount = allNodeStructs.Count };
             graph.Nodes.AddRange(keptNodes);
 
             foreach (var edge in finalEdges)
@@ -1537,6 +1560,15 @@ public class AnimationParser : IDisposable
         }
 
         attacks = attacks.GroupBy(a => a.dbPath).Select(g => g.First()).ToList();
+
+        if (nodeName.Contains("FarGrab", StringComparison.OrdinalIgnoreCase) ||
+            nodeName.Contains("GrabThrow", StringComparison.OrdinalIgnoreCase) ||
+            attacks.Any(a => a.dbPath.Contains("Grab", StringComparison.OrdinalIgnoreCase)))
+        {
+            LogDebug($"[GRAB_NODE] tree={treeIndex} name='{nodeName}' attacks={attacks.Count} " +
+                     $"redirect={(nodeStruct.Properties.FirstOrDefault(p => p.Name.Text == "m_NodeRedirect")?.Tag is IntProperty rp ? rp.Value : "no-prop")} " +
+                     $"paths=[{string.Join(", ", attacks.Select(a => $"{a.dbPath} anim={(string.IsNullOrEmpty(a.animPath) ? "EMPTY" : a.animPath)}"))}]");
+        }
 
         var distinctDirs = attacks
             .Select(a => ExtractDirectionLabel(a.dbPath))

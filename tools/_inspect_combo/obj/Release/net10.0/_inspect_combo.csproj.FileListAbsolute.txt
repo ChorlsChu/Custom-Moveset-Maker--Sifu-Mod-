@@ -5,8 +5,6 @@ C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMo
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\_inspect_combo\bin\Release\net10.0\_inspect_combo.pdb
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\_inspect_combo\bin\Release\net10.0\UAssetAPI.dll
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\_inspect_combo\bin\Release\net10.0\Newtonsoft.Json.dll
-C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\_inspect_combo\bin\Release\net10.0\UAssetAPI.pdb
-C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\_inspect_combo\bin\Release\net10.0\UAssetAPI.xml
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\_inspect_combo\obj\Release\net10.0\_inspect_combo.csproj.AssemblyReference.cache
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\_inspect_combo\obj\Release\net10.0\_inspect_combo.GeneratedMSBuildEditorConfig.editorconfig
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\_inspect_combo\obj\Release\net10.0\_inspect_combo.AssemblyInfoInputs.cache

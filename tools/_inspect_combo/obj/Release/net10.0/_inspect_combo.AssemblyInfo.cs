@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("_inspect_combo")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+51e45b860ba0cdd091aea1fd7c8fc5d7aa17cd6b")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+3940c62fe6242f4c3a88dbb630893db996f21993")]
 [assembly: System.Reflection.AssemblyProductAttribute("_inspect_combo")]
 [assembly: System.Reflection.AssemblyTitleAttribute("_inspect_combo")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

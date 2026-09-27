@@ -114,6 +114,18 @@ public static class ContentDetector
             !Directory.EnumerateFiles(archDir, "*.uasset", SearchOption.AllDirectories).Any())
             return new DetectionResult(false, "DB/AI/Archetypes not found (needed for Unit Properties). Re-extract game content.", contentPath);
 
+        // Focus immunity (Unit Properties -> Immune to Focus Attacks) resolves VitalPointDB
+        // assets that live outside DB/AI/Archetypes.
+        var focusDb = Path.Combine(contentDir, "DB", "AI", "_Shared", "Focus", "VitalPointDefinitionDataAsset.uasset");
+        if (!File.Exists(focusDb))
+            return new DetectionResult(false,
+                "DB/AI/_Shared/Focus/VitalPointDefinitionDataAsset.uasset not found (needed for Immune to Focus Attacks). Re-extract game content.", contentPath);
+
+        var baseArch = Path.Combine(contentDir, "DB", "AI", "_Shared", "BP_Base_ArchetypeDB.uasset");
+        if (!File.Exists(baseArch))
+            return new DetectionResult(false,
+                "DB/AI/_Shared/BP_Base_ArchetypeDB.uasset not found (Focus immunity parent-chain root). Re-extract game content.", contentPath);
+
         // Check for movement DB (stance switching needs BaseMovementDB)
         var movementDb = Path.Combine(contentDir, "DB", "Movement", "BaseMovementDB.uasset");
         if (!File.Exists(movementDb))
