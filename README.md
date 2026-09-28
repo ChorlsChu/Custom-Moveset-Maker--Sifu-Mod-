@@ -2,6 +2,8 @@
 
 A modding tool for [Sifu](https://www.sloclap.com/games/sifu/) that lets you create, visualize, and export custom moveset mods — no UE4 editor required.
 
+> **Windows shows "Windows protected your PC"?** That's Microsoft SmartScreen flagging the app as unrecognized (it's currently unsigned while [code signing](https://signpath.org/) is being set up — it is not a virus). Click **More info → Run anyway**. If the downloaded zip is flagged, right-click it → **Properties → Unblock** before extracting. You can verify the source yourself: [github.com/ChorlsChu/Custom-Moveset-Maker--Sifu-Mod-](https://github.com/ChorlsChu/Custom-Moveset-Maker--Sifu-Mod-).
+
 ## What it does
 
 - **Combo Tree Visualizer** — Displays the full attack combo tree as an interactive node graph. Click any node to preview its animation in a built-in 3D viewer. Drag-and-drop animations onto nodes to swap moves. Double-click nodes to reset to vanilla.
