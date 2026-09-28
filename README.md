@@ -257,7 +257,9 @@ On first run, if the app cannot find valid extracted content:
 
 ## License
 
-This tool is provided as-is for educational and modding purposes. You must own a legal copy of Sifu to use it.
+MIT — see [LICENSE](LICENSE). Copyright (c) 2026 AllThatRain. You must own a legal copy of Sifu to use this tool.
+
+Release binaries are code-signed: free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
 
 ---
 
