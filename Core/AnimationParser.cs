@@ -162,6 +162,10 @@ public class ComboNode
     // AttackDB tuning (m_iWantedBuildupFrames / m_fGameplayRange). Null = leave vanilla as-is.
     public int? AttackBuildupFrames { get; set; }
     public float? AttackGameplayRange { get; set; }
+    // MC_Attacks_Alt window on the original attack card, in frames of the replacement's
+    // timeline. Null = copy the original window unchanged on export.
+    public int? DelayWindowLo { get; set; }
+    public int? DelayWindowHi { get; set; }
     [Newtonsoft.Json.JsonIgnore]
     public bool IsImportedFromMod { get; set; }
 }
@@ -312,7 +316,8 @@ public class AnimationParser : IDisposable
         _provider = new DefaultFileProvider(
             gameRootPath,
             SearchOption.AllDirectories,
-            new VersionContainer(EGame.GAME_UE4_26)
+            new VersionContainer(EGame.GAME_UE4_26),
+            StringComparer.OrdinalIgnoreCase
         );
         _provider.Initialize();
 
@@ -392,21 +397,26 @@ public class AnimationParser : IDisposable
             var provider = new DefaultFileProvider(
                 contentRoot,
                 SearchOption.AllDirectories,
-                _provider.Versions);
-            provider.Initialize();
+                _provider.Versions,
+                StringComparer.OrdinalIgnoreCase);
 
+            // Do NOT call provider.Initialize(): it mounts keys as "Content/..." (directory name),
+            // which FixPath can never produce for "Game/..." requests. Mount everything in one
+            // batch under "Game/Content/" instead so ProjectName resolves to "Game" and
+            // FixPath("Game/DB/X") -> "Game/Content/DB/X.uasset" matches our keys exactly.
             var baseDir = new DirectoryInfo(contentRoot);
-            int filesAdded = 0;
+            var overlayFiles = new Dictionary<string, GameFile>(StringComparer.OrdinalIgnoreCase);
             foreach (var file in Directory.GetFiles(contentRoot, "*", SearchOption.AllDirectories))
             {
                 var ext = Path.GetExtension(file).ToLowerInvariant();
                 if (ext != ".uasset" && ext != ".uexp" && ext != ".ubulk") continue;
-                var gameFile = new OsGameFile(baseDir, new FileInfo(file), "Game/", provider.Versions);
-                provider.Files.AddFiles(new Dictionary<string, GameFile> { [gameFile.Path] = gameFile });
-                filesAdded++;
+                var gameFile = new OsGameFile(baseDir, new FileInfo(file), "Game/Content/", provider.Versions);
+                overlayFiles[gameFile.Path] = gameFile;
             }
+            provider.Files.AddFiles(overlayFiles);
 
-            LogDebug($"[OVERLAY] Mounted {filesAdded} files from {contentRoot}");
+            LogDebug($"[OVERLAY] Mounted {overlayFiles.Count} files from {contentRoot} " +
+                     $"(prefix Game/Content/, ProjectName={provider.ProjectName})");
             return provider;
         }
         catch (Exception ex)
@@ -422,16 +432,23 @@ public class AnimationParser : IDisposable
         int filesAdded = 0;
         try
         {
+            // Mount under "<ProjectName>/Content/" so FixPath("Game/<rel>") resolves to
+            // "<ProjectName>/Content/<rel>.uasset" — plain "Game/" keys are unreachable
+            // because FixPath rewrites the "Game" root to ProjectName + "/Content/".
+            var prefix = (string.IsNullOrEmpty(_provider.ProjectName) ? "GameContent" : _provider.ProjectName) + "/Content/";
             var baseDir = new DirectoryInfo(customRoot);
+            var customFiles = new Dictionary<string, GameFile>(StringComparer.OrdinalIgnoreCase);
             foreach (var file in Directory.GetFiles(customRoot, "*", SearchOption.AllDirectories))
             {
                 var ext = Path.GetExtension(file).ToLowerInvariant();
                 if (ext != ".uasset" && ext != ".uexp" && ext != ".ubulk") continue;
-                var gameFile = new OsGameFile(baseDir, new FileInfo(file), "Game/", _provider.Versions);
-                _provider.Files.AddFiles(new Dictionary<string, GameFile> { [gameFile.Path] = gameFile });
+                var gameFile = new OsGameFile(baseDir, new FileInfo(file), prefix, _provider.Versions);
+                customFiles[gameFile.Path] = gameFile;
                 filesAdded++;
             }
-            LogDebug($"[CUSTOM] Mounted {filesAdded} custom anim files from {customRoot}");
+            if (customFiles.Count > 0)
+                _provider.Files.AddFiles(customFiles, readOrder: 1);
+            LogDebug($"[CUSTOM] Mounted {filesAdded} custom anim files from {customRoot} (prefix {prefix})");
         }
         catch (Exception ex)
         {
@@ -651,6 +668,89 @@ public class AnimationParser : IDisposable
             .ToList();
     }
 
+    /// <summary>
+    /// Attack cards under the persistent CustomAssets root - the same scan shape as
+    /// ScanArchetypeAttackDbs but rooted at customRoot. Character comes from the
+    /// DB/AI/Archetypes/&lt;unit&gt; folder so the Custom section groups by unit, and
+    /// Category is forced to "Custom" so the Custom tab picks them up. Requires
+    /// MountCustomIntoProvider(CustomAssets.Root) first so HasAttackStruct resolves
+    /// the game path against the mounted provider.
+    /// </summary>
+    public List<MoveInfo> ScanCustomAttackDbs(string customRoot)
+    {
+        var moves = new List<MoveInfo>();
+        if (_provider == null || !Directory.Exists(customRoot)) return moves;
+
+        try
+        {
+            var archetypesDir = Path.Combine(customRoot, "DB", "AI", "Archetypes");
+            if (Directory.Exists(archetypesDir))
+            {
+                foreach (var charDir in Directory.GetDirectories(archetypesDir))
+                {
+                    var character = Path.GetFileName(charDir);
+                    if (SkipDirectories.Contains(character)) continue;
+                    character = CanonicalCharacterName(character);
+                    ScanCustomAttackDbDir(customRoot, charDir, charDir, character, moves);
+                }
+            }
+
+            var mainCharAttacks = Path.Combine(customRoot, "DB", "_MainChar", "Combos", "Attacks");
+            if (Directory.Exists(mainCharAttacks))
+                ScanCustomAttackDbDir(customRoot, mainCharAttacks, mainCharAttacks, "MainChar", moves);
+        }
+        catch (Exception ex)
+        {
+            LogDebug($"[CUSTOM] attack card scan failed: {ex.Message}");
+        }
+
+        return moves
+            .OrderBy(m => m.Character, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(m => m.WeaponType, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(m => m.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private void ScanCustomAttackDbDir(string customRoot, string baseDir, string dir, string character, List<MoveInfo> moves)
+    {
+        foreach (var file in Directory.GetFiles(dir, "*.uasset"))
+        {
+            var fileName = Path.GetFileNameWithoutExtension(file);
+            if (IsNonAttackDbAsset(fileName)) continue;
+
+            var relDir = Path.GetRelativePath(baseDir, Path.GetDirectoryName(file)!).Replace('\\', '/');
+            var weaponType = EnemyAttackScanner.WeaponTypeFromRelDir(relDir);
+
+            var relPath = Path.GetRelativePath(customRoot, file).Replace('\\', '/');
+            var gamePath = "Game/" + relPath[..^".uasset".Length];
+
+            if (!HasAttackStruct(gamePath))
+            {
+                LogDebug($"[CUSTOM] dropped (no m_Attack struct): {gamePath}");
+                continue;
+            }
+
+            moves.Add(new MoveInfo
+            {
+                DisplayName = fileName,
+                FullPath = gamePath,
+                Character = character,
+                WeaponType = weaponType,
+                Category = "Custom",
+                IsUsed = true,
+                EnemyType = character
+            });
+        }
+
+        foreach (var subDir in Directory.GetDirectories(dir))
+        {
+            var dirName = Path.GetFileName(subDir);
+            var isOldDir = dirName.Equals("_old", StringComparison.OrdinalIgnoreCase);
+            if (SkipDirectories.Contains(dirName) && !isOldDir) continue;
+            ScanCustomAttackDbDir(customRoot, baseDir, subDir, character, moves);
+        }
+    }
+
     private void ScanAttackDbDir(string dir, string character, List<MoveInfo> moves)
     {
         foreach (var file in Directory.GetFiles(dir, "*.uasset"))
@@ -675,7 +775,11 @@ public class AnimationParser : IDisposable
             var hasStruct = HasAttackStruct(gamePath);
             if (fileName.Contains("Grab", StringComparison.OrdinalIgnoreCase))
                 LogDebug($"[GRAB_SCAN] {gamePath}: hasStruct={hasStruct} cat={category} weapon={weaponType}");
-            if (!hasStruct) continue;
+            if (!hasStruct)
+            {
+                LogDebug($"[LIBRARY] dropped (no m_Attack struct): {gamePath}");
+                continue;
+            }
 
             moves.Add(new MoveInfo
             {
@@ -692,13 +796,16 @@ public class AnimationParser : IDisposable
         foreach (var subDir in Directory.GetDirectories(dir))
         {
             var dirName = Path.GetFileName(subDir);
-            if (SkipDirectories.Contains(dirName))
+            var isOldDir = dirName.Equals("_old", StringComparison.OrdinalIgnoreCase);
+            if (SkipDirectories.Contains(dirName) && !isOldDir)
             {
                 if (dirName.Contains("Grab", StringComparison.OrdinalIgnoreCase) ||
                     dirName.Contains("FarGrab", StringComparison.OrdinalIgnoreCase))
                     LogDebug($"[GRAB_SCAN] skipped dir: {subDir}");
                 continue;
             }
+            if (isOldDir)
+                LogDebug($"[LIBRARY] scanning _old dir: {subDir}");
             ScanAttackDbDir(subDir, character, moves);
         }
     }
@@ -1473,7 +1580,12 @@ public class AnimationParser : IDisposable
             var dbObj = _provider?.SafeLoadPackageObject<UObject>(dbPath);
             if (dbObj == null && _overlayProvider != null)
                 dbObj = _overlayProvider.SafeLoadPackageObject<UObject>(dbPath);
-            if (dbObj == null) return null;
+            if (dbObj == null)
+            {
+                LogDebug($"[DBRESOLVE] {dbPath}: package not found" +
+                         (_overlayProvider == null ? " (no overlay mounted)" : " (vanilla + overlay)"));
+                return null;
+            }
 
             var mAttack = dbObj.Properties.FirstOrDefault(p => p.Name.Text == "m_Attack");
             if (mAttack?.Tag is StructProperty attackStruct &&
@@ -1488,11 +1600,28 @@ public class AnimationParser : IDisposable
                         var fullPath = resolved.GetPathName();
                         if (!string.IsNullOrEmpty(fullPath) && fullPath != "None")
                             return NormalizeAnimPath(fullPath);
+                        LogDebug($"[DBRESOLVE] {dbPath}: m_Animation resolved to empty path");
+                    }
+                    else
+                    {
+                        LogDebug($"[DBRESOLVE] {dbPath}: m_Animation ResolvedObject is null (lazy reference not in any provider)");
                     }
                 }
+                else
+                {
+                    LogDebug($"[DBRESOLVE] {dbPath}: m_Animation missing or not an ObjectProperty");
+                }
+            }
+            else
+            {
+                LogDebug($"[DBRESOLVE] {dbPath}: m_Attack missing or not a struct" +
+                         (mAttack == null ? "" : $" (tag={mAttack.Tag?.GetType().Name})"));
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            LogDebug($"[DBRESOLVE] {dbPath}: exception {ex.GetType().Name}: {ex.Message}");
+        }
         return null;
     }
 

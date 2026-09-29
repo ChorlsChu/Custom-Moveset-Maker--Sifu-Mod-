@@ -102,7 +102,9 @@ public static class ProjectChangeSummary
             var modified = graph.Nodes
                 .Where(n => !n.IsRoot && !string.IsNullOrEmpty(n.AnimPath)
                     && (n.TreeIndex == -1 || n.AnimPath != n.DefaultAnimPath
-                        || (!string.IsNullOrEmpty(n.VanillaAnimPath) && n.AnimPath != n.VanillaAnimPath)))
+                        || (!string.IsNullOrEmpty(n.VanillaAnimPath) && n.AnimPath != n.VanillaAnimPath)
+                        || (!string.IsNullOrEmpty(n.DefaultDBPath) && !string.IsNullOrEmpty(n.SourceDBPath)
+                            && !string.Equals(n.SourceDBPath, n.DefaultDBPath, StringComparison.OrdinalIgnoreCase))))
                 .OrderBy(n => n.TreeIndex)
                 .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToList();

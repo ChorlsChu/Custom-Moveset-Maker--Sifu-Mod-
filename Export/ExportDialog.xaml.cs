@@ -49,6 +49,14 @@ public partial class ExportDialog : Window
     private readonly Dictionary<string, HashSet<string>> _expandedSections = new(StringComparer.OrdinalIgnoreCase);
     private string? _currentExportVariant;
     private readonly HashSet<string> _writtenArenaPaths = new(StringComparer.OrdinalIgnoreCase);
+    // Set while an export runs whenever anything it stages or references resolves to
+    // the CustomAssets folder; gates the bulk StageCustomAssetsFiles at the end.
+    private static bool _exportUsesCustomAssets;
+    // Display rels (uasset row + companions) the user unchecked on the Custom Files page.
+    private readonly HashSet<string> _excludedCustomStems = new(StringComparer.OrdinalIgnoreCase);
+    // Custom Files page rows (checkbox, display rel) - built when the page opens.
+    private readonly List<(CheckBox box, string rowRel)> _customFileRows = new();
+    private double _reviewWidth;
 
     private static Brush MakeBrush(string hex) =>
         (Brush)new BrushConverter().ConvertFrom(hex);
@@ -150,7 +158,6 @@ public partial class ExportDialog : Window
             // AttackDB field tuning does not touch AnimPath/DefaultAnimPath, so it would never
             // show up in `modified` - the unit still has to be exported for its cards to ship.
             bool hasAttackTuning = ProjectChangeSummary.GraphHasAttackDbTuning(graph);
-
             if (modified.Count > 0 || hasRetargets || hasUnitProps || hasAttackTuning)
             {
                 _perUnitModifiedNodes[unitKey] = modified;
@@ -509,6 +516,155 @@ public partial class ExportDialog : Window
 
         txtModName.Text = isMulti ? "MultiUnitComboMod" : "MainCharComboMod";
         UpdateOutputPreview(outputDir);
+
+        ShowCustomFilesButtonIfRelevant();
+    }
+
+    /// <summary>
+    /// Shows the optional Custom Files button only when this export actually depends
+    /// on the CustomAssets folder: a changed node or tuned card linked to a custom
+    /// anim/card, or any same-path override file.
+    /// </summary>
+    private void ShowCustomFilesButtonIfRelevant()
+    {
+        try
+        {
+            if (!DetectCustomDependency()) return;
+            var rows = GetCustomRowRels();
+            if (rows.Count == 0) return;
+            btnCustomFiles.Content = $"Custom Files ({rows.Count})";
+            btnCustomFiles.Visibility = Visibility.Visible;
+        }
+        catch { }
+    }
+
+    private static List<string> GetCustomRowRels()
+    {
+        if (!Directory.Exists(CustomAssets.Root)) return new List<string>();
+        return CustomAssets.DisplayNames(
+            Directory.GetFiles(CustomAssets.Root, "*", SearchOption.AllDirectories)
+                .Select(f => Path.GetRelativePath(CustomAssets.Root, f).Replace('\\', '/')));
+    }
+
+    private bool DetectCustomDependency()
+    {
+        bool Linked(ComboNode n) =>
+            CustomRefExists(n.AnimPath) || CustomRefExists(n.DefaultDBPath)
+            || CustomRefExists(n.SourceDBPath);
+        bool TunedCustom(ComboNode n) =>
+            ProjectChangeSummary.HasAttackDbTuning(n)
+            && CustomRefExists(AttackDbCard.EffectiveCardPath(n));
+        try
+        {
+            if (_unitCaches != null && _perUnitGraphs.Count > 0)
+            {
+                foreach (var kvp in _perUnitModifiedNodes)
+                    foreach (var n in kvp.Value)
+                        if (Linked(n)) return true;
+                foreach (var kvp in _perUnitGraphs)
+                {
+                    if (kvp.Value.graph == null) continue;
+                    foreach (var n in kvp.Value.graph.Nodes)
+                        if (Linked(n) || TunedCustom(n)) return true;
+                }
+            }
+            else
+            {
+                foreach (var n in _modifiedNodes)
+                    if (Linked(n)) return true;
+                if (_graph != null)
+                    foreach (var n in _graph.Nodes)
+                        if (Linked(n) || TunedCustom(n)) return true;
+            }
+            return CustomAssetsHasOverrides(Path.Combine(_contentPath, "Content"));
+        }
+        catch { return false; }
+    }
+
+    // ---- Custom Files page -----------------------------------------------------------
+
+    private void CustomFiles_Click(object sender, RoutedEventArgs e)
+    {
+        BuildCustomFilesList();
+        _reviewWidth = Width;
+        panelReview.Visibility = Visibility.Collapsed;
+        panelCustomFiles.Visibility = Visibility.Visible;
+        Width = 900;
+    }
+
+    private void CustomFilesBack_Click(object sender, RoutedEventArgs e)
+    {
+        CollectExcludedCustomStems();
+        panelCustomFiles.Visibility = Visibility.Collapsed;
+        panelReview.Visibility = Visibility.Visible;
+        Width = _reviewWidth;
+    }
+
+    private void SelectAllCustom_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var (box, _) in _customFileRows) box.IsChecked = true;
+    }
+
+    private void SelectNoneCustom_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var (box, _) in _customFileRows) box.IsChecked = false;
+    }
+
+    private void BuildCustomFilesList()
+    {
+        customFilesList.Children.Clear();
+        _customFileRows.Clear();
+        foreach (var rowRel in GetCustomRowRels())
+        {
+            var dir = Path.GetDirectoryName(rowRel.Replace('/', Path.DirectorySeparatorChar));
+            var dirText = string.IsNullOrEmpty(dir) ? "" : dir.Replace('\\', '/');
+
+            var g = new Grid();
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(300) });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var nameTb = new TextBlock
+            {
+                Text = Path.GetFileName(rowRel),
+                Foreground = MakeBrush("#cdd6f4"),
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+            var pathTb = new TextBlock
+            {
+                Text = dirText,
+                Foreground = MakeBrush("#6c7086"),
+                FontSize = 11,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(12, 0, 0, 0),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+            Grid.SetColumn(nameTb, 0);
+            Grid.SetColumn(pathTb, 1);
+            g.Children.Add(nameTb);
+            g.Children.Add(pathTb);
+
+            var box = new CheckBox
+            {
+                Content = g,
+                IsChecked = true,
+                Foreground = MakeBrush("#cdd6f4"),
+                Margin = new Thickness(0, 3, 0, 3),
+            };
+            customFilesList.Children.Add(box);
+            _customFileRows.Add((box, rowRel));
+        }
+    }
+
+    private void CollectExcludedCustomStems()
+    {
+        _excludedCustomStems.Clear();
+        foreach (var (box, rowRel) in _customFileRows)
+        {
+            if (box.IsChecked == true) continue;
+            // The stem covers the .uexp/.ubulk companions - consumers match AssetStemOfRel.
+            _excludedCustomStems.Add(CustomAssets.AssetStemOfRel(rowRel));
+        }
     }
 
     private static string ResolveOutputPath(string? path)
@@ -579,6 +735,7 @@ public partial class ExportDialog : Window
 
     private async void Confirm_Click(object sender, RoutedEventArgs e)
     {
+        CollectExcludedCustomStems();
         panelReview.Visibility = Visibility.Collapsed;
         panelExporting.Visibility = Visibility.Visible;
 
@@ -604,6 +761,7 @@ public partial class ExportDialog : Window
 
             var fileEntries = new List<(string src, string dest)>();
             _writtenArenaPaths.Clear();
+            _exportUsesCustomAssets = false;
             _currentExportVariant = null;
 
             if (_unitCaches != null && _perUnitGraphs.Count > 0)
@@ -711,6 +869,26 @@ public partial class ExportDialog : Window
                 var focusUexp = Path.ChangeExtension(focusOut, ".uexp");
                 if (File.Exists(focusUexp))
                     fileEntries.Add((focusUexp, $"../../../Sifu/Content/{focusRel}.uexp"));
+            }
+
+            // Ship the persistent CustomAssets library only when this export actually
+            // depends on it: a staged source, anim/card reference or changed node that
+            // resolved custom, or any same-path override file (always ships). A
+            // vanilla-only export never drags the folder along. User-unchecked rows are
+            // dropped even when an earlier pass already staged them.
+            if (!_exportUsesCustomAssets) _exportUsesCustomAssets = CustomAssetsHasOverrides(gameRoot);
+            if (_exportUsesCustomAssets)
+            {
+                StageCustomAssetsFiles(fileEntries, _excludedCustomStems);
+                int uncheckedStaged = fileEntries.RemoveAll(e => IsExcludedCustomDest(e.dest));
+                if (uncheckedStaged > 0)
+                    ErrorLog.Write("EXPORT", new Exception(
+                        $"[CUSTOM-ASSETS] removed {uncheckedStaged} user-unchecked staged file(s)"));
+            }
+            else
+            {
+                ErrorLog.Write("EXPORT", new Exception(
+                    "[CUSTOM-ASSETS] skipped: no Custom Section dependency"));
             }
 
             if (fileEntries.Count == 0)
@@ -903,7 +1081,8 @@ public partial class ExportDialog : Window
 
             var mainComboGamePath = string.IsNullOrEmpty(_mainCharComboPath) ? DefaultMainCharComboPath : _mainCharComboPath;
             var mainComboRel = GamePathToContentRel(mainComboGamePath);
-            var vanillaAssetPath = Path.Combine(gameRoot, mainComboRel + ".uasset");
+            var vanillaAssetPath = ResolveStageSource(gameRoot, mainComboRel)
+                ?? Path.Combine(gameRoot, mainComboRel + ".uasset");
             if (!File.Exists(vanillaAssetPath))
             {
                 ShowError($"Vanilla asset not found: {vanillaAssetPath}");
@@ -953,12 +1132,20 @@ public partial class ExportDialog : Window
                 int patchedFallback = 0;
                 int redirectSkipped = 0;
                 int comboSwaps = 0;
-                var mainSwaps = new List<(string oldShortName, string newShortName, string newFullPath)>();
+                var mainSwaps = new List<(string oldShortName, string newShortName, string newFullPath, string oldFullPath)>();
                 var swappedSlotShorts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var redirectNodes = new List<ComboNode>();
                 var patchedDbFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var delayPatched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var mainAmbiguousFiles = BuildAmbiguousFilenames(allMaps);
                 foreach (var node in _modifiedNodes)
                 {
+                    // A changed node whose anim or card lives only in CustomAssets makes
+                    // this export depend on the folder - checked before any skip so
+                    // deferred enemy nodes count too.
+                    if (CustomRefExists(node.AnimPath) || CustomRefExists(node.DefaultDBPath)
+                        || CustomRefExists(node.SourceDBPath))
+                        _exportUsesCustomAssets = true;
                     if (!string.IsNullOrEmpty(node.DefaultDBPath) && node.DefaultDBPath.Contains("/AI/Archetypes/", StringComparison.OrdinalIgnoreCase) && _graph != null && !string.Equals(_graph.WeaponName, "MainChar", StringComparison.OrdinalIgnoreCase))
                     {
                         ErrorLog.Write("EXPORT", new Exception($"  ENEMY DEFER: {node.DisplayName} -> combo tree Import swap"));
@@ -968,8 +1155,9 @@ public partial class ExportDialog : Window
                     {
                         if (node.TreeIndex == -1 && !string.IsNullOrEmpty(node.AnimPath))
                         {
-                            var templateRel = "DB/_MainChar/Combos/Attacks/BareHands/LightCombo/MainChar_Jab_FR.uasset";
-                            var templateFile = Path.Combine(gameRoot, templateRel);
+                            var templateRel = "DB/_MainChar/Combos/Attacks/BareHands/LightCombo/MainChar_Jab_FR";
+                            var templateFile = ResolveStageSource(gameRoot, templateRel)
+                                ?? Path.Combine(gameRoot, templateRel + ".uasset");
                             if (!File.Exists(templateFile))
                                 templateFile = Directory.GetFiles(Path.Combine(gameRoot, "DB"), "MainChar_Jab*.uasset", SearchOption.AllDirectories).FirstOrDefault();
                             if (templateFile != null && File.Exists(templateFile))
@@ -992,8 +1180,7 @@ public partial class ExportDialog : Window
                             }
                         }
                         skippedEmpty++;
-                        if (skippedEmpty <= 3)
-                            ErrorLog.Write("EXPORT", new Exception($"  SKIP(empty DB): {node.DisplayName} AnimPath='{node.AnimPath}' DefaultDBPath='{node.DefaultDBPath}' DefaultAnimPath='{node.DefaultAnimPath}'"));
+                        ErrorLog.Write("EXPORT", new Exception($"  SKIP(empty DB): {node.DisplayName} AnimPath='{node.AnimPath}' DefaultDBPath='{node.DefaultDBPath}' DefaultAnimPath='{node.DefaultAnimPath}'"));
                         continue;
                     }
 
@@ -1011,8 +1198,8 @@ public partial class ExportDialog : Window
                         var relDbPath = fallbackDbPath.TrimStart('/');
                         if (relDbPath.StartsWith("Game/", StringComparison.OrdinalIgnoreCase))
                             relDbPath = relDbPath.Substring(5);
-                        var vanillaDbFile = Path.Combine(gameRoot, relDbPath + ".uasset");
-                        if (!patchedDbFiles.Contains(fallbackDbPath) && File.Exists(vanillaDbFile))
+                        var vanillaDbFile = ResolveStageSource(gameRoot, relDbPath);
+                        if (!patchedDbFiles.Contains(fallbackDbPath) && vanillaDbFile != null)
                         {
                             var outDbPath = Path.Combine(outputPath, "Sifu", "Content", relDbPath + ".uasset");
 
@@ -1041,8 +1228,7 @@ public partial class ExportDialog : Window
                         }
 
                         skippedNoDb++;
-                        if (skippedNoDb <= 3)
-                            ErrorLog.Write("EXPORT", new Exception($"  SKIP(no anim->db): {node.DisplayName} AnimPath='{node.AnimPath}' DefaultDBPath='{node.DefaultDBPath}'"));
+                        ErrorLog.Write("EXPORT", new Exception($"  SKIP(no anim->db): {node.DisplayName} AnimPath='{node.AnimPath}' DefaultDBPath='{node.DefaultDBPath}'"));
                         continue;
                     }
 
@@ -1051,9 +1237,9 @@ public partial class ExportDialog : Window
                         var inplaceRel = inplaceDbPath.TrimStart('/');
                         if (inplaceRel.StartsWith("Game/", StringComparison.OrdinalIgnoreCase))
                             inplaceRel = inplaceRel.Substring(5);
-                        var inplaceVanilla = Path.Combine(gameRoot, inplaceRel + ".uasset");
+                        var inplaceVanilla = ResolveStageSource(gameRoot, inplaceRel);
                         bool inplaceOk = false;
-                        if (!patchedDbFiles.Contains(inplaceDbPath) && File.Exists(inplaceVanilla))
+                        if (!patchedDbFiles.Contains(inplaceDbPath) && inplaceVanilla != null)
                         {
                             var inplaceOut = Path.Combine(outputPath, "Sifu", "Content", inplaceRel + ".uasset");
                             if (PatchDbAnimation(inplaceVanilla, node.AnimPath, inplaceOut, EngineVersion.VER_UE4_26))
@@ -1080,7 +1266,11 @@ public partial class ExportDialog : Window
                     var oldSlotShort = Path.GetFileNameWithoutExtension(node.DefaultDBPath);
                     var newSlotShort = Path.GetFileNameWithoutExtension(newDbPath);
 
-                    if (string.IsNullOrEmpty(attackName) || string.IsNullOrEmpty(attackPath)) continue;
+                    if (string.IsNullOrEmpty(attackName) || string.IsNullOrEmpty(attackPath))
+                    {
+                        ErrorLog.Write("EXPORT", new Exception($"  SKIP(empty attack name/path): {node.DisplayName} AnimPath='{node.AnimPath}' animToDb='{newDbPath}'"));
+                        continue;
+                    }
 
                     bool found = false;
                     foreach (var attacksMap in allMaps)
@@ -1088,7 +1278,7 @@ public partial class ExportDialog : Window
                         foreach (var kvp in attacksMap.Value)
                         {
                             string keyStr = GetKeyString(kvp.Key);
-                            if (!SlotKeysMatch(keyStr, normalizedSlotKey))
+                            if (!SlotKeysMatch(keyStr, normalizedSlotKey, mainAmbiguousFiles))
                             {
                                 continue;
                             }
@@ -1107,8 +1297,9 @@ public partial class ExportDialog : Window
                                 && swappedSlotShorts.Add(oldSlotShort))
                             {
                                 comboSwaps++;
-                                mainSwaps.Add((oldSlotShort, newSlotShort, attackPath));
+                                mainSwaps.Add((oldSlotShort, newSlotShort, attackPath, node.DefaultDBPath));
                                 ErrorLog.Write("EXPORT", new Exception($"  COMBO MAP VALUE: {oldSlotShort} -> {newSlotShort}"));
+                                TryPreserveDelayWindow(node.DefaultDBPath, newDbPath, gameRoot, outputPath, fileEntries, EngineVersion.VER_UE4_26, delayPatched, node.DelayWindowLo, node.DelayWindowHi);
                             }
                             found = true;
                             break;
@@ -1119,8 +1310,7 @@ public partial class ExportDialog : Window
                     if (!found)
                     {
                         skippedNoDb++;
-                        if (skippedNoDb <= 3)
-                            ErrorLog.Write("EXPORT", new Exception($"  NOT FOUND: {node.DisplayName} slot key '{normalizedSlotKey}' (in-place failed, no map entry)"));
+                        ErrorLog.Write("EXPORT", new Exception($"  NOT FOUND: {node.DisplayName} slot key '{normalizedSlotKey}' (in-place failed, no map entry)"));
                     }
                 }
 
@@ -1152,10 +1342,17 @@ public partial class ExportDialog : Window
                                 if (dtName.Contains("HitBoxData", StringComparison.OrdinalIgnoreCase)) continue;
                                 if (!dtName.Contains("Datatable", StringComparison.OrdinalIgnoreCase) && !dtName.Contains("AttackData", StringComparison.OrdinalIgnoreCase) && !dtName.EndsWith("_Attacks", StringComparison.OrdinalIgnoreCase)) continue;
 
-                                var outDt = Path.Combine(outputPath, "Sifu", "Content", Path.GetRelativePath(gameRoot, dtFile));
+                                // Same-path override: a CustomAssets copy of this DT is the
+                                // source the patch applies to; rel stays vanilla-derived.
+                                var dtRel = Path.GetRelativePath(gameRoot, dtFile).Replace('\\', '/');
+                                var customDt = CustomAssets.FileForContentRel(dtRel);
+                                var dtSource = File.Exists(customDt) ? customDt : dtFile;
+                                if (dtSource != dtFile) _exportUsesCustomAssets = true;
+
+                                var outDt = Path.Combine(outputPath, "Sifu", "Content", dtRel);
                                 if (!dtGroups.TryGetValue(outDt, out var group))
                                 {
-                                    group = (dtFile, outDt, new List<(string, string)>());
+                                    group = (dtSource, outDt, new List<(string, string)>());
                                     dtGroups[outDt] = group;
                                 }
                                 group.rows.Add((targetAttackName, node.AnimPath));
@@ -1324,7 +1521,7 @@ public partial class ExportDialog : Window
                             {
                                 string keyStr = GetKeyString(kvp.Key);
                                 string normalizedDefault = NormalizeSlotKey(node.DefaultDBPath);
-                                if (!SlotKeysMatch(keyStr, normalizedDefault)) continue;
+                                if (!SlotKeysMatch(keyStr, normalizedDefault, mainAmbiguousFiles)) continue;
 
                                 var valData = kvp.Value as ObjectPropertyData;
                                 if (valData?.Value == null) continue;
@@ -1355,7 +1552,10 @@ public partial class ExportDialog : Window
                                 comboSwaps++;
                                 swappedThis = true;
                                 if (swappedSlotShorts.Add(oldDbShortName))
-                                    mainSwaps.Add((oldDbShortName, newDbShortName, newDbFullPath));
+                                {
+                                    mainSwaps.Add((oldDbShortName, newDbShortName, newDbFullPath, node.DefaultDBPath));
+                                    TryPreserveDelayWindow(node.DefaultDBPath, newDbPath, gameRoot, outputPath, fileEntries, EngineVersion.VER_UE4_26, delayPatched, node.DelayWindowLo, node.DelayWindowHi);
+                                }
                                 ErrorLog.Write("EXPORT", new Exception($"  COMBO IMPORT SWAP: {oldDbShortName} -> {newDbShortName} (import[{curImportIdx}])"));
                                 break;
                             }
@@ -1376,7 +1576,7 @@ public partial class ExportDialog : Window
                                 foreach (var kvp in attacksMap.Value)
                                 {
                                     string keyStr = GetKeyString(kvp.Key);
-                                    if (!SlotKeysMatch(keyStr, NormalizeSlotKey(node.DefaultDBPath))) continue;
+                                    if (!SlotKeysMatch(keyStr, NormalizeSlotKey(node.DefaultDBPath), mainAmbiguousFiles)) continue;
                                     if (kvp.Value is not ObjectPropertyData od || od.Value == null) continue;
                                     od.Value = FPackageIndex.FromImport(importIdx);
                                     mapPatched = true;
@@ -1389,7 +1589,10 @@ public partial class ExportDialog : Window
                             {
                                 comboSwaps++;
                                 if (swappedSlotShorts.Add(oldDbShortName))
-                                    mainSwaps.Add((oldDbShortName, newDbShortName, newDbFullPath));
+                                {
+                                    mainSwaps.Add((oldDbShortName, newDbShortName, newDbFullPath, node.DefaultDBPath));
+                                    TryPreserveDelayWindow(node.DefaultDBPath, newDbPath, gameRoot, outputPath, fileEntries, EngineVersion.VER_UE4_26, delayPatched, node.DelayWindowLo, node.DelayWindowHi);
+                                }
                                 ErrorLog.Write("EXPORT", new Exception($"  COMBO MAP REPOINT: {oldDbShortName} -> {newDbShortName} (import[{importIdx}])"));
                             }
                         }
@@ -1400,11 +1603,16 @@ public partial class ExportDialog : Window
                         var swapDict = mainSwaps
                             .GroupBy(s => s.oldShortName, StringComparer.OrdinalIgnoreCase)
                             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+                        var exactSwapDict = mainSwaps
+                            .GroupBy(s => NormalizeSlotKey(s.oldFullPath), StringComparer.OrdinalIgnoreCase)
+                            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
                         var nodesProp = comboExport.Data.FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Nodes");
                         if (nodesProp is ArrayPropertyData nodesArr)
                         {
                             int fNamesPatched = 0;
+                            int fNamesExact = 0;
+                            int fNamesCollateral = 0;
                             foreach (var elem in nodesArr.Value)
                             {
                                 if (elem is not StructPropertyData nodeStruct || nodeStruct.Value == null) continue;
@@ -1423,9 +1631,19 @@ public partial class ExportDialog : Window
                                     if (string.IsNullOrEmpty(curPath) || curPath == "None") continue;
 
                                     string curShortName = Path.GetFileNameWithoutExtension(curPath);
-                                    if (!swapDict.TryGetValue(curShortName, out var swap)) continue;
+                                    string newFNamePath;
+                                    if (exactSwapDict.TryGetValue(NormalizeSlotKey(curPath), out var exactSwap))
+                                    {
+                                        newFNamePath = exactSwap.newFullPath + "." + exactSwap.newShortName;
+                                        fNamesExact++;
+                                    }
+                                    else if (swapDict.TryGetValue(curShortName, out var swap))
+                                    {
+                                        newFNamePath = swap.newFullPath + "." + swap.newShortName;
+                                        fNamesCollateral++;
+                                    }
+                                    else continue;
 
-                                    string newFNamePath = swap.newFullPath + "." + swap.newShortName;
                                     nameProp.Value = FName.FromString(asset, newFNamePath);
                                     fNamesPatched++;
                                 }
@@ -1433,10 +1651,11 @@ public partial class ExportDialog : Window
                             if (fNamesPatched > 0)
                             {
                                 comboTreeModified = true;
-                                ErrorLog.Write("EXPORT", new Exception($"  COMBO FName PATCH: {fNamesPatched} m_Attacks paths in m_Nodes"));
+                                ErrorLog.Write("EXPORT", new Exception($"  COMBO FName PATCH: {fNamesPatched} m_Attacks paths in m_Nodes (exact={fNamesExact}, short-collateral={fNamesCollateral})"));
                             }
                         }
 
+                        int mapKeysCollateral = 0;
                         foreach (var attacksMap in allMaps)
                         {
                             if (attacksMap.Value == null) continue;
@@ -1447,9 +1666,20 @@ public partial class ExportDialog : Window
                             {
                                 string keyStr = GetKeyString(kvp.Key);
                                 string shortKey = Path.GetFileNameWithoutExtension(keyStr);
-                                if (swapDict.TryGetValue(shortKey, out var mapSwap))
+                                string? newFNamePath = null;
+                                bool keyExact = false;
+                                if (exactSwapDict.TryGetValue(NormalizeSlotKey(keyStr), out var mapSwapExact))
                                 {
-                                    string newFNamePath = mapSwap.newFullPath + "." + mapSwap.newShortName;
+                                    newFNamePath = mapSwapExact.newFullPath + "." + mapSwapExact.newShortName;
+                                    keyExact = true;
+                                }
+                                else if (swapDict.TryGetValue(shortKey, out var mapSwap))
+                                {
+                                    newFNamePath = mapSwap.newFullPath + "." + mapSwap.newShortName;
+                                    mapKeysCollateral++;
+                                }
+                                if (newFNamePath != null)
+                                {
                                     if (!seenMapKeys.Add(newFNamePath))
                                     {
                                         ErrorLog.Write("EXPORT", new Exception($"  COMBO MAP KEY dedup: dropped duplicate slot -> {newFNamePath}"));
@@ -1463,7 +1693,7 @@ public partial class ExportDialog : Window
                                     };
                                     rebuilt.Add(newKeyNameProp, kvp.Value);
                                     mapKeyChanged = true;
-                                    ErrorLog.Write("EXPORT", new Exception($"  COMBO MAP KEY: {shortKey} -> {newFNamePath}"));
+                                    ErrorLog.Write("EXPORT", new Exception($"  COMBO MAP KEY{(keyExact ? "" : " (collateral)")}: {shortKey} -> {newFNamePath}"));
                                 }
                                 else
                                 {
@@ -1479,6 +1709,36 @@ public partial class ExportDialog : Window
                             {
                                 attacksMap.Value = rebuilt;
                                 comboTreeModified = true;
+                            }
+                        }
+                        if (mapKeysCollateral > 0)
+                            ErrorLog.Write("EXPORT", new Exception($"  COMBO MAP KEY: {mapKeysCollateral} key(s) renamed by short-name match only (different path, same filename)"));
+
+                        {
+                            int condReplaced = 0;
+                            int condStale = 0;
+                            var condNodesProp = comboExport.Data.FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Nodes");
+                            if (condNodesProp is ArrayPropertyData condNodesArr && condNodesArr.Value != null)
+                            {
+                                foreach (var elem in condNodesArr.Value)
+                                {
+                                    if (elem is not StructPropertyData condNodeStruct || condNodeStruct.Value == null) continue;
+                                    foreach (var condMap in FindAllMapsNamed(condNodeStruct.Value, "m_ConditionalAttacks"))
+                                    {
+                                        if (condMap.Value == null) continue;
+                                        foreach (var kvp in condMap.Value)
+                                            RewriteConditionalAttacksRefs(kvp.Value, exactSwapDict, asset, ref condReplaced, ref condStale);
+                                    }
+                                }
+                            }
+                            if (condReplaced > 0)
+                            {
+                                comboTreeModified = true;
+                                ErrorLog.Write("EXPORT", new Exception($"  COND ATTACKS: rewrote {condReplaced} m_Attacks refs in m_ConditionalAttacks ({condStale} stale same-name refs left untouched)"));
+                            }
+                            else if (condStale > 0)
+                            {
+                                ErrorLog.Write("EXPORT", new Exception($"  COND ATTACKS: {condStale} m_Attacks refs match a swapped filename but a different path — left untouched"));
                             }
                         }
                     }
@@ -1539,7 +1799,8 @@ public partial class ExportDialog : Window
                     var relDbPath = node.DefaultDBPath.TrimStart('/');
                     if (relDbPath.StartsWith("Game/", StringComparison.OrdinalIgnoreCase))
                         relDbPath = relDbPath.Substring(5);
-                    var vanillaDbFile = Path.Combine(gameRoot, relDbPath + ".uasset");
+                    var vanillaDbFile = ResolveStageSource(gameRoot, relDbPath)
+                        ?? Path.Combine(gameRoot, relDbPath + ".uasset");
                     if (patchedDbFiles.Contains(node.DefaultDBPath) || !File.Exists(vanillaDbFile))
                     {
                         ErrorLog.Write("EXPORT", new Exception($"  REDIRECT FAILED (no combo slot): {node.DisplayName} slot={slotShort} — move may not apply"));
@@ -1600,7 +1861,8 @@ public partial class ExportDialog : Window
             if (!string.IsNullOrEmpty(_enemyComboPath))
             {
                 var enemyComboRelPath = GamePathToContentRel(_enemyComboPath);
-                var enemyVanillaPath = Path.Combine(gameRoot, enemyComboRelPath + ".uasset");
+                var enemyVanillaPath = ResolveStageSource(gameRoot, enemyComboRelPath)
+                    ?? Path.Combine(gameRoot, enemyComboRelPath + ".uasset");
                 if (File.Exists(enemyVanillaPath))
                 {
                     var enemyOutDir = Path.Combine(outputPath, "Sifu", "Content", Path.GetDirectoryName(enemyComboRelPath)!);
@@ -1640,9 +1902,11 @@ public partial class ExportDialog : Window
                         }
 
                         var enemyComboBinSwaps = new List<(string oldShortName, string newShortName, string newFullPath)>();
+                        var enemyDelayPatched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                         {
                             var enemyAllMaps = FindAllMapsNamed(enemyComboExport.Data, "m_Attacks");
                             ErrorLog.Write("EXPORT", new Exception($"Enemy combo tree: found {enemyAllMaps.Count} m_Attacks maps, {enemyAsset.Imports.Count} imports"));
+                            var enemyAmbiguousFiles = BuildAmbiguousFilenames(enemyAllMaps);
 
                             var enemyModifiedNodes = _modifiedNodes
                                 .Where(n => !string.IsNullOrEmpty(n.DefaultDBPath)
@@ -1668,7 +1932,7 @@ public partial class ExportDialog : Window
                                     {
                                         string keyStr = GetKeyString(kvp.Key);
                                         string normalizedDefault = NormalizeSlotKey(node.DefaultDBPath);
-                                        if (!SlotKeysMatch(keyStr, normalizedDefault)) continue;
+                                        if (!SlotKeysMatch(keyStr, normalizedDefault, enemyAmbiguousFiles)) continue;
 
                                         var valData = kvp.Value as ObjectPropertyData;
                                         if (valData?.Value == null) continue;
@@ -1694,6 +1958,7 @@ public partial class ExportDialog : Window
                                         enemyComboBinSwaps.Add((oldDbShortName, newDbShortName, newDbFullPath));
                                         swapped = true;
                                         ErrorLog.Write("EXPORT", new Exception($"  ENEMY COMBO IMPORT SWAP: {oldDbShortName} -> {newDbShortName} (import[{curImportIdx}])"));
+                                        TryPreserveDelayWindow(node.DefaultDBPath, newDbPath, gameRoot, outputPath, fileEntries, EngineVersion.VER_UE4_26, enemyDelayPatched, node.DelayWindowLo, node.DelayWindowHi);
                                         break;
                                     }
                                     if (swapped) break;
@@ -1850,19 +2115,45 @@ public partial class ExportDialog : Window
                         {
                             string charRoot = string.Join("/", comboPathParts.Take(archetypesIdx + 2));
                             string charArenaDir = Path.Combine(gameRoot, charRoot, "_Arena");
+                            string customArenaDir = Path.Combine(CustomAssets.Root,
+                                charRoot.Replace('/', Path.DirectorySeparatorChar), "_Arena");
                             if (enemyComboBinSwaps.Count == 0 && !hasRetargets)
                             {
                                 ErrorLog.Write("EXPORT", new Exception("  ARENA SKIP: no attack swaps or retargets for this unit"));
                             }
-                            else if (Directory.Exists(charArenaDir))
+                            else if (Directory.Exists(charArenaDir) || Directory.Exists(customArenaDir))
                             {
-                                var arenaComboFiles = Directory.GetFiles(charArenaDir, "*.uasset", SearchOption.AllDirectories)
-                                    .Where(f => Path.GetFileNameWithoutExtension(f).Contains("Combo", StringComparison.OrdinalIgnoreCase))
-                                    .ToList();
-
-                                foreach (var arenaComboVanilla in arenaComboFiles)
+                                // Vanilla arena combos first, then CustomAssets entries: a
+                                // custom-only combo is added, a same-path one replaces its
+                                // vanilla row so the override is what gets patched and staged.
+                                var arenaSources = new List<(string path, string rel)>();
+                                var seenRels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                                if (Directory.Exists(charArenaDir))
                                 {
-                                    var arenaComboRelFromContent = Path.GetRelativePath(Path.Combine(gameRoot), arenaComboVanilla).Replace('\\', '/');
+                                    foreach (var f in Directory.GetFiles(charArenaDir, "*.uasset", SearchOption.AllDirectories))
+                                    {
+                                        if (!Path.GetFileNameWithoutExtension(f).Contains("Combo", StringComparison.OrdinalIgnoreCase)) continue;
+                                        var r = Path.GetRelativePath(gameRoot, f).Replace('\\', '/');
+                                        if (seenRels.Add(r)) arenaSources.Add((f, r));
+                                    }
+                                }
+                                if (Directory.Exists(customArenaDir))
+                                {
+                                    foreach (var f in Directory.GetFiles(customArenaDir, "*.uasset", SearchOption.AllDirectories))
+                                    {
+                                        if (!Path.GetFileNameWithoutExtension(f).Contains("Combo", StringComparison.OrdinalIgnoreCase)) continue;
+                                        var r = Path.GetRelativePath(CustomAssets.Root, f).Replace('\\', '/');
+                                        int existing = arenaSources.FindIndex(x =>
+                                            string.Equals(x.rel, r, StringComparison.OrdinalIgnoreCase));
+                                        if (existing >= 0) arenaSources[existing] = (f, r);
+                                        else arenaSources.Add((f, r));
+                                        _exportUsesCustomAssets = true;
+                                    }
+                                }
+
+                                foreach (var (arenaComboVanilla, arenaRelFull) in arenaSources)
+                                {
+                                    var arenaComboRelFromContent = arenaRelFull;
                                     if (arenaComboRelFromContent.EndsWith(".uasset"))
                                         arenaComboRelFromContent = arenaComboRelFromContent[..^7];
 
@@ -2081,8 +2372,10 @@ public partial class ExportDialog : Window
             if (!string.IsNullOrEmpty(_charTransitionPath))
             {
                 txtCurrentAction.Text = "Patching BP_TransitionAnimRequest...";
-                var vanillaTransPath = Path.Combine(gameRoot, "DB/Movement/Transition/BP_TransitionAnimRequest.uasset");
-                var charTransPath = Path.Combine(gameRoot, _charTransitionPath + ".uasset");
+                var vanillaTransPath = ResolveStageSource(gameRoot, "DB/Movement/Transition/BP_TransitionAnimRequest")
+                    ?? Path.Combine(gameRoot, "DB/Movement/Transition/BP_TransitionAnimRequest.uasset");
+                var charTransPath = ResolveStageSource(gameRoot, _charTransitionPath)
+                    ?? Path.Combine(gameRoot, _charTransitionPath + ".uasset");
 
                 if (File.Exists(vanillaTransPath) && File.Exists(charTransPath))
                 {
@@ -2111,8 +2404,10 @@ public partial class ExportDialog : Window
             if (!string.IsNullOrEmpty(_charBaseMovementDBPath))
             {
                 txtCurrentAction.Text = "Patching BaseMovementDB...";
-                var vanillaDbPath = Path.Combine(gameRoot, "DB/Movement/BaseMovementDB.uasset");
-                var charDbPath = Path.Combine(gameRoot, _charBaseMovementDBPath + ".uasset");
+                var vanillaDbPath = ResolveStageSource(gameRoot, "DB/Movement/BaseMovementDB")
+                    ?? Path.Combine(gameRoot, "DB/Movement/BaseMovementDB.uasset");
+                var charDbPath = ResolveStageSource(gameRoot, _charBaseMovementDBPath)
+                    ?? Path.Combine(gameRoot, _charBaseMovementDBPath + ".uasset");
 
                 if (File.Exists(vanillaDbPath) && File.Exists(charDbPath))
                 {
@@ -2207,15 +2502,81 @@ public partial class ExportDialog : Window
         return path;
     }
 
-    private static bool SlotKeysMatch(string keyStr, string normalizedSlotKey)
+    private static bool SlotKeysMatch(string keyStr, string normalizedSlotKey, HashSet<string>? ambiguousFiles = null)
     {
         if (string.IsNullOrEmpty(keyStr) || string.IsNullOrEmpty(normalizedSlotKey)) return false;
         if (string.Equals(keyStr, normalizedSlotKey, StringComparison.OrdinalIgnoreCase)) return true;
         if (string.Equals(NormalizeSlotKey(keyStr), normalizedSlotKey, StringComparison.OrdinalIgnoreCase)) return true;
-        return string.Equals(
-            Path.GetFileNameWithoutExtension(keyStr),
-            Path.GetFileNameWithoutExtension(normalizedSlotKey),
-            StringComparison.OrdinalIgnoreCase);
+        string keyFile = Path.GetFileNameWithoutExtension(keyStr);
+        if (!string.Equals(keyFile, Path.GetFileNameWithoutExtension(normalizedSlotKey), StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (ambiguousFiles != null && ambiguousFiles.Contains(keyFile))
+            return false;
+        return true;
+    }
+
+    private static HashSet<string> BuildAmbiguousFilenames(List<MapPropertyData> maps)
+    {
+        var distinctKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in maps)
+        {
+            if (m.Value == null) continue;
+            foreach (var kvp in m.Value)
+            {
+                string nk = NormalizeSlotKey(GetKeyString(kvp.Key));
+                if (!string.IsNullOrEmpty(nk)) distinctKeys.Add(nk);
+            }
+        }
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in distinctKeys)
+        {
+            string fn = Path.GetFileNameWithoutExtension(key);
+            if (string.IsNullOrEmpty(fn)) continue;
+            counts[fn] = counts.TryGetValue(fn, out var c) ? c + 1 : 1;
+        }
+        return counts.Where(kv => kv.Value > 1).Select(kv => kv.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static void RewriteConditionalAttacksRefs(
+        PropertyData value,
+        Dictionary<string, (string oldShortName, string newShortName, string newFullPath, string oldFullPath)> exactSwapDict,
+        UAsset asset,
+        ref int replaced,
+        ref int stale)
+    {
+        if (value is NamePropertyData np && string.Equals(np.Name?.Value?.ToString(), "m_Attacks", StringComparison.Ordinal))
+        {
+            string curPath = np.Value?.Value?.ToString() ?? "";
+            if (string.IsNullOrEmpty(curPath) || curPath == "None") return;
+            if (exactSwapDict.TryGetValue(NormalizeSlotKey(curPath), out var swap))
+            {
+                np.Value = FName.FromString(asset, swap.newFullPath + "." + swap.newShortName);
+                replaced++;
+            }
+            else
+            {
+                string curShort = Path.GetFileNameWithoutExtension(curPath);
+                if (exactSwapDict.Values.Any(s =>
+                    string.Equals(s.oldShortName, curShort, StringComparison.OrdinalIgnoreCase)))
+                    stale++;
+            }
+            return;
+        }
+        if (value is StructPropertyData sp && sp.Value != null)
+        {
+            foreach (var child in sp.Value)
+                RewriteConditionalAttacksRefs(child, exactSwapDict, asset, ref replaced, ref stale);
+        }
+        else if (value is ArrayPropertyData ap && ap.Value != null)
+        {
+            foreach (var child in ap.Value)
+                RewriteConditionalAttacksRefs(child, exactSwapDict, asset, ref replaced, ref stale);
+        }
+        else if (value is MapPropertyData mp && mp.Value != null)
+        {
+            foreach (var kvp in mp.Value)
+                RewriteConditionalAttacksRefs(kvp.Value, exactSwapDict, asset, ref replaced, ref stale);
+        }
     }
 
     private static string GetKeyString(PropertyData key)
@@ -2654,7 +3015,8 @@ public partial class ExportDialog : Window
             var archRel = UnitPropertiesManager.ResolveArchetypePath(variantTag);
             if (archRel != null)
             {
-                var vanillaPath = Path.Combine(gameRoot, archRel + ".uasset");
+                var vanillaPath = ResolveStageSource(gameRoot, archRel)
+                    ?? Path.Combine(gameRoot, archRel + ".uasset");
                 if (File.Exists(vanillaPath))
                 {
                     var outDir = Path.Combine(outputPath, "Sifu", "Content", Path.GetDirectoryName(archRel)!);
@@ -2691,7 +3053,8 @@ public partial class ExportDialog : Window
             var defRel = UnitPropertiesManager.ResolveContextDefensePath(variantTag);
             if (defRel != null)
             {
-                var vanillaDefPath = Path.Combine(gameRoot, defRel + ".uasset");
+                var vanillaDefPath = ResolveStageSource(gameRoot, defRel)
+                    ?? Path.Combine(gameRoot, defRel + ".uasset");
                 if (File.Exists(vanillaDefPath))
                 {
                     var outDir = Path.Combine(outputPath, "Sifu", "Content", Path.GetDirectoryName(defRel)!);
@@ -2789,7 +3152,10 @@ public partial class ExportDialog : Window
             }
 
             string relFs = rel.Replace('/', Path.DirectorySeparatorChar);
-            string vanillaUasset = Path.Combine(gameRoot, relFs + ".uasset");
+            // Vanilla copy when present, CustomAssets otherwise - custom cards only
+            // exist there and still take the buildup/range patch on their copy.
+            string vanillaUasset = ResolveStageSource(gameRoot, relFs)
+                ?? Path.Combine(gameRoot, relFs + ".uasset");
             string outUasset = Path.Combine(outputPath, "Sifu", "Content", relFs + ".uasset");
             string destBase = "../../../Sifu/Content/" + rel;
 
@@ -2809,6 +3175,7 @@ public partial class ExportDialog : Window
     {
         try
         {
+            NoteAnimRef(newAnimPath);
             var asset = new UAsset(vanillaDbPath, eng, null, CustomSerializationFlags.None);
 
             NormalExport? dbExport = null;
@@ -2855,6 +3222,446 @@ public partial class ExportDialog : Window
             ErrorLog.Write("EXPORT", new Exception($"[DB PATCH] Failed to patch {Path.GetFileName(vanillaDbPath)}: {ex.Message}"));
             return false;
         }
+    }
+
+    /// <summary>
+    /// Source file for a Content-relative asset: the persistent CustomAssets copy when
+    /// it exists (a manual same-path drop is a deliberate override - Harvest never
+    /// creates one), otherwise the vanilla game copy. Null when neither side has it.
+    /// A custom hit also trips the export's CustomAssets dependency flag.
+    /// </summary>
+    private static string? ResolveStageSource(string gameRoot, string contentRel)
+    {
+        var rel = contentRel.Replace('\\', '/');
+        var custom = CustomAssets.FileForContentRel(rel + ".uasset");
+        if (File.Exists(custom))
+        {
+            _exportUsesCustomAssets = true;
+            return custom;
+        }
+        var vanilla = Path.Combine(gameRoot,
+            rel.Replace('/', Path.DirectorySeparatorChar) + ".uasset");
+        return File.Exists(vanilla) ? vanilla : null;
+    }
+
+    /// <summary>True when a Content-relative asset exists in the CustomAssets folder.</summary>
+    private static bool CustomRefExists(string? gamePath)
+    {
+        if (string.IsNullOrWhiteSpace(gamePath)) return false;
+        var rel = GamePathToContentRel(gamePath).Replace('\\', '/');
+        foreach (var ext in new[] { ".uasset", ".uexp", ".ubulk" })
+        {
+            if (rel.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
+            {
+                rel = rel[..^ext.Length];
+                break;
+            }
+        }
+        return File.Exists(CustomAssets.FileForContentRel(rel + ".uasset"));
+    }
+
+    private static void NoteAnimRef(string? animPath)
+    {
+        if (CustomRefExists(animPath)) _exportUsesCustomAssets = true;
+    }
+
+    /// <summary>
+    /// True when CustomAssets holds a file at a path the vanilla game also has - a
+    /// deliberate same-path override. Overrides always ship, even when no changed
+    /// node or patch in this export references them.
+    /// </summary>
+    private static bool CustomAssetsHasOverrides(string gameRoot)
+    {
+        try
+        {
+            if (!Directory.Exists(CustomAssets.Root)) return false;
+            foreach (var file in Directory.GetFiles(CustomAssets.Root, "*", SearchOption.AllDirectories))
+            {
+                var rel = Path.GetRelativePath(CustomAssets.Root, file)
+                    .Replace('/', Path.DirectorySeparatorChar);
+                if (File.Exists(Path.Combine(gameRoot, rel))) return true;
+            }
+        }
+        catch { }
+        return false;
+    }
+
+    private bool IsExcludedCustomDest(string dest)
+    {
+        if (_excludedCustomStems.Count == 0) return false;
+        const string Prefix = "../../../Sifu/Content/";
+        if (!dest.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase)) return false;
+        var rel = dest[Prefix.Length..].Replace('\\', '/');
+        return _excludedCustomStems.Contains(CustomAssets.AssetStemOfRel(rel));
+    }
+
+    /// <summary>
+    /// Packs the persistent CustomAssets library into the pak (ship it all - cards,
+    /// anims, and the Effects/Blueprints/Characters files they reference). Files a
+    /// patching pass already staged keep their patched version; only the unpatched
+    /// remainder is added here. Files whose stem the user unchecked on the Custom
+    /// Files page are skipped entirely (companions included).
+    /// </summary>
+    private static void StageCustomAssetsFiles(
+        List<(string src, string dest)> fileEntries, ISet<string>? excludedStems = null)
+    {
+        try
+        {
+            if (!Directory.Exists(CustomAssets.Root)) return;
+            var stagedDests = new HashSet<string>(
+                fileEntries.Select(e => e.dest), StringComparer.OrdinalIgnoreCase);
+            int added = 0;
+            long bytes = 0;
+            int excluded = 0;
+            foreach (var file in Directory.GetFiles(CustomAssets.Root, "*", SearchOption.AllDirectories))
+            {
+                var rel = Path.GetRelativePath(CustomAssets.Root, file).Replace('\\', '/');
+                if (excludedStems != null
+                    && excludedStems.Contains(CustomAssets.AssetStemOfRel(rel)))
+                {
+                    excluded++;
+                    continue;
+                }
+                var dest = "../../../Sifu/Content/" + rel;
+                if (!stagedDests.Add(dest)) continue;
+                fileEntries.Add((file, dest));
+                added++;
+                try { bytes += new FileInfo(file).Length; } catch { }
+            }
+            if (added > 0 || excluded > 0)
+                ErrorLog.Write("EXPORT", new Exception(
+                    $"[CUSTOM-ASSETS] staged {added} file(s) ({bytes / 1024 / 1024} MB) from CustomAssets"
+                    + (excluded > 0 ? $", {excluded} unchecked by user" : "")));
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("EXPORT", ex);
+        }
+    }
+
+    private static void TryPreserveDelayWindow(
+        string originalDbGamePath, string replacementDbGamePath, string gameRoot,
+        string outputPath, List<(string src, string dest)> fileEntries, EngineVersion eng,
+        HashSet<string> alreadyPatched, int? winLo = null, int? winHi = null)
+    {
+        const string LayerName = "MC_Attacks_Alt";
+        // Manual per-node window override (frames on the replacement's timeline);
+        // anything invalid keeps the bounds copied from the original card.
+        bool hasOverride = winLo.HasValue && winHi.HasValue
+            && winLo.Value >= 0 && winHi.Value > winLo.Value;
+        try
+        {
+            if (string.IsNullOrEmpty(originalDbGamePath) || string.IsNullOrEmpty(replacementDbGamePath)) return;
+
+            string origRel = GamePathToContentRel(originalDbGamePath);
+            string replRel = GamePathToContentRel(replacementDbGamePath);
+            string origFile = ResolveStageSource(gameRoot, origRel)
+                ?? Path.Combine(gameRoot, origRel + ".uasset");
+            string replStaged = Path.Combine(outputPath, "Sifu", "Content", replRel + ".uasset");
+            string replVanilla = ResolveStageSource(gameRoot, replRel)
+                ?? Path.Combine(gameRoot, replRel + ".uasset");
+            if (!File.Exists(origFile)) return;
+            string replFile = File.Exists(replStaged) ? replStaged : replVanilla;
+            if (!File.Exists(replFile))
+            {
+                ErrorLog.Write("EXPORT", new Exception(
+                    $"  [DELAY-WINDOW] replacement not found (vanilla or CustomAssets): {replRel}"));
+                return;
+            }
+            if (string.Equals(origFile, replFile, StringComparison.OrdinalIgnoreCase)) return;
+
+            var origAsset = new UAsset(origFile, eng, null, CustomSerializationFlags.None);
+            var origExport = origAsset.Exports.OfType<NormalExport>().FirstOrDefault();
+            if (origExport?.Data == null) return;
+            var origWindows = FindWindowArray(origExport.Data);
+            if (origWindows?.Value == null) return;
+            var altWindows = origWindows.Value.OfType<StructPropertyData>()
+                .Where(w => WindowLayerName(origAsset, w) == LayerName).ToList();
+            if (altWindows.Count == 0) return;
+
+            if (!alreadyPatched.Add(replacementDbGamePath))
+            {
+                ErrorLog.Write("EXPORT", new Exception($"  [DELAY-WINDOW] {replRel} already patched for another slot — skipping duplicate"));
+                return;
+            }
+
+            var replAsset = new UAsset(replFile, eng, null, CustomSerializationFlags.None);
+            var replExport = replAsset.Exports.OfType<NormalExport>().FirstOrDefault();
+            if (replExport?.Data == null)
+            {
+                ErrorLog.Write("EXPORT", new Exception($"  [DELAY-WINDOW] FAIL: no NormalExport in {replRel}"));
+                return;
+            }
+            var replWindows = FindWindowArray(replExport.Data);
+            if (replWindows?.Value == null)
+            {
+                ErrorLog.Write("EXPORT", new Exception($"  [DELAY-WINDOW] FAIL: {replRel} has no m_AvailabilityLayerWindows — delay gate not preserved"));
+                return;
+            }
+            if (replWindows.Value.OfType<StructPropertyData>().Any(w => WindowLayerName(replAsset, w) == LayerName))
+            {
+                ErrorLog.Write("EXPORT", new Exception($"  [DELAY-WINDOW] {replRel} already has a {LayerName} window — nothing to do"));
+                if (File.Exists(replStaged))
+                {
+                    var haveUexp = Path.ChangeExtension(replStaged, ".uexp");
+                    if (File.Exists(haveUexp))
+                    {
+                        fileEntries.RemoveAll(e => string.Equals(e.src, replStaged, StringComparison.OrdinalIgnoreCase));
+                        fileEntries.Add((replStaged, "../../../Sifu/Content/" + replRel + ".uasset"));
+                        fileEntries.Add((haveUexp, "../../../Sifu/Content/" + replRel + ".uexp"));
+                    }
+                }
+                return;
+            }
+            int layerIdx = FindOrAddLayerImport(origAsset, replAsset, LayerName);
+            if (layerIdx < 0)
+            {
+                ErrorLog.Write("EXPORT", new Exception($"  [DELAY-WINDOW] FAIL: original {origRel} has no importable {LayerName} layer"));
+                return;
+            }
+            var template = replWindows.Value.OfType<StructPropertyData>().FirstOrDefault();
+            if (template == null)
+            {
+                ErrorLog.Write("EXPORT", new Exception($"  [DELAY-WINDOW] FAIL: {replRel} window array has no struct template to clone"));
+                return;
+            }
+
+            var appended = new List<PropertyData>(replWindows.Value);
+            int added = 0;
+            foreach (var origW in altWindows)
+            {
+                if (CloneWindowWithScalars(origW, template, layerIdx, out var newW, out string cloneErr))
+                {
+                    if (hasOverride && newW != null
+                        && !DelayWindowCard.TrySetWindowBounds(newW, winLo!.Value, winHi!.Value))
+                    {
+                        ErrorLog.Write("EXPORT", new Exception($"  [DELAY-WINDOW] override {winLo}-{winHi} not applied to {replRel}: m_FrameRange shape unexpected — keeping copied window"));
+                    }
+                    appended.Add(newW);
+                    added++;
+                }
+                else
+                {
+                    ErrorLog.Write("EXPORT", new Exception($"  [DELAY-WINDOW] FAIL: {replRel} window clone: {cloneErr}"));
+                }
+            }
+            if (added == 0) return;
+
+            replWindows.Value = appended.ToArray();
+            Directory.CreateDirectory(Path.GetDirectoryName(replStaged)!);
+            replAsset.Write(replStaged);
+            var stagedUexp = Path.ChangeExtension(replStaged, ".uexp");
+            if (!File.Exists(stagedUexp))
+            {
+                ErrorLog.Write("EXPORT", new Exception($"  [DELAY-WINDOW] FAIL: .uexp missing after Write for {replRel} — replacement not packed (delay gate NOT preserved)"));
+                return;
+            }
+            fileEntries.RemoveAll(e => string.Equals(e.src, replStaged, StringComparison.OrdinalIgnoreCase));
+            fileEntries.Add((replStaged, "../../../Sifu/Content/" + replRel + ".uasset"));
+            fileEntries.Add((stagedUexp, "../../../Sifu/Content/" + replRel + ".uexp"));
+            if (hasOverride)
+            {
+                ErrorLog.Write("EXPORT", new Exception(
+                    $"  [DELAY-WINDOW] override {winLo}-{winHi} ({winLo.Value / 60f:0.00}-{winHi.Value / 60f:0.00}s) applied to {replRel}"));
+            }
+            ErrorLog.Write("EXPORT", new Exception($"  [DELAY-WINDOW] preserved {LayerName} ({added} window entr{(added == 1 ? "y" : "ies")}) on {replRel}"));
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("EXPORT", new Exception($"  [DELAY-WINDOW] FAILED {replacementDbGamePath}: {ex.Message}"));
+        }
+    }
+
+    // Thin wrappers over DelayWindowCard so the panel gate and export share one finder
+    // (the test harness reflects these private names).
+    private static ArrayPropertyData? FindWindowArray(List<PropertyData> props)
+        => DelayWindowCard.FindWindowArray(props);
+
+    private static ArrayPropertyData? FindWindowArrayIn(PropertyData p)
+        => DelayWindowCard.FindWindowArrayIn(p);
+
+    private static string WindowLayerName(UAsset asset, StructPropertyData window)
+        => DelayWindowCard.WindowLayerName(asset, window);
+
+    private static int FindOrAddLayerImport(UAsset origAsset, UAsset replAsset, string layerName)
+    {
+        for (int i = 0; i < origAsset.Imports.Count; i++)
+        {
+            var imp = origAsset.Imports[i];
+            if (!string.Equals(imp.ObjectName?.Value?.ToString(), layerName, StringComparison.Ordinal)) continue;
+            int outerRaw = imp.OuterIndex?.Index ?? 0;
+            if (outerRaw >= 0) continue;
+            int origOuter = -(outerRaw + 1);
+            if (origOuter < 0 || origOuter >= origAsset.Imports.Count) continue;
+            string pkgPath = origAsset.Imports[origOuter].ObjectName?.Value?.ToString() ?? "";
+            if (string.IsNullOrEmpty(pkgPath)) continue;
+
+            int pkgIdx = -1;
+            for (int j = 0; j < replAsset.Imports.Count; j++)
+            {
+                var ri = replAsset.Imports[j];
+                if ((ri.OuterIndex?.Index ?? -1) == 0
+                    && string.Equals(ri.ObjectName?.Value?.ToString(), pkgPath, StringComparison.Ordinal))
+                {
+                    pkgIdx = j;
+                    break;
+                }
+            }
+            if (pkgIdx < 0)
+            {
+                var pkgImport = new UAssetAPI.Import
+                {
+                    ClassPackage = FName.FromString(replAsset, "/Script/CoreUObject"),
+                    ClassName = FName.FromString(replAsset, "Package"),
+                    ObjectName = FName.FromString(replAsset, pkgPath),
+                    OuterIndex = new FPackageIndex(0),
+                    PackageName = FName.FromString(replAsset, "None")
+                };
+                pkgIdx = replAsset.Imports.Count;
+                replAsset.Imports.Add(pkgImport);
+            }
+
+            for (int j = 0; j < replAsset.Imports.Count; j++)
+            {
+                var ri = replAsset.Imports[j];
+                if (ri.OuterIndex?.Index == -(pkgIdx + 1)
+                    && string.Equals(ri.ObjectName?.Value?.ToString(), layerName, StringComparison.Ordinal))
+                    return j;
+            }
+            var objImport = new UAssetAPI.Import
+            {
+                ClassPackage = FName.FromString(replAsset, imp.ClassPackage?.Value?.ToString() ?? "/Script/CoreUObject"),
+                ClassName = FName.FromString(replAsset, imp.ClassName?.Value?.ToString() ?? "Object"),
+                ObjectName = FName.FromString(replAsset, layerName),
+                OuterIndex = FPackageIndex.FromImport(pkgIdx),
+                PackageName = FName.FromString(replAsset, imp.PackageName?.Value?.ToString() ?? "None")
+            };
+            int objIdx = replAsset.Imports.Count;
+            replAsset.Imports.Add(objImport);
+            return objIdx;
+        }
+        return -1;
+    }
+
+    private static bool CloneWindowWithScalars(
+        StructPropertyData origW, StructPropertyData template, int layerIdx,
+        out StructPropertyData? newW, out string err)
+    {
+        newW = null;
+        err = "";
+        var clone = ClonePropSameAsset(template) as StructPropertyData;
+        if (clone == null) { err = "template clone was not a struct"; return false; }
+
+        var collected = new Dictionary<string, object>(StringComparer.Ordinal);
+        CollectScalars(origW, "", collected);
+        var (applied, missing) = ApplyScalars(clone, "", collected);
+        if (collected.Count == 0 || missing > 0 || applied != collected.Count)
+        {
+            err = $"scalar mismatch (collected={collected.Count} applied={applied} missing={missing})";
+            return false;
+        }
+
+        var layer = clone.Value?.OfType<ObjectPropertyData>()
+            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Layer");
+        if (layer == null) { err = "cloned window has no m_Layer property"; return false; }
+        layer.Value = FPackageIndex.FromImport(layerIdx);
+        newW = clone;
+        return true;
+    }
+
+    private static readonly System.Reflection.MethodInfo _memberwiseCloneMethod =
+        typeof(object).GetMethod("MemberwiseClone", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+
+    private static PropertyData ClonePropSameAsset(PropertyData src)
+    {
+        var clone = (PropertyData)_memberwiseCloneMethod.Invoke(src, null)!;
+        if (clone is StructPropertyData ss && ss.Value != null)
+        {
+            var list = new List<PropertyData>(ss.Value.Count);
+            foreach (var c in ss.Value) list.Add(ClonePropSameAsset(c));
+            ss.Value = list;
+        }
+        else if (clone is ArrayPropertyData aa && aa.Value != null)
+        {
+            var arr = new PropertyData[aa.Value.Length];
+            for (int i = 0; i < aa.Value.Length; i++) arr[i] = ClonePropSameAsset(aa.Value[i]);
+            aa.Value = arr;
+        }
+        else if (clone is MapPropertyData mm && mm.Value != null)
+        {
+            var tm = new TMap<PropertyData, PropertyData>();
+            foreach (var kvp in mm.Value)
+                tm.Add(ClonePropSameAsset(kvp.Key), ClonePropSameAsset(kvp.Value));
+            mm.Value = tm;
+        }
+        return clone;
+    }
+
+    private static void CollectScalars(PropertyData p, string path, Dictionary<string, object> dict)
+    {
+        if (p is StructPropertyData sp && sp.Value != null)
+        {
+            foreach (var c in sp.Value)
+            {
+                string childPath = path.Length == 0
+                    ? (c.Name?.Value?.ToString() ?? "")
+                    : path + "/" + (c.Name?.Value?.ToString() ?? "");
+                CollectScalars(c, childPath, dict);
+            }
+        }
+        else if (p is ArrayPropertyData ap && ap.Value != null)
+        {
+            for (int i = 0; i < ap.Value.Length; i++)
+                CollectScalars(ap.Value[i], $"{path}[{i}]", dict);
+        }
+        else if (p is FloatPropertyData fp) dict[path] = fp.Value;
+        else if (p is IntPropertyData ip) dict[path] = ip.Value;
+        else if (p is BytePropertyData bp) dict[path] = bp.Value;
+    }
+
+    private static (int applied, int missing) ApplyScalars(PropertyData p, string path, Dictionary<string, object> dict)
+    {
+        if (p is StructPropertyData sp && sp.Value != null)
+        {
+            int a = 0, m = 0;
+            foreach (var c in sp.Value)
+            {
+                string childPath = path.Length == 0
+                    ? (c.Name?.Value?.ToString() ?? "")
+                    : path + "/" + (c.Name?.Value?.ToString() ?? "");
+                var r = ApplyScalars(c, childPath, dict);
+                a += r.applied;
+                m += r.missing;
+            }
+            return (a, m);
+        }
+        if (p is ArrayPropertyData ap && ap.Value != null)
+        {
+            int a = 0, m = 0;
+            for (int i = 0; i < ap.Value.Length; i++)
+            {
+                var r = ApplyScalars(ap.Value[i], $"{path}[{i}]", dict);
+                a += r.applied;
+                m += r.missing;
+            }
+            return (a, m);
+        }
+        if (p is FloatPropertyData fp && dict.TryGetValue(path, out var vf))
+        {
+            if (vf is float fv) { fp.Value = fv; return (1, 0); }
+            return (0, 1);
+        }
+        if (p is IntPropertyData ip && dict.TryGetValue(path, out var vi))
+        {
+            if (vi is int iv) { ip.Value = iv; return (1, 0); }
+            return (0, 1);
+        }
+        if (p is BytePropertyData bp && dict.TryGetValue(path, out var vb))
+        {
+            if (vb is byte bv) { bp.Value = bv; return (1, 0); }
+            return (0, 1);
+        }
+        return (0, 0);
     }
 
     private static bool PatchDataTableAnim(string vanillaDtPath, string attackName, string newAnimPath, string outputDtPath, EngineVersion eng, Dictionary<string, (float hitFrame, int buildupFrame)>? animToTiming = null)
@@ -2934,6 +3741,7 @@ public partial class ExportDialog : Window
 
     private static bool PatchRowAnim(PropertyData rowProp, string animPath, UAsset asset)
     {
+        NoteAnimRef(animPath);
         if (rowProp is not StructPropertyData rowStruct || rowStruct.Value == null) return false;
 
         foreach (var prop in rowStruct.Value)

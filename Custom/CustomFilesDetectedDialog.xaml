@@ -1,10 +1,9 @@
-<Window x:Class="SifuMovesetEditor.Import.ImportChoiceDialog"
+<Window x:Class="SifuMovesetEditor.Custom.CustomFilesDetectedDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Sifu Moveset Editor — Import"
-        Width="440" SizeToContent="Height"
+        Title="Sifu Moveset Editor — Custom Section"
+        Width="520" Height="400"
         WindowStartupLocation="CenterOwner"
-        ResizeMode="NoResize"
         Background="#1e1e2e"
         Foreground="#cdd6f4">
 
@@ -43,42 +42,41 @@
 
     <DockPanel Margin="16">
         <Border DockPanel.Dock="Top" Background="#11111b" Padding="12,8" Margin="-16,-16,-16,12">
-            <TextBlock Text="Project already has changes" FontWeight="Bold"
+            <TextBlock Text="New Custom File(s) detected" FontWeight="Bold"
                        Foreground="#89b4fa" FontSize="15"/>
         </Border>
 
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
                     HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button Content="Cancel" Style="{StaticResource DarkButton}"
-                    Click="Cancel_Click" Padding="16,8" MinHeight="30" MinWidth="80"/>
-            <Button Content="Start Fresh" Style="{StaticResource DarkButton}"
-                    Click="Fresh_Click" Padding="16,8" MinHeight="30" MinWidth="90"/>
-            <Button Content="Merge" Style="{StaticResource AccentButton}"
-                    Click="Merge_Click" Padding="16,8" MinHeight="30" MinWidth="80"
+                    Click="Cancel_Click" Padding="16,8" MinHeight="30" MinWidth="90"
+                    IsCancel="True"/>
+            <Button Content="Add in Library" Style="{StaticResource AccentButton}"
+                    Click="AddInLibrary_Click" Padding="16,8" MinHeight="30" MinWidth="120"
                     IsDefault="True"/>
         </StackPanel>
 
-        <StackPanel>
-            <TextBlock TextWrapping="Wrap" Foreground="#cdd6f4" FontSize="12" LineHeight="18">
-                This project already has imported mods, local edits, or a loaded project.
-                Choose how to bring in this new pak.
-            </TextBlock>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-            <Border Background="#181825" CornerRadius="4" Padding="10,8" Margin="0,12,0,0">
-                <StackPanel>
-                    <TextBlock Text="Merge" FontWeight="SemiBold" Foreground="#a6e3a1" FontSize="12"/>
-                    <TextBlock TextWrapping="Wrap" Foreground="#a6adc8" FontSize="11" Margin="0,3,0,0"
-                               Text="Keep existing unit graphs, Custom cards, and harvested anims. This pak overwrites only matching units; other units stay."/>
-                </StackPanel>
-            </Border>
+            <TextBlock TextWrapping="Wrap" Foreground="#cdd6f4" FontSize="12" LineHeight="18"
+                       Margin="0,0,0,8"
+                       Text="Files appeared in CustomAssets. Add them to the Custom section now, or cancel - they stay on disk and are loaded into the library on next launch."/>
 
-            <Border Background="#181825" CornerRadius="4" Padding="10,8" Margin="0,8,0,0">
-                <StackPanel>
-                    <TextBlock Text="Start Fresh" FontWeight="SemiBold" Foreground="#f9e2af" FontSize="12"/>
-                    <TextBlock TextWrapping="Wrap" Foreground="#a6adc8" FontSize="11" Margin="0,3,0,0"
-                               Text="Discard current project changes (unit graphs and properties), then import only this pak. Custom section files are kept."/>
-                </StackPanel>
-            </Border>
-        </StackPanel>
+            <ListBox Grid.Row="1" x:Name="listFiles"
+                     Background="#11111b" Foreground="#a6adc8"
+                     BorderBrush="#313244" BorderThickness="1"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     FontFamily="Consolas" FontSize="12">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis"/>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
     </DockPanel>
 </Window>

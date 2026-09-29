@@ -256,12 +256,53 @@
 
             <!-- Buttons -->
             <StackPanel Grid.Row="10" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="btnCustomFiles" Content="Custom Files"
+                        Style="{StaticResource DarkButton}" Click="CustomFiles_Click"
+                        Padding="16,6" Visibility="Collapsed" Margin="0,0,8,0"/>
                 <Button Content="Cancel" Style="{StaticResource DarkButton}"
                         Click="Cancel_Click" Padding="16,6"/>
                 <Button x:Name="btnConfirm" Content="Export &amp; Install"
                         Style="{StaticResource AccentButton}" Click="Confirm_Click"
                         Padding="16,6"/>
             </StackPanel>
+        </Grid>
+
+        <!-- State 1b: Custom Files selection -->
+        <Grid Name="panelCustomFiles" Visibility="Collapsed" Margin="20,16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="12"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="12"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="Custom Files in Export" FontSize="15"
+                       FontWeight="Bold" Foreground="#cdd6f4"/>
+
+            <TextBlock Grid.Row="1" TextWrapping="Wrap" FontSize="11" Foreground="#6c7086"
+                       Margin="0,6,0,0"
+                       Text="Files from the CustomAssets folder that will be packed into the mod. Unchecked files are left out of the pak."/>
+
+            <Border Grid.Row="3" Background="#181825" CornerRadius="4"
+                    BorderBrush="#313244" BorderThickness="1">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="10,6">
+                    <StackPanel x:Name="customFilesList"/>
+                </ScrollViewer>
+            </Border>
+
+            <DockPanel Grid.Row="5" LastChildFill="True">
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                    <Button Content="Select All" Style="{StaticResource DarkButton}"
+                            Click="SelectAllCustom_Click" Padding="12,5" Margin="0,0,2,0"/>
+                    <Button Content="Select None" Style="{StaticResource DarkButton}"
+                            Click="SelectNoneCustom_Click" Padding="12,5" Margin="2,0"/>
+                </StackPanel>
+                <Button Content="Back" Style="{StaticResource AccentButton}"
+                        Click="CustomFilesBack_Click" Padding="16,6"
+                        HorizontalAlignment="Right" Margin="2,0,0,0"/>
+            </DockPanel>
         </Grid>
 
         <!-- State 2: Exporting -->

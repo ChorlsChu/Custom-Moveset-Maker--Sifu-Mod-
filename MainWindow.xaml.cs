@@ -13,6 +13,7 @@ using SifuMovesetEditor;
 using SifuMovesetEditor.Setup;
 using SifuMovesetEditor.Export;
 using SifuMovesetEditor.Import;
+using SifuMovesetEditor.Custom;
 using UAssetAPI;
 using UAssetAPI.UnrealTypes;
 
@@ -41,15 +42,34 @@ public static class ErrorLog
         }
         catch { }
     }
+
+    public static void Write(string tag, string message)
+    {
+        try
+        {
+            var msg = $"[{DateTime.Now:HH:mm:ss}] [{tag}] {message}\n";
+            File.AppendAllText(LogPath, msg);
+        }
+        catch { }
+    }
 }
 
 public partial class MainWindow : Window
 {
     private AnimationParser _parser = new();
     private List<MoveInfo> _allMoves = [];
-    private static readonly string TempCustomMovesRoot =
-        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TempCustomMoves");
     private List<MoveInfo> _allLocomotion = [];
+    // CustomAssets manifest last accepted at close (settings.json) - drives the
+    // "save custom files?" prompt and which files an answer of No may delete.
+    private List<string>? _customAssetsAccepted;
+    // Set while an import harvest writes into CustomAssets so its own file events
+    // don't pop the "New Custom File(s)" dialog (import registers cards directly).
+    private bool _suppressCustomWatcher;
+    private FileSystemWatcher? _customWatcher;
+    private DispatcherTimer? _customWatcherDebounce;
+    private readonly HashSet<string> _customWatcherPending = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SortedSet<string> _customWatchRows = new(StringComparer.OrdinalIgnoreCase);
+    private CustomFilesDetectedDialog? _customFilesDialog;
     private string _settingsPath;
     private string _contentPath = "";
     private string _outputPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods");
@@ -120,6 +140,7 @@ public partial class MainWindow : Window
     private string? _activeVariant;
     private string? _activeWeapon;
     private readonly Dictionary<string, List<MoveInfo>> _mainCharWeaponMoves = new();
+    private readonly List<string> _treeRefMisses = new();
     private Dictionary<string, UnitCacheEntry> _unitCaches = new();
     private UnitProperties? _currentUnitProps;
     private UnitProperties? _unitPropsDefaults;
@@ -222,6 +243,7 @@ public partial class MainWindow : Window
             loadingOverlay.Visibility = Visibility.Collapsed;
         _initialized = true;
         tabMoves.SelectedIndex = TabVanilla;
+        StartCustomAssetsWatcher();
     }
 
     private void WebView_NavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
@@ -255,6 +277,7 @@ public partial class MainWindow : Window
                 var settings = JsonConvert.DeserializeObject<Settings>(json);
                 if (settings != null)
                 {
+                    _customAssetsAccepted = settings.CustomAssetsAccepted;
                     if (!string.IsNullOrEmpty(settings.UnrealPakPath))
                         Setup.ContentExtractor.CustomUnrealPakPath = settings.UnrealPakPath;
                     if (!string.IsNullOrEmpty(settings.CryptoJsonPath))
@@ -375,6 +398,7 @@ public partial class MainWindow : Window
             CameraTarget = _savedCameraTarget,
             UnrealPakPath = Setup.ContentExtractor.CustomUnrealPakPath ?? "",
             CryptoJsonPath = Setup.ContentExtractor.CustomCryptoJsonPath ?? "",
+            CustomAssetsAccepted = _customAssetsAccepted,
         };
         File.WriteAllText(_settingsPath, JsonConvert.SerializeObject(settings, Formatting.Indented));
     }
@@ -442,15 +466,15 @@ public partial class MainWindow : Window
             });
             _allLocomotion = locoResult;
 
-            DeleteTempCustomMoves();
             UpdateLoading($"Building library ({_allMoves.Count} moves)...", "");
             await Task.Run(BuildMainCharLibraryMoves);
             await Task.Run(() =>
             {
-                _parser.MountCustomIntoProvider(TempCustomMovesRoot);
+                _parser.MountCustomIntoProvider(CustomAssets.Root);
                 RegisterCustomMoves();
             });
             BuildTree(_allMoves);
+            LogLibraryDiagnostics();
 
             UpdateLoading("Loading combo graph...", "Parsing MainChar combo tree...");
             await LoadComboGraphAsync();
@@ -612,7 +636,7 @@ public partial class MainWindow : Window
         _contentPath = newContent;
         _outputPath = newOutput;
         SaveSettings();
-        try { _parser?.Dispose(); var cDir = Setup.ContentDetector.ResolveContentDir(_contentPath); var fresh = new AnimationParser(); fresh.Initialize(_contentPath, cDir); fresh.MountCustomIntoProvider(TempCustomMovesRoot); _parser = fresh; } catch (Exception ex) { ErrorLog.Write("SETTINGS", ex); }
+        try { _parser?.Dispose(); var cDir = Setup.ContentDetector.ResolveContentDir(_contentPath); var fresh = new AnimationParser(); fresh.Initialize(_contentPath, cDir); fresh.MountCustomIntoProvider(CustomAssets.Root); _parser = fresh; } catch (Exception ex) { ErrorLog.Write("SETTINGS", ex); }
         settingsOverlay.Visibility = Visibility.Collapsed;
         SetWebViewVisible(true);
         txtStatus.Text = "Settings saved — provider re-initialized";
@@ -742,6 +766,7 @@ public partial class MainWindow : Window
     private void BuildMainCharLibraryMoves()
     {
         _mainCharWeaponMoves.Clear();
+        _treeRefMisses.Clear();
         var trees = new (string label, string comboPath, string weaponTag)[]
         {
             ("BareHands", "Game/DB/_MainChar/Combos/MainChar_ComboTree", "MainChar_Barehands"),
@@ -768,6 +793,9 @@ public partial class MainWindow : Window
                         : null);
                 if (match != null && !list.Contains(match) && !IsMainCharSpecialGroupCard(match))
                     list.Add(match);
+                else if (match == null)
+                    _treeRefMisses.Add($"{label} node #{node.Id} \"{node.Name}\": " +
+                        (string.IsNullOrEmpty(node.DefaultDBPath) ? node.DefaultAnimPath : node.DefaultDBPath));
             }
             if (list.Count > 0)
                 _mainCharWeaponMoves[label] = list;
@@ -803,8 +831,11 @@ public partial class MainWindow : Window
                 .OrderBy(m => m.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-        ErrorLog.Write("LIBRARY", new Exception(
-            $"MainChar library: {string.Join(", ", _mainCharWeaponMoves.Select(kv => $"{kv.Key}={kv.Value.Count}"))}"));
+        ErrorLog.Write("LIBRARY",
+            $"MainChar library: {string.Join(", ", _mainCharWeaponMoves.Select(kv => $"{kv.Key}={kv.Value.Count}"))}");
+        ErrorLog.Write("LIBRARY", $"tree refs with no library card: {_treeRefMisses.Count}");
+        foreach (var miss in _treeRefMisses)
+            ErrorLog.Write("LIBRARY", $"  missing card: {miss}");
     }
 
     private static bool IsAttackDbPath(string fullPath) =>
@@ -862,44 +893,146 @@ public partial class MainWindow : Window
             .ToList();
     }
 
+    private static bool IsOldCard(MoveInfo m) =>
+        (m.FullPath ?? "").Contains("/_old/", StringComparison.OrdinalIgnoreCase);
+
+    private static string MainCharLabelForMove(MoveInfo m)
+    {
+        if (IsSpecialComboDb(m)) return "Special Combos";
+        if (IsSpecialDb(m)) return "Special";
+        var p = m.FullPath ?? "";
+        if (p.Contains("/Throwable/", StringComparison.OrdinalIgnoreCase)) return "Throwable";
+        var w = m.WeaponType ?? "";
+        if (w.Equals("Bats", StringComparison.OrdinalIgnoreCase)) return "Bat";
+        if (w.Equals("Blades", StringComparison.OrdinalIgnoreCase)) return "Knife";
+        if (string.IsNullOrWhiteSpace(w)) return "BareHands";
+        return w;
+    }
+
     private List<object> BuildAccordionList(List<MoveInfo> moves, bool includeComboTreeMoves = true)
     {
         var result = new List<object>();
 
-        if (includeComboTreeMoves && _mainCharWeaponMoves.Count > 0)
+        if (includeComboTreeMoves)
         {
-            var mainCharExpanded = _expandedEnemies.Contains("MainChar");
-            result.Add(new GroupHeader
-            {
-                Name = "MainChar",
-                Level = 1,
-                Count = _mainCharWeaponMoves.Values.Sum(v => v.Count),
-                Subtitle = "Default moves from your combo graphs",
-                IsExpanded = mainCharExpanded
-            });
+            var labelTree = new Dictionary<string, List<MoveInfo>>(StringComparer.OrdinalIgnoreCase);
+            var labelRemainder = new Dictionary<string, List<MoveInfo>>(StringComparer.OrdinalIgnoreCase);
+            var oldSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var oldCards = new List<MoveInfo>();
 
-            if (mainCharExpanded)
+            void AddOld(MoveInfo m)
             {
-                foreach (var label in MainCharWeaponOrder)
+                if (!string.IsNullOrEmpty(m.FullPath) && oldSeen.Add(m.FullPath))
+                    oldCards.Add(m);
+            }
+
+            foreach (var kv in _mainCharWeaponMoves)
+            {
+                foreach (var m in kv.Value)
                 {
-                    if (!_mainCharWeaponMoves.TryGetValue(label, out var weaponMoves))
-                        continue;
-
-                    var expanded = _expandedWeapons.TryGetValue("MainChar", out var wSet)
-                        && wSet.Contains(label);
-
-                    result.Add(new GroupHeader
+                    if (IsOldCard(m)) { AddOld(m); continue; }
+                    if (!labelTree.TryGetValue(kv.Key, out var list))
                     {
-                        Name = label,
-                        Level = 2,
-                        Count = weaponMoves.Count,
-                        IsExpanded = expanded,
-                        ParentName = "MainChar"
-                    });
+                        list = new List<MoveInfo>();
+                        labelTree[kv.Key] = list;
+                    }
+                    if (!list.Contains(m)) list.Add(m);
+                }
+            }
 
-                    if (expanded)
+            var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in _mainCharWeaponMoves)
+                foreach (var m in kv.Value)
+                    if (!string.IsNullOrEmpty(m.FullPath))
+                        claimed.Add(m.FullPath);
+
+            foreach (var m in moves)
+            {
+                if (!string.Equals(m.Character, "MainChar", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (IsOldCard(m)) { AddOld(m); continue; }
+                if (!string.IsNullOrEmpty(m.FullPath) && claimed.Contains(m.FullPath)) continue;
+
+                var label = MainCharLabelForMove(m);
+                if (!labelRemainder.TryGetValue(label, out var list))
+                {
+                    list = new List<MoveInfo>();
+                    labelRemainder[label] = list;
+                }
+                if (!list.Contains(m)) list.Add(m);
+            }
+
+            var orderedLabels = MainCharWeaponOrder
+                .Where(l => labelTree.ContainsKey(l) || labelRemainder.ContainsKey(l))
+                .Concat(labelTree.Keys.Concat(labelRemainder.Keys)
+                    .Where(k => !MainCharWeaponOrder.Contains(k, StringComparer.OrdinalIgnoreCase))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(k => k, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+
+            int mainCharTotal = oldCards.Count;
+            foreach (var label in orderedLabels)
+            {
+                if (labelTree.TryGetValue(label, out var t)) mainCharTotal += t.Count;
+                if (labelRemainder.TryGetValue(label, out var r)) mainCharTotal += r.Count;
+            }
+
+            if (mainCharTotal > 0)
+            {
+                var mainCharExpanded = _expandedEnemies.Contains("MainChar");
+                result.Add(new GroupHeader
+                {
+                    Name = "MainChar",
+                    Level = 1,
+                    Count = mainCharTotal,
+                    Subtitle = "Combo tree defaults, then remaining vanilla cards",
+                    IsExpanded = mainCharExpanded
+                });
+
+                if (mainCharExpanded)
+                {
+                    foreach (var label in orderedLabels)
                     {
-                        result.AddRange(weaponMoves.Cast<object>());
+                        var items = new List<MoveInfo>();
+                        if (labelTree.TryGetValue(label, out var t)) items.AddRange(t);
+                        if (labelRemainder.TryGetValue(label, out var r))
+                            items.AddRange(r.OrderBy(m => m.DisplayName, StringComparer.OrdinalIgnoreCase));
+                        if (items.Count == 0) continue;
+
+                        var expanded = _expandedWeapons.TryGetValue("MainChar", out var wSet)
+                            && wSet.Contains(label);
+
+                        result.Add(new GroupHeader
+                        {
+                            Name = label,
+                            Level = 2,
+                            Count = items.Count,
+                            IsExpanded = expanded,
+                            ParentName = "MainChar"
+                        });
+
+                        if (expanded)
+                            result.AddRange(items.Cast<object>());
+                    }
+
+                    if (oldCards.Count > 0)
+                    {
+                        var oldExpanded = _expandedWeapons.TryGetValue("MainChar", out var oldSet)
+                            && oldSet.Contains("Old");
+
+                        result.Add(new GroupHeader
+                        {
+                            Name = "Old",
+                            Level = 2,
+                            Count = oldCards.Count,
+                            IsExpanded = oldExpanded,
+                            ParentName = "MainChar"
+                        });
+
+                        if (oldExpanded)
+                            result.AddRange(oldCards
+                                .OrderBy(m => m.DisplayName, StringComparer.OrdinalIgnoreCase)
+                                .Cast<object>());
                     }
                 }
             }
@@ -928,13 +1061,17 @@ public partial class MainWindow : Window
 
             if (!enemyExpanded) continue;
 
-            var weaponGroups = enemyGroup
+            var groupOldCards = enemyGroup.Where(IsOldCard)
+                .OrderBy(m => m.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var activeMoves = enemyGroup.Where(m => !IsOldCard(m)).ToList();
+
+            var weaponGroups = activeMoves
                 .GroupBy(m => m.WeaponType)
                 .OrderBy(g => g.Key);
 
             foreach (var weaponGroup in weaponGroups)
             {
-                var weaponKey = $"{enemyGroup.Key}|{weaponGroup.Key}";
                 var weaponExpanded = _expandedWeapons.TryGetValue(enemyGroup.Key, out var wSet)
                     && wSet.Contains(weaponGroup.Key);
 
@@ -952,6 +1089,24 @@ public partial class MainWindow : Window
                     result.AddRange(weaponGroup.Cast<object>());
                 }
             }
+
+            if (groupOldCards.Count > 0)
+            {
+                var oldExpanded = _expandedWeapons.TryGetValue(enemyGroup.Key, out var oldSet)
+                    && oldSet.Contains("Old");
+
+                result.Add(new GroupHeader
+                {
+                    Name = "Old",
+                    Level = 2,
+                    Count = groupOldCards.Count,
+                    IsExpanded = oldExpanded,
+                    ParentName = enemyGroup.Key
+                });
+
+                if (oldExpanded)
+                    result.AddRange(groupOldCards.Cast<object>());
+            }
         }
         return result;
     }
@@ -961,11 +1116,11 @@ public partial class MainWindow : Window
         bool IsCustom(MoveInfo m) => string.Equals(m.Category, "Custom", StringComparison.OrdinalIgnoreCase);
         var customMoves = moves.Where(m => IsCustom(m) && !string.IsNullOrWhiteSpace(m.DisplayName)).ToList();
         var vanillaMoves = moves.Where(m =>
-            !IsCustom(m) && m.IsUsed && !string.IsNullOrWhiteSpace(m.DisplayName) &&
+            !IsCustom(m) && m.IsUsed && m.IsValid && !string.IsNullOrWhiteSpace(m.DisplayName) &&
             IsVanillaLibraryCard(m)).ToList();
         var unusedMoves = moves.Where(m =>
             !IsCustom(m) && !string.IsNullOrWhiteSpace(m.DisplayName) &&
-            (!m.IsUsed || !IsVanillaLibraryCard(m))).ToList();
+            !(m.IsUsed && m.IsValid && IsVanillaLibraryCard(m))).ToList();
 
         listVanilla.ItemsSource = BuildAccordionList(vanillaMoves);
         listUnused.ItemsSource = BuildAccordionList(unusedMoves, includeComboTreeMoves: false);
@@ -978,6 +1133,56 @@ public partial class MainWindow : Window
         tabHeaderLoco.Text = $"Stances ({_allLocomotion.Count})";
         tabHeaderCustom.Text = $"Custom ({customMoves.Count})";
         txtMoveCount.Text = $"{vanillaMoves.Count} vanilla / {unusedMoves.Count} other / {_allLocomotion.Count} stances / {customMoves.Count} custom";
+    }
+
+    private void LogLibraryDiagnostics()
+    {
+        try
+        {
+            var nonCustom = _allMoves
+                .Where(m => !string.Equals(m.Category, "Custom", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            foreach (var g in nonCustom
+                .GroupBy(m => m.Character, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                var breakdown = g
+                    .GroupBy(m => IsOldCard(m) ? "Old"
+                        : string.IsNullOrEmpty(m.WeaponType) ? "?" : m.WeaponType,
+                        StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase);
+                ErrorLog.Write("LIBRARY",
+                    $"{g.Key}: {g.Count()} cards -> {string.Join(", ", breakdown.Select(x => $"{x.Key}={x.Count()}"))}");
+            }
+
+            var vanilla = _allMoves.Where(m =>
+                m.IsUsed && m.IsValid && IsVanillaLibraryCard(m)).ToList();
+            var mcVanilla = vanilla
+                .Where(m => string.Equals(m.Character, "MainChar", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var list in _mainCharWeaponMoves.Values)
+                foreach (var m in list)
+                    if (!string.IsNullOrEmpty(m.FullPath))
+                        claimed.Add(m.FullPath);
+
+            var outsideTree = mcVanilla
+                .Where(m => !claimed.Contains(m.FullPath ?? ""))
+                .ToList();
+
+            ErrorLog.Write("LIBRARY",
+                $"vanilla-library cards: {vanilla.Count} " +
+                $"(MainChar {mcVanilla.Count}, outside tree groups {outsideTree.Count}, " +
+                $"old {vanilla.Count(IsOldCard)})");
+            foreach (var m in outsideTree.OrderBy(x => x.FullPath, StringComparer.OrdinalIgnoreCase))
+                ErrorLog.Write("LIBRARY", $"  browsable: {m.FullPath} [{m.WeaponType}/{m.Category}]");
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("LIBRARY", ex);
+        }
     }
 
     private static List<object> BuildGroupedList(List<MoveInfo> moves)
@@ -1130,10 +1335,26 @@ public partial class MainWindow : Window
 
         _attackPanelNodeId = node?.Id ?? -1;
 
+        UpdateDelayWindowSection(node);
+
         AttackDbCardValues? vanilla = null;
+        bool customCard = false;
         string cardPath = AttackDbCard.EffectiveCardPath(node);
         if (node != null && !node.IsRedirect && !string.IsNullOrEmpty(cardPath))
+        {
             vanilla = AttackDbCard.ReadDbPath(AttackDbContentDir(), cardPath);
+            if (vanilla == null || !vanilla.Any)
+            {
+                // Not a vanilla card - fall back to the persistent CustomAssets copy so
+                // nodes pointing at custom attacks still get buildup/range editing here.
+                var custom = AttackDbCard.ReadDbPath(CustomAssets.Root, cardPath);
+                if (custom != null && custom.Any)
+                {
+                    vanilla = custom;
+                    customCard = true;
+                }
+            }
+        }
 
         bool show = vanilla != null && vanilla.Any;
         attackDbSection.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
@@ -1151,7 +1372,54 @@ public partial class MainWindow : Window
             : "";
 
         bool tuned = node.AttackBuildupFrames.HasValue || node.AttackGameplayRange.HasValue;
-        txtAttackDbHint.Text = $"vanilla: {FormatAttackDbVanilla(vanilla)}" + (tuned ? " — edited" : "");
+        string baselineLabel = customCard ? "custom card" : "vanilla";
+        txtAttackDbHint.Text = $"{baselineLabel}: {FormatAttackDbVanilla(vanilla)}" + (tuned ? " - edited" : "");
+    }
+
+    /// <summary>
+    /// The delay-window inputs show for any node whose ORIGINAL card carries an
+    /// MC_Attacks_Alt window - visible even before a replacement so the window can be
+    /// preset; export consumes it only when the card actually gets swapped. Reads
+    /// DefaultDBPath (the original), never EffectiveCardPath. Fields edit seconds;
+    /// storage and export stay in frames.
+    /// </summary>
+    private void UpdateDelayWindowSection(ComboNode? node)
+    {
+        if (delayWindowSection == null || txtDelayWinLo == null || txtDelayWinHi == null) return;
+
+        bool eligible = node != null && !node.IsRedirect && !string.IsNullOrEmpty(node.DefaultDBPath);
+        var window = eligible
+            ? DelayWindowCard.Read(AttackDbContentDir(), node!.DefaultDBPath)
+            : default;
+        bool customCard = false;
+        if (eligible && !window.Has)
+        {
+            // Custom card - its MC_Attacks_Alt window lives in the CustomAssets copy.
+            window = DelayWindowCard.Read(CustomAssets.Root, node!.DefaultDBPath);
+            customCard = window.Has;
+        }
+        if (!window.Has)
+        {
+            delayWindowSection.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        delayWindowSection.Visibility = Visibility.Visible;
+        int vanillaLo = (int)Math.Round(window.Lo);
+        int vanillaHi = (int)Math.Round(window.Hi);
+        int shownLo = node!.DelayWindowLo ?? vanillaLo;
+        int shownHi = node.DelayWindowHi ?? vanillaHi;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        txtDelayWinLo.Text = DelayWindowCard.FramesToSeconds(shownLo).ToString("0.###", inv);
+        txtDelayWinHi.Text = DelayWindowCard.FramesToSeconds(shownHi).ToString("0.###", inv);
+
+        bool edited = node.DelayWindowLo.HasValue || node.DelayWindowHi.HasValue;
+        string baselineLabel = customCard ? "custom card" : "vanilla";
+        txtDelayWindowHint.Text =
+            $"{baselineLabel}: {vanillaLo}-{vanillaHi} frames "
+            + $"({DelayWindowCard.FramesToSeconds(vanillaLo).ToString("0.###", inv)}-"
+            + $"{DelayWindowCard.FramesToSeconds(vanillaHi).ToString("0.###", inv)}s)"
+            + (edited ? " - edited" : "");
     }
 
     private void RefreshAttackDbPanel()
@@ -1160,6 +1428,8 @@ public partial class MainWindow : Window
         // Never overwrite text the user is still typing.
         if (txtAttackBuildup != null && txtAttackBuildup.IsKeyboardFocused) return;
         if (txtAttackRange != null && txtAttackRange.IsKeyboardFocused) return;
+        if (txtDelayWinLo != null && txtDelayWinLo.IsKeyboardFocused) return;
+        if (txtDelayWinHi != null && txtDelayWinHi.IsKeyboardFocused) return;
         UpdateAttackDbPanel(ResolveAttackPanelNode());
     }
 
@@ -1167,65 +1437,153 @@ public partial class MainWindow : Window
     {
         _attackPanelNodeId = -1;
         if (attackDbSection != null) attackDbSection.Visibility = Visibility.Collapsed;
+        if (delayWindowSection != null) delayWindowSection.Visibility = Visibility.Collapsed;
     }
 
     private void CommitAttackDbPanel()
     {
         if (_attackPanelCommitting) return;
         var node = ResolveAttackPanelNode();
-        if (node == null || attackDbSection == null || attackDbSection.Visibility != Visibility.Visible)
-            return;
+        if (node == null || attackDbSection == null) return;
+        bool attackVisible = attackDbSection.Visibility == Visibility.Visible;
+        bool delayVisible = delayWindowSection != null && delayWindowSection.Visibility == Visibility.Visible;
+        if (!attackVisible && !delayVisible) return;
 
-        var vanilla = AttackDbCard.ReadDbPath(AttackDbContentDir(), AttackDbCard.EffectiveCardPath(node));
-        string rawB = txtAttackBuildup?.Text?.Trim() ?? "";
-        string rawR = txtAttackRange?.Text?.Trim() ?? "";
+        var vanilla = attackVisible
+            ? AttackDbCard.ReadDbPath(AttackDbContentDir(), AttackDbCard.EffectiveCardPath(node))
+            : null;
+        if (attackVisible && (vanilla == null || !vanilla.Any))
+        {
+            // Custom card: its own on-disk values are the baseline (matching them
+            // suppresses the override so the raw card ships unchanged).
+            var custom = AttackDbCard.ReadDbPath(CustomAssets.Root, AttackDbCard.EffectiveCardPath(node));
+            if (custom != null && custom.Any) vanilla = custom;
+        }
 
         int? newBuildup = null;
-        if (rawB.Length > 0)
-        {
-            if (!int.TryParse(rawB, System.Globalization.NumberStyles.Integer,
-                    System.Globalization.CultureInfo.InvariantCulture, out int b) || b < 0)
-            {
-                txtStatus.Text = $"Buildup frames must be a whole number >= 0 (got '{rawB}')";
-                UpdateAttackDbPanel(node);
-                return;
-            }
-            newBuildup = b;
-        }
-
         float? newRange = null;
-        if (rawR.Length > 0)
+        if (attackVisible)
         {
-            if (!float.TryParse(rawR, System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out float r) || r <= 0)
+            string rawB = txtAttackBuildup?.Text?.Trim() ?? "";
+            string rawR = txtAttackRange?.Text?.Trim() ?? "";
+
+            if (rawB.Length > 0)
             {
-                txtStatus.Text = $"Gameplay range must be a number > 0 (got '{rawR}')";
-                UpdateAttackDbPanel(node);
-                return;
+                if (!int.TryParse(rawB, System.Globalization.NumberStyles.Integer,
+                        System.Globalization.CultureInfo.InvariantCulture, out int b) || b < 0)
+                {
+                    txtStatus.Text = $"Buildup frames must be a whole number >= 0 (got '{rawB}')";
+                    UpdateAttackDbPanel(node);
+                    return;
+                }
+                newBuildup = b;
             }
-            newRange = r;
+
+            if (rawR.Length > 0)
+            {
+                if (!float.TryParse(rawR, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out float r) || r <= 0)
+                {
+                    txtStatus.Text = $"Gameplay range must be a number > 0 (got '{rawR}')";
+                    UpdateAttackDbPanel(node);
+                    return;
+                }
+                newRange = r;
+            }
+
+            // A value identical to vanilla is not a change - store it as "no override".
+            if (vanilla != null)
+            {
+                if (newBuildup.HasValue && vanilla.HasBuildup && newBuildup.Value == vanilla.Buildup)
+                    newBuildup = null;
+                if (newRange.HasValue && vanilla.HasRange && Math.Abs(newRange.Value - vanilla.Range) < 0.0001f)
+                    newRange = null;
+            }
         }
 
-        // A value identical to vanilla is not a change - store it as "no override".
-        if (vanilla != null)
+        int? newWinLo = null;
+        int? newWinHi = null;
+        if (delayVisible)
         {
-            if (newBuildup.HasValue && vanilla.HasBuildup && newBuildup.Value == vanilla.Buildup)
-                newBuildup = null;
-            if (newRange.HasValue && vanilla.HasRange && Math.Abs(newRange.Value - vanilla.Range) < 0.0001f)
-                newRange = null;
+            string rawL = txtDelayWinLo?.Text?.Trim() ?? "";
+            string rawH = txtDelayWinHi?.Text?.Trim() ?? "";
+            if (rawL.Length > 0 || rawH.Length > 0)
+            {
+                if (rawL.Length == 0 || rawH.Length == 0)
+                {
+                    txtStatus.Text = "Delay window: enter both start and end times, or clear both to reset";
+                    UpdateAttackDbPanel(node);
+                    return;
+                }
+                if (!double.TryParse(rawL, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out double sL) || sL < 0)
+                {
+                    txtStatus.Text = $"Delay window start must be a number >= 0 seconds (got '{rawL}')";
+                    UpdateAttackDbPanel(node);
+                    return;
+                }
+                if (!double.TryParse(rawH, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out double sH) || sH <= sL)
+                {
+                    txtStatus.Text = $"Delay window end must be greater than start (got '{rawH}')";
+                    UpdateAttackDbPanel(node);
+                    return;
+                }
+                int fLo = DelayWindowCard.SecondsToFrames(sL);
+                int fHi = DelayWindowCard.SecondsToFrames(sH);
+                if (fHi <= fLo)
+                {
+                    txtStatus.Text = "Delay window end must be at least 1/60s greater than start";
+                    UpdateAttackDbPanel(node);
+                    return;
+                }
+
+                // Seconds that convert to the vanilla frames are not an override -
+                // Same "identical to vanilla is no change" rule as buildup/range -
+                // for custom cards the card's own window plays the vanilla role.
+                var vanillaWin = DelayWindowCard.Read(AttackDbContentDir(), node.DefaultDBPath);
+                if (!vanillaWin.Has)
+                    vanillaWin = DelayWindowCard.Read(CustomAssets.Root, node.DefaultDBPath);
+                if (vanillaWin.Has
+                    && fLo == (int)Math.Round(vanillaWin.Lo)
+                    && fHi == (int)Math.Round(vanillaWin.Hi))
+                {
+                    newWinLo = null;
+                    newWinHi = null;
+                }
+                else
+                {
+                    newWinLo = fLo;
+                    newWinHi = fHi;
+                }
+            }
         }
 
-        if (newBuildup == node.AttackBuildupFrames && newRange == node.AttackGameplayRange)
-            return;
+        bool attackChanged = attackVisible
+            && (newBuildup != node.AttackBuildupFrames || newRange != node.AttackGameplayRange);
+        bool delayChanged = delayVisible
+            && (newWinLo != node.DelayWindowLo || newWinHi != node.DelayWindowHi);
+        if (!attackChanged && !delayChanged) return;
 
         _attackPanelCommitting = true;
         try
         {
-            PushUndo("Attack DB tuning");
-            node.AttackBuildupFrames = newBuildup;
-            node.AttackGameplayRange = newRange;
-            // Same card file everywhere: every unit's copy of this attack moves with it.
-            PropagateAttackDbTuning(node);
+            PushUndo(attackChanged && delayChanged ? "Attack DB + delay window"
+                : delayChanged ? "Delay window" : "Attack DB tuning");
+            if (attackChanged)
+            {
+                node.AttackBuildupFrames = newBuildup;
+                node.AttackGameplayRange = newRange;
+                // Same card file everywhere: every unit's copy of this attack moves with it.
+                PropagateAttackDbTuning(node);
+            }
+            if (delayChanged)
+            {
+                // Per-node on purpose: FR/BL predecessors can map to different replacements,
+                // so unlike buildup (a property of the shared card file) nothing propagates.
+                node.DelayWindowLo = newWinLo;
+                node.DelayWindowHi = newWinHi;
+            }
             SaveCurrentUnitToCache();
         }
         finally
@@ -1233,9 +1591,15 @@ public partial class MainWindow : Window
             _attackPanelCommitting = false;
         }
 
-        txtStatus.Text = newBuildup.HasValue || newRange.HasValue
-            ? $"Attack DB tuned on {node.DisplayName}"
-            : $"Attack DB restored to vanilla on {node.DisplayName}";
+        txtStatus.Text = delayChanged && !attackChanged
+            ? (newWinLo.HasValue
+                ? $"Delay window set on {node.DisplayName}"
+                : $"Delay window reset on {node.DisplayName}")
+            : attackChanged && !delayChanged
+                ? (newBuildup.HasValue || newRange.HasValue
+                    ? $"Attack DB tuned on {node.DisplayName}"
+                    : $"Attack DB restored to vanilla on {node.DisplayName}")
+                : $"Attack DB and delay window set on {node.DisplayName}";
         UpdateAttackDbPanel(node);
     }
 
@@ -1491,9 +1855,9 @@ public partial class MainWindow : Window
             var data = await System.Threading.Tasks.Task.Run(() =>
                 _parser.LoadAnimation(gamePath));
 
-            if (data == null && Directory.Exists(TempCustomMovesRoot))
+            if (data == null && Directory.Exists(CustomAssets.Root))
             {
-                try { _parser.MountCustomIntoProvider(TempCustomMovesRoot); } catch { }
+                try { _parser.MountCustomIntoProvider(CustomAssets.Root); } catch { }
                 data = await System.Threading.Tasks.Task.Run(() =>
                     _parser.LoadAnimation(gamePath));
             }
@@ -2160,7 +2524,9 @@ public partial class MainWindow : Window
             {
                 var modified = c.Graph.Nodes.Any(n => !n.IsRoot && !string.IsNullOrEmpty(n.AnimPath)
                     && (n.TreeIndex == -1 || n.AnimPath != n.DefaultAnimPath
-                        || (!string.IsNullOrEmpty(n.VanillaAnimPath) && n.AnimPath != n.VanillaAnimPath)));
+                        || (!string.IsNullOrEmpty(n.VanillaAnimPath) && n.AnimPath != n.VanillaAnimPath)
+                        || (!string.IsNullOrEmpty(n.DefaultDBPath) && !string.IsNullOrEmpty(n.SourceDBPath)
+                            && !string.Equals(n.SourceDBPath, n.DefaultDBPath, StringComparison.OrdinalIgnoreCase))));
                 var hasRetargets = c.Graph.RedirectOriginalTargets.Any(rd =>
                 {
                     var node = c.Graph.Nodes.FirstOrDefault(n => n.Id == rd.Key);
@@ -2214,7 +2580,9 @@ public partial class MainWindow : Window
         var modified = _comboGraph.Nodes
             .Where(n => !n.IsRoot && !string.IsNullOrEmpty(n.AnimPath)
                 && (n.TreeIndex == -1 || n.AnimPath != n.DefaultAnimPath
-                    || (!string.IsNullOrEmpty(n.VanillaAnimPath) && n.AnimPath != n.VanillaAnimPath)))
+                    || (!string.IsNullOrEmpty(n.VanillaAnimPath) && n.AnimPath != n.VanillaAnimPath)
+                    || (!string.IsNullOrEmpty(n.DefaultDBPath) && !string.IsNullOrEmpty(n.SourceDBPath)
+                        && !string.Equals(n.SourceDBPath, n.DefaultDBPath, StringComparison.OrdinalIgnoreCase))))
             .ToList();
 
         bool hasRetargets = _comboGraph.RedirectOriginalTargets.Any(kvp =>
@@ -2433,15 +2801,40 @@ public partial class MainWindow : Window
                     extractedBasenames.TryAdd(Path.GetFileNameWithoutExtension(f), f);
 
                 var comboCatalog = BuildImportComboCatalog();
-                var discoveredTrees = new List<(string path, ImportComboEntry entry)>();
+                var treeCandidates = new List<(string path, string rel, ImportComboEntry entry)>();
                 foreach (var f in extractedUassets)
                 {
                     var baseName = Path.GetFileNameWithoutExtension(f);
                     if (comboCatalog.TryGetValue(baseName, out var entry))
-                        discoveredTrees.Add((f, entry));
+                        treeCandidates.Add((f, Path.GetRelativePath(importTempRoot, f), entry));
                 }
-                foreach (var (path, entry) in discoveredTrees)
-                    ErrorLog.Write("IMPORT", new Exception($"Discovered combo tree: {Path.GetFileName(path)} → {entry.UnitKey} ({entry.GamePath})"));
+
+                static bool IsBackupVariant(string rel) =>
+                    rel.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                        .Any(seg => seg.Equals("0Backup", StringComparison.OrdinalIgnoreCase)
+                                 || seg.Equals("Old", StringComparison.OrdinalIgnoreCase)
+                                 || seg.Contains("_Copy", StringComparison.OrdinalIgnoreCase));
+
+                // Real trees win over 0Backup/_Copy/Old copies; a backup copy is only used when
+                // no real tree exists for that unit. One tree per unit (previously directory
+                // enumeration order decided, which let the 0Backup copy overwrite the real tree).
+                var chosenTrees = new Dictionary<string, (string path, ImportComboEntry entry)>(StringComparer.OrdinalIgnoreCase);
+                foreach (var c in treeCandidates)
+                    if (!IsBackupVariant(c.rel)) chosenTrees.TryAdd(c.entry.UnitKey, (c.path, c.entry));
+                foreach (var c in treeCandidates)
+                    if (IsBackupVariant(c.rel)) chosenTrees.TryAdd(c.entry.UnitKey, (c.path, c.entry));
+                var discoveredTrees = chosenTrees.Values.ToList();
+
+                foreach (var c in treeCandidates)
+                {
+                    bool chosen = chosenTrees.TryGetValue(c.entry.UnitKey, out var ch)
+                                  && string.Equals(ch.path, c.path, StringComparison.OrdinalIgnoreCase);
+                    ErrorLog.Write("IMPORT", new Exception(
+                        (chosen ? "Discovered combo tree: "
+                             : IsBackupVariant(c.rel) ? "Skipped backup-variant combo tree: "
+                             : "Skipped duplicate combo tree: ")
+                        + $"{c.rel} → {c.entry.UnitKey} ({c.entry.GamePath})"));
+                }
                 bool hasComboTree = discoveredTrees.Count > 0;
 
                 // Unit properties candidates (ArchetypeDB / ContextualDefense by basename)
@@ -2582,6 +2975,7 @@ public partial class MainWindow : Window
 
                 var importedUnits = new List<(string unitKey, ComboGraph graph, int moves, int retargets, ImportComboEntry entry)>();
                 var treeMismatches = new List<string>();
+                var danglingRefs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
                 if (hasComboTree)
                 {
@@ -2618,6 +3012,35 @@ public partial class MainWindow : Window
                     string? overlayContentRoot = FindContentRootUnder(importTempRoot);
                     if (overlayContentRoot != null)
                         _parser.SetOverlayProvider(_parser.CreateOverlayProvider(overlayContentRoot));
+
+                    // Pre-scan: flag DB references that exist in neither the mod nor vanilla —
+                    // these cannot resolve and will keep their vanilla anims.
+                    if (overlayContentRoot != null)
+                    {
+                        try
+                        {
+                            string vanillaContentDir = AttackDbContentDir();
+                            foreach (var (_, nodes) in moddedByUnit)
+                                foreach (var n in nodes)
+                                    foreach (var p in n.AttackDbPaths)
+                                    {
+                                        var modUasset = AttackDbCard.ResolveUassetPath(overlayContentRoot, p);
+                                        var vanillaUasset = AttackDbCard.ResolveUassetPath(vanillaContentDir, p);
+                                        bool inMod = modUasset != null && File.Exists(modUasset);
+                                        bool inVanilla = vanillaUasset != null && File.Exists(vanillaUasset);
+                                        if (!inMod && !inVanilla)
+                                            danglingRefs.Add(p);
+                                    }
+                            foreach (var d in danglingRefs.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+                                ErrorLog.Write("IMPORT", new Exception($"[PRESCAN] Dangling DB ref (absent from mod AND vanilla): {d}"));
+                            if (danglingRefs.Count > 0)
+                                ErrorLog.Write("IMPORT", new Exception($"[PRESCAN] {danglingRefs.Count} dangling DB ref(s) — these keep vanilla anims"));
+                        }
+                        catch (Exception dEx)
+                        {
+                            ErrorLog.Write("IMPORT", dEx);
+                        }
+                    }
 
                     int cmpIdx = 0;
                     foreach (var (path, entry) in discoveredTrees)
@@ -2927,6 +3350,11 @@ public partial class MainWindow : Window
                     var mismatchLine = "Tree size mismatch:\n  " + string.Join("\n  ", treeMismatches);
                     details = details != null ? $"{details}\n{mismatchLine}" : mismatchLine;
                 }
+                if (danglingRefs.Count > 0)
+                {
+                    var danglingLine = $"Dangling DB ref(s): {danglingRefs.Count} (absent from mod and vanilla — kept vanilla)";
+                    details = details != null ? $"{details}\n{danglingLine}" : danglingLine;
+                }
                 if (importedProps.Count > 0)
                 {
                     var propLine = $"Unit Properties: {importedProps.Count}";
@@ -2961,17 +3389,24 @@ public partial class MainWindow : Window
             {
                 if (Directory.Exists(importTempRoot))
                 {
-                    int harvested = HarvestCustomAnims(importTempRoot);
+                    // Import registers the harvested cards itself, so the watcher must
+                    // not pop the "New Custom File(s)" dialog over the import result.
+                    _suppressCustomWatcher = true;
+                    int harvested = CustomAssets.Harvest(importTempRoot, AttackDbContentDir());
+                    _suppressCustomWatcher = false;
+                    // Import harvest wrote its own files - drop any queued events so a
+                    // flush after the flag clears can't pop the watcher dialog.
+                    lock (_customWatcherPending) _customWatcherPending.Clear();
                     if (harvested > 0)
                     {
-                        _parser.MountCustomIntoProvider(TempCustomMovesRoot);
+                        _parser.MountCustomIntoProvider(CustomAssets.Root);
                         RegisterCustomMoves();
                         Dispatcher.Invoke(FilterMoves);
-                        ErrorLog.Write("IMPORT", new Exception($"Harvested {harvested} custom anim file(s) → TempCustomMoves"));
+                        ErrorLog.Write("IMPORT", new Exception($"Harvested {harvested} custom file(s) to CustomAssets"));
                     }
                 }
             }
-            catch (Exception hex) { ErrorLog.Write("IMPORT", hex); }
+            catch (Exception hex) { _suppressCustomWatcher = false; ErrorLog.Write("IMPORT", hex); }
             try { if (Directory.Exists(importTempRoot)) Directory.Delete(importTempRoot, true); } catch { }
         }
     }
@@ -3035,91 +3470,72 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private int HarvestCustomAnims(string extractRoot)
-    {
-        try
-        {
-            var vanillaContent = Setup.ContentDetector.ResolveContentDir(_contentPath);
-
-            int copied = 0;
-            foreach (var animsDir in Directory.GetDirectories(extractRoot, "Animations", SearchOption.AllDirectories))
-            {
-                var contentRoot = Directory.GetParent(animsDir)?.FullName;
-                if (contentRoot == null) continue;
-
-                foreach (var file in Directory.GetFiles(animsDir, "*", SearchOption.AllDirectories))
-                {
-                    var ext = Path.GetExtension(file).ToLowerInvariant();
-                    if (ext != ".uasset" && ext != ".uexp" && ext != ".ubulk") continue;
-
-                    var rel = Path.GetRelativePath(contentRoot, file);
-                    var vanillaPath = Path.Combine(vanillaContent, rel);
-                    if (File.Exists(vanillaPath)) continue;
-
-                    var dest = Path.Combine(TempCustomMovesRoot, rel);
-                    Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-                    File.Copy(file, dest, true);
-                    copied++;
-                }
-            }
-            return copied;
-        }
-        catch (Exception ex)
-        {
-            ErrorLog.Write("IMPORT", ex);
-            return 0;
-        }
-    }
-
+    /// <summary>
+    /// Registers everything in the persistent CustomAssets root as Custom-tab moves:
+    /// animation files (unit from the Animations/&lt;unit&gt; folder) plus attack cards
+    /// (unit from DB/AI/Archetypes/&lt;unit&gt;). Idempotent - paths already present in
+    /// _allMoves are skipped, so it can run after every harvest or watcher refresh.
+    /// </summary>
     private void RegisterCustomMoves()
     {
-        if (_allMoves == null || !Directory.Exists(TempCustomMovesRoot)) return;
+        if (_allMoves == null || !Directory.Exists(CustomAssets.Root)) return;
 
-        var animsRoot = Path.Combine(TempCustomMovesRoot, "Animations");
-        if (!Directory.Exists(animsRoot)) return;
-
-        foreach (var file in Directory.GetFiles(animsRoot, "*.uasset", SearchOption.AllDirectories))
+        var animsRoot = Path.Combine(CustomAssets.Root, "Animations");
+        if (Directory.Exists(animsRoot))
         {
-            var rel = Path.GetRelativePath(TempCustomMovesRoot, file).Replace('\\', '/');
-            if (rel.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
-                rel = rel[..^".uasset".Length];
-            var gamePath = "Game/" + rel;
-
-            if (_allMoves.Any(m => !string.IsNullOrEmpty(m.FullPath) &&
-                    m.FullPath.Equals(gamePath, StringComparison.OrdinalIgnoreCase)))
-                continue;
-
-            var parts = rel.Split('/');
-            string character = "Custom";
-            if (parts.Length >= 2)
+            foreach (var file in Directory.GetFiles(animsRoot, "*.uasset", SearchOption.AllDirectories))
             {
-                int idx = parts[0].Equals("Animations", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
-                if (idx < parts.Length && parts[idx].Equals("Custom", StringComparison.OrdinalIgnoreCase))
-                    idx++;
-                if (idx < parts.Length) character = parts[idx];
-            }
+                var rel = Path.GetRelativePath(CustomAssets.Root, file).Replace('\\', '/');
+                if (rel.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
+                    rel = rel[..^".uasset".Length];
+                var gamePath = "Game/" + rel;
 
-            string weapon = "BareHands";
-            foreach (var p in parts)
-            {
-                var w = AnimationParser.NormalizeWeaponType(p);
-                if (w is "BareHands" or "Bats" or "Blades" or "Staff" or "MeteorHammer" or "TriStaff")
+                if (_allMoves.Any(m => !string.IsNullOrEmpty(m.FullPath) &&
+                        m.FullPath.Equals(gamePath, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                var parts = rel.Split('/');
+                string character = "Custom";
+                if (parts.Length >= 2)
                 {
-                    weapon = w;
-                    break;
+                    int idx = parts[0].Equals("Animations", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+                    if (idx < parts.Length && parts[idx].Equals("Custom", StringComparison.OrdinalIgnoreCase))
+                        idx++;
+                    if (idx < parts.Length) character = parts[idx];
                 }
-            }
 
-            _allMoves.Add(new MoveInfo
-            {
-                DisplayName = Path.GetFileNameWithoutExtension(file),
-                FullPath = gamePath,
-                Character = character,
-                WeaponType = weapon,
-                Category = "Custom",
-                IsUsed = true,
-                IsValid = true
-            });
+                string weapon = "BareHands";
+                foreach (var p in parts)
+                {
+                    var w = AnimationParser.NormalizeWeaponType(p);
+                    if (w is "BareHands" or "Bats" or "Blades" or "Staff" or "MeteorHammer" or "TriStaff")
+                    {
+                        weapon = w;
+                        break;
+                    }
+                }
+
+                _allMoves.Add(new MoveInfo
+                {
+                    DisplayName = Path.GetFileNameWithoutExtension(file),
+                    FullPath = gamePath,
+                    Character = character,
+                    WeaponType = weapon,
+                    Category = "Custom",
+                    IsUsed = true,
+                    IsValid = true
+                });
+            }
+        }
+
+        // Custom attack cards - unit grouping comes from the archetype folder. Must run
+        // after MountCustomIntoProvider so HasAttackStruct can load them from the provider.
+        foreach (var card in _parser.ScanCustomAttackDbs(CustomAssets.Root))
+        {
+            if (_allMoves.Any(m => !string.IsNullOrEmpty(m.FullPath) &&
+                    m.FullPath.Equals(card.FullPath, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            _allMoves.Add(card);
         }
     }
 
@@ -4265,6 +4681,9 @@ public partial class MainWindow : Window
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         CommitAttackDbPanel();
+        StopCustomAssetsWatcher();
+        PromptKeepCustomAssets();
+        SaveSettings();
         if (webView?.CoreWebView2 != null)
         {
             webView.CoreWebView2.ExecuteScriptAsync("window.getCameraState()")
@@ -4287,25 +4706,235 @@ public partial class MainWindow : Window
                     Dispatcher.BeginInvoke(() =>
                     {
                         SaveSettings();
-                        DeleteTempCustomMoves();
                     });
                 });
         }
         else
         {
             SaveSettings();
-            DeleteTempCustomMoves();
         }
     }
 
-    private static void DeleteTempCustomMoves()
+    /// <summary>
+    /// Close-time gate for the persistent CustomAssets library. Files that are new or
+    /// modified against the last accepted manifest trigger one prompt: Yes keeps them
+    /// (manifest saved into settings, so the same files are never re-asked), No
+    /// deletes only those unaccepted files - everything previously accepted stays.
+    /// </summary>
+    private void PromptKeepCustomAssets()
     {
         try
         {
-            if (Directory.Exists(TempCustomMovesRoot))
-                Directory.Delete(TempCustomMovesRoot, true);
+            var current = CustomAssets.BuildManifest();
+            if (current.Count == 0)
+            {
+                // Folder is empty - first run, or nothing left worth asking about.
+                if (_customAssetsAccepted != null && _customAssetsAccepted.Count > 0)
+                    _customAssetsAccepted = null;
+                return;
+            }
+
+            if (CustomAssets.ManifestEquals(current, _customAssetsAccepted)) return;
+
+            bool firstTime = _customAssetsAccepted == null || _customAssetsAccepted.Count == 0;
+            string text = firstTime
+                ? "Want to save the custom files in the Custom Section?"
+                : "Want to save the new custom files added?";
+            var result = MessageBox.Show(this, text, "Custom Section",
+                MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                _customAssetsAccepted = current;
+            }
+            else
+            {
+                var unaccepted = CustomAssets.NewOrChanged(current, _customAssetsAccepted);
+                int removed = CustomAssets.DeleteEntries(unaccepted);
+                var unacceptedSet = new HashSet<string>(unaccepted, StringComparer.OrdinalIgnoreCase);
+                var survivors = current.Where(e => !unacceptedSet.Contains(e)).ToList();
+                _customAssetsAccepted = survivors.Count > 0 ? survivors : null;
+                if (removed > 0)
+                    ErrorLog.Write("CUSTOM", new Exception(
+                        $"Close prompt: discarded {removed} unaccepted custom file(s)"));
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("CUSTOM", ex);
+        }
+    }
+
+    // ---- CustomAssets file watcher -------------------------------------------------
+
+    private void StartCustomAssetsWatcher()
+    {
+        try
+        {
+            CustomAssets.EnsureRoot();
+            _customWatcherDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+            _customWatcherDebounce.Tick += CustomWatcherDebounce_Tick;
+
+            _customWatcher = new FileSystemWatcher(CustomAssets.Root)
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName
+                    | NotifyFilters.Size | NotifyFilters.CreationTime
+            };
+            _customWatcher.Created += (_, e) => QueueCustomWatcherEvent(e.FullPath);
+            _customWatcher.Changed += (_, e) => QueueCustomWatcherEvent(e.FullPath);
+            _customWatcher.Deleted += (_, e) => QueueCustomWatcherEvent(e.FullPath);
+            _customWatcher.Renamed += (_, e) =>
+            {
+                QueueCustomWatcherEvent(e.OldFullPath);
+                QueueCustomWatcherEvent(e.FullPath);
+            };
+            _customWatcher.EnableRaisingEvents = true;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("CUSTOM", ex);
+        }
+    }
+
+    private void StopCustomAssetsWatcher()
+    {
+        try
+        {
+            _customWatcherDebounce?.Stop();
+            if (_customWatcher != null)
+            {
+                _customWatcher.EnableRaisingEvents = false;
+                _customWatcher.Dispose();
+                _customWatcher = null;
+            }
         }
         catch { }
+    }
+
+    private void QueueCustomWatcherEvent(string fullPath)
+    {
+        if (_suppressCustomWatcher) return;
+        try
+        {
+            var rel = Path.GetRelativePath(CustomAssets.Root, fullPath).Replace('\\', '/');
+            if (rel.StartsWith("..", StringComparison.Ordinal)) return;
+            lock (_customWatcherPending)
+            {
+                _customWatcherPending.Add(rel);
+            }
+            Dispatcher.BeginInvoke(() =>
+            {
+                _customWatcherDebounce?.Stop();
+                _customWatcherDebounce?.Start();
+            });
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// Flushes coalesced watcher events: rows for files that still exist are shown (or
+    /// re-shown) in the popup, assets whose files vanished are unregistered from the
+    /// Custom list, and an empty row set closes the popup.
+    /// </summary>
+    private void CustomWatcherDebounce_Tick(object? sender, EventArgs e)
+    {
+        _customWatcherDebounce?.Stop();
+        if (_suppressCustomWatcher) return;
+
+        List<string> touched;
+        lock (_customWatcherPending)
+        {
+            if (_customWatcherPending.Count == 0) return;
+            touched = _customWatcherPending.ToList();
+            _customWatcherPending.Clear();
+        }
+        ErrorLog.Write("CUSTOM", new Exception(
+            $"Watcher: {touched.Count} file event(s): {string.Join(", ", touched.Take(8))}"));
+
+        bool removedSome = false;
+        foreach (var rel in touched)
+        {
+            if (File.Exists(Path.Combine(CustomAssets.Root, rel.Replace('/', Path.DirectorySeparatorChar))))
+                continue;
+
+            // Companion-only deletion (uexp/ubulk while the uasset survives) keeps the card.
+            var stem = CustomAssets.AssetStemOfRel(rel);
+            if (stem.Equals(rel, StringComparison.OrdinalIgnoreCase)) continue;
+            if (File.Exists(CustomAssets.FileForContentRel(stem + ".uasset"))) continue;
+
+            var gamePath = "Game/" + stem;
+            if (_allMoves.RemoveAll(m =>
+                    string.Equals(m.Category, "Custom", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(m.FullPath, gamePath, StringComparison.OrdinalIgnoreCase)) > 0)
+                removedSome = true;
+        }
+
+        if (removedSome) FilterMoves();
+
+        lock (_customWatcherPending)
+        {
+            foreach (var rel in touched)
+            {
+                var display = CustomAssets.DisplayNameForRel(rel);
+                if (File.Exists(Path.Combine(CustomAssets.Root, rel.Replace('/', Path.DirectorySeparatorChar))))
+                    _customWatchRows.Add(display);
+                else
+                    _customWatchRows.Remove(display);
+            }
+        }
+
+        UpdateCustomFilesPopup();
+    }
+
+    private void UpdateCustomFilesPopup()
+    {
+        try
+        {
+            if (_customWatchRows.Count == 0)
+            {
+                if (_customFilesDialog != null)
+                {
+                    var dlg = _customFilesDialog;
+                    _customFilesDialog = null;
+                    dlg.Close();
+                }
+                return;
+            }
+
+            if (_customFilesDialog == null)
+            {
+                var dlg = new CustomFilesDetectedDialog { Owner = this };
+                dlg.Closed += (_, _) =>
+                {
+                    bool addToLibrary = dlg.AddToLibrary;
+                    if (ReferenceEquals(_customFilesDialog, dlg)) _customFilesDialog = null;
+                    _customWatchRows.Clear();
+                    if (addToLibrary)
+                    {
+                        try
+                        {
+                            _parser.MountCustomIntoProvider(CustomAssets.Root);
+                            RegisterCustomMoves();
+                            FilterMoves();
+                            txtStatus.Text = "Custom files added to the Custom section";
+                        }
+                        catch (Exception ex) { ErrorLog.Write("CUSTOM", ex); }
+                    }
+                };
+                _customFilesDialog = dlg;
+                dlg.SetFiles(_customWatchRows.ToList());
+                dlg.Show();
+            }
+            else
+            {
+                _customFilesDialog.SetFiles(_customWatchRows.ToList());
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("CUSTOM", ex);
+        }
     }
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -5778,7 +6407,7 @@ public partial class MainWindow : Window
             {
                 var freshParser = new AnimationParser();
                 freshParser.Initialize(_contentPath, contentDir);
-                freshParser.MountCustomIntoProvider(TempCustomMovesRoot);
+                freshParser.MountCustomIntoProvider(CustomAssets.Root);
                 _parser = freshParser;
 
                 var graph = await Task.Run(() => _parser.LoadMainCharComboTree());
@@ -5818,7 +6447,7 @@ public partial class MainWindow : Window
         finally
         {
             // re-initialize provider that was disposed at start
-            try { var fresh = new AnimationParser(); var cDir = Setup.ContentDetector.ResolveContentDir(_contentPath); fresh.Initialize(_contentPath, cDir); fresh.MountCustomIntoProvider(TempCustomMovesRoot); _parser = fresh; } catch { }
+            try { var fresh = new AnimationParser(); var cDir = Setup.ContentDetector.ResolveContentDir(_contentPath); fresh.Initialize(_contentPath, cDir); fresh.MountCustomIntoProvider(CustomAssets.Root); _parser = fresh; } catch { }
             graphLoadingBorder.Visibility = Visibility.Collapsed;
             comboCanvas.IsHitTestVisible = true;
             btnChangeUnit.IsEnabled = true;
@@ -6132,18 +6761,10 @@ public partial class MainWindow : Window
 
     private bool ProjectHasExistingChanges()
     {
+        // CustomAssets is a persistent library, not project state - custom cards in the
+        // Custom tab survive imports and resets, so they never count as changes here.
         if (_unitCaches.Count > 0) return true;
         if (_isModLoaded) return true;
-        if (_allMoves != null && _allMoves.Any(m =>
-                string.Equals(m.Category, "Custom", StringComparison.OrdinalIgnoreCase)))
-            return true;
-        try
-        {
-            if (Directory.Exists(TempCustomMovesRoot) &&
-                Directory.EnumerateFileSystemEntries(TempCustomMovesRoot).Any())
-                return true;
-        }
-        catch { }
         return false;
     }
 
@@ -6166,16 +6787,14 @@ public partial class MainWindow : Window
 
         try { _parser.SetOverlayProvider(null); } catch { }
 
-        DeleteTempCustomMoves();
-
-        if (_allMoves != null)
-            _allMoves.RemoveAll(m => string.Equals(m.Category, "Custom", StringComparison.OrdinalIgnoreCase));
-
+        // CustomAssets is the persistent library - reset clears project state only,
+        // so custom cards stay registered and their files stay on disk.
         try
         {
             var contentDir = Setup.ContentDetector.ResolveContentDir(_contentPath);
             var fresh = new AnimationParser();
             fresh.Initialize(_contentPath, contentDir);
+            fresh.MountCustomIntoProvider(CustomAssets.Root);
             _parser = fresh;
         }
         catch (Exception ex)
@@ -6425,9 +7044,9 @@ public partial class MainWindow : Window
         public ComboGraph? Graph;
         public Dictionary<int, Point>? Positions;
         public UnitProperties? Props;
-        // A card commit writes onto every unit sharing that card, so undo must carry the two
-        // attack fields of ALL caches - the graph clone only covers the active unit.
-        public Dictionary<string, Dictionary<int, (int? Buildup, float? Range)>>? CardTuning;
+        // A card commit writes onto every unit sharing that card, so undo must carry the
+        // tuning fields of ALL caches - the graph clone only covers the active unit.
+        public Dictionary<string, Dictionary<int, (int? Buildup, float? Range, int? WinLo, int? WinHi)>>? CardTuning;
     }
 
     private UndoEntry CaptureCurrentState(string label)
@@ -6442,30 +7061,31 @@ public partial class MainWindow : Window
         };
     }
 
-    private Dictionary<string, Dictionary<int, (int? Buildup, float? Range)>>? CaptureCardTuning()
+    private Dictionary<string, Dictionary<int, (int? Buildup, float? Range, int? WinLo, int? WinHi)>>? CaptureCardTuning()
     {
-        var result = new Dictionary<string, Dictionary<int, (int? Buildup, float? Range)>>();
+        var result = new Dictionary<string, Dictionary<int, (int? Buildup, float? Range, int? WinLo, int? WinHi)>>();
         foreach (var kvp in _unitCaches)
         {
             var g = kvp.Value?.Graph;
             if (g == null) continue;
-            var fields = new Dictionary<int, (int? Buildup, float? Range)>();
+            var fields = new Dictionary<int, (int? Buildup, float? Range, int? WinLo, int? WinHi)>();
             foreach (var n in g.Nodes)
-                if (n.AttackBuildupFrames.HasValue || n.AttackGameplayRange.HasValue)
-                    fields[n.Id] = (n.AttackBuildupFrames, n.AttackGameplayRange);
+                if (n.AttackBuildupFrames.HasValue || n.AttackGameplayRange.HasValue
+                    || n.DelayWindowLo.HasValue || n.DelayWindowHi.HasValue)
+                    fields[n.Id] = (n.AttackBuildupFrames, n.AttackGameplayRange, n.DelayWindowLo, n.DelayWindowHi);
             if (fields.Count > 0) result[kvp.Key] = fields;
         }
         return result.Count > 0 ? result : null;
     }
 
-    private void RestoreCardTuning(Dictionary<string, Dictionary<int, (int? Buildup, float? Range)>>? snapshot)
+    private void RestoreCardTuning(Dictionary<string, Dictionary<int, (int? Buildup, float? Range, int? WinLo, int? WinHi)>>? snapshot)
     {
         foreach (var kvp in _unitCaches)
         {
             var g = kvp.Value?.Graph;
             if (g == null) continue;
 
-            Dictionary<int, (int? Buildup, float? Range)>? fields = null;
+            Dictionary<int, (int? Buildup, float? Range, int? WinLo, int? WinHi)>? fields = null;
             if (snapshot != null && snapshot.TryGetValue(kvp.Key, out var f)) fields = f;
 
             foreach (var n in g.Nodes)
@@ -6474,11 +7094,15 @@ public partial class MainWindow : Window
                 {
                     n.AttackBuildupFrames = v.Buildup;
                     n.AttackGameplayRange = v.Range;
+                    n.DelayWindowLo = v.WinLo;
+                    n.DelayWindowHi = v.WinHi;
                 }
                 else
                 {
                     n.AttackBuildupFrames = null;
                     n.AttackGameplayRange = null;
+                    n.DelayWindowLo = null;
+                    n.DelayWindowHi = null;
                 }
             }
         }
@@ -6595,6 +7219,8 @@ public partial class MainWindow : Window
             ResolvedRedirectNodeId = n.ResolvedRedirectNodeId,
             AttackBuildupFrames = n.AttackBuildupFrames,
             AttackGameplayRange = n.AttackGameplayRange,
+            DelayWindowLo = n.DelayWindowLo,
+            DelayWindowHi = n.DelayWindowHi,
             IsImportedFromMod = n.IsImportedFromMod
         };
     }
@@ -6846,6 +7472,9 @@ public class Settings
     public double[]? CameraTarget { get; set; }
     public string UnrealPakPath { get; set; } = "";
     public string CryptoJsonPath { get; set; } = "";
+    // CustomAssets files ("rel|utcTicks") accepted at the close prompt - re-asking
+    // only happens when the folder's manifest drifts from this list.
+    public List<string>? CustomAssetsAccepted { get; set; }
 }
 
 public class WebViewMessage
