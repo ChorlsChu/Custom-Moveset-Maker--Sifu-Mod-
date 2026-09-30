@@ -19,16 +19,20 @@ public partial class ProjectFeedbackDialog : Window
         _units = units ?? new List<UnitReview>();
         int changeCount = _units.Sum(u => u.Total);
 
-        txtModeLabel.Text = mode == "Save" ? "— Save" : "— Load";
+        txtModeLabel.Text = mode == "Save" ? "— Save" : mode == "Import" ? "— Import" : "— Load";
         txtTitle.Text = title;
         txtChangeCount.Text = $"{changeCount} change(s) across {_units.Count} unit(s):";
         txtSummary.Text = changeCount == 0
-            ? $"{fileName} — no modified moves, retargets, or unit props in cached units."
+            ? mode == "Import"
+                ? $"{fileName} — no moves, links, retargets, or unit props surfaced."
+                : $"{fileName} — no modified moves, retargets, or unit props in cached units."
             : $"{fileName} — {changeCount} change(s) in {_units.Count} unit(s)"
               + (restoredKey != null ? $"; restored active unit {ProjectChangeSummary.FormatUnitDisplayName(restoredKey)}." : ".");
         txtStatus.Text = mode == "Save"
             ? "Review what will be written to the .sifu-edit project."
-            : "Review what this project loaded into the editor.";
+            : mode == "Import"
+                ? "Review what this import brought into the editor."
+                : "Review what this project loaded into the editor.";
 
         lstChanges.ItemsSource = ProjectChangeSummary.BuildList(_units, _expandedUnits, _expandedSections);
     }

@@ -140,6 +140,13 @@ public class GroupHeader
     public string ParentName { get; set; } = "";
 }
 
+public enum ComboNodeKind
+{
+    Vanilla = 0,
+    ImportedNew = 1,
+    UserCreated = 2
+}
+
 public class ComboNode
 {
     public int Id { get; set; }
@@ -166,6 +173,9 @@ public class ComboNode
     // timeline. Null = copy the original window unchanged on export.
     public int? DelayWindowLo { get; set; }
     public int? DelayWindowHi { get; set; }
+    // Provenance: Vanilla = parsed from the vanilla tree, ImportedNew = extra node that only
+    // exists in the modded tree, UserCreated = authored in the editor (TreeIndex assigned on export).
+    public ComboNodeKind Kind { get; set; } = ComboNodeKind.Vanilla;
     [Newtonsoft.Json.JsonIgnore]
     public bool IsImportedFromMod { get; set; }
 }
@@ -176,6 +186,9 @@ public class ComboEdge
     public int ToNodeId { get; set; }
     public string InputName { get; set; } = "";
     public bool IsRedirect { get; set; }
+    // True when this link was created in the editor (not present in any parsed tree) -
+    // export appends only these (plus links touching UserCreated nodes) to the combo tree.
+    public bool IsNewLink { get; set; }
 }
 
 public class ComboGraph
@@ -193,6 +206,13 @@ public class ModdedComboNodeInfo
     public string Name { get; set; } = "";
     public int RedirectTargetTreeIndex { get; set; } = -1;
     public List<string> AttackDbPaths { get; set; } = [];
+    public List<ModdedTransitionInfo> Transitions { get; set; } = [];
+}
+
+public class ModdedTransitionInfo
+{
+    public string InputName { get; set; } = "";
+    public int TargetTreeIndex { get; set; } = -1;
 }
 
 public class BoneData
@@ -1819,6 +1839,48 @@ public class AnimationParser : IDisposable
                     }
                 }
 
+                // Transitions: nested m_Transitions struct -> array of { m_eInputTransition,
+                // m_TargetNodes map } (mirrors ParseComboTreeFromObject, but on PropertyData).
+                var transStructProp = nodeSp.Value.OfType<StructPropertyData>()
+                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Transitions");
+                var transArrProp = transStructProp?.Value?.OfType<ArrayPropertyData>()
+                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Transitions");
+                if (transArrProp?.Value != null)
+                {
+                    foreach (var tElem in transArrProp.Value)
+                    {
+                        if (tElem is not StructPropertyData tSp || tSp.Value == null) continue;
+                        var inputProp = tSp.Value.OfType<EnumPropertyData>()
+                            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_eInputTransition");
+                        string inputName = InputNameFromEnumRaw(inputProp?.Value?.Value?.ToString());
+                        var targetsProp = tSp.Value.OfType<MapPropertyData>()
+                            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_TargetNodes");
+                        if (targetsProp?.Value == null) continue;
+                        try
+                        {
+                            foreach (System.Collections.DictionaryEntry kv in (System.Collections.IDictionary)targetsProp.Value)
+                            {
+                                int targetTreeIndex = kv.Value switch
+                                {
+                                    IntPropertyData ipd => ipd.Value,
+                                    BytePropertyData bpd => bpd.Value,
+                                    _ => -1
+                                };
+                                if (targetTreeIndex < 0) continue;
+                                info.Transitions.Add(new ModdedTransitionInfo
+                                {
+                                    InputName = inputName,
+                                    TargetTreeIndex = targetTreeIndex
+                                });
+                            }
+                        }
+                        catch (Exception tEx)
+                        {
+                            LogDebug($"[IMPORT] Transition target read failed at tree[{info.TreeIndex}]: {tEx.Message}");
+                        }
+                    }
+                }
+
                 result.Add(info);
             }
 
@@ -2027,7 +2089,7 @@ public class AnimationParser : IDisposable
         return display;
     }
 
-    public (int moveChanges, int retargetChanges, int unmatched) ApplyModdedComboToVanilla(
+    public (int moveChanges, int retargetChanges, int unmatched, int surfaced) ApplyModdedComboToVanilla(
         ComboGraph vanillaGraph, List<ModdedComboNodeInfo> moddedNodes, string weaponName)
     {
         bool isMainChar = string.Equals(weaponName, "BareHands", StringComparison.OrdinalIgnoreCase)
@@ -2284,33 +2346,213 @@ public class AnimationParser : IDisposable
             }
         }
 
-        LogDebug($"[IMPORT] ApplyModdedComboToVanilla: {moveChanges} moves, {retargetChanges} retargets, {unmatched} unmatched ({weaponName})");
-        return (moveChanges, retargetChanges, unmatched);
+        int surfaced = SurfaceModdedOnlyNodes(vanillaGraph, moddedNodes, usedModded, groupToModded, isMainChar);
+
+        LogDebug($"[IMPORT] ApplyModdedComboToVanilla: {moveChanges} moves, {retargetChanges} retargets, {unmatched} unmatched, {surfaced} surfaced ({weaponName})");
+        return (moveChanges, retargetChanges, unmatched, surfaced);
+    }
+
+    /// <summary>
+    /// Adds modded tree entries that have no vanilla counterpart (WW-style appended nodes) to the
+    /// editor graph as Kind=ImportedNew nodes, with their transitions as edges. Enemy trees only
+    /// for now - MainChar surfacing is deferred with the rest of the MainChar scope.
+    /// </summary>
+    private int SurfaceModdedOnlyNodes(
+        ComboGraph graph,
+        List<ModdedComboNodeInfo> moddedNodes,
+        HashSet<ModdedComboNodeInfo> usedModded,
+        Dictionary<int, ModdedComboNodeInfo> groupToModded,
+        bool isMainChar)
+    {
+        var extras = moddedNodes.Where(m => !usedModded.Contains(m)).ToList();
+        if (extras.Count == 0) return 0;
+        if (isMainChar)
+        {
+            LogDebug($"[IMPORT] {extras.Count} modded-only node(s) on MainChar tree - surfacing deferred (enemy trees first)");
+            return 0;
+        }
+
+        int nextId = graph.Nodes.Count > 0 ? graph.Nodes.Max(n => n.Id) + 1 : 0;
+        var extraIdsByTreeIndex = new Dictionary<int, List<int>>();
+        var extraRedirects = new List<(ComboNode node, int targetTreeIndex)>();
+        int surfacedNodes = 0;
+
+        foreach (var m in extras)
+        {
+            string nodeName = m.Name == "None" ? "" : m.Name;
+            string baseDisplayName = string.IsNullOrEmpty(nodeName)
+                ? $"Node_{m.TreeIndex}"
+                : nodeName
+                    .Replace("MainChar_", "")
+                    .Replace("_", " ")
+                    .Replace("Attack barehands ", "")
+                    .Replace("attack barehands ", "");
+            bool isRoot = nodeName.Contains("Conduit", StringComparison.OrdinalIgnoreCase) ||
+                          nodeName.Contains("Root", StringComparison.OrdinalIgnoreCase);
+            bool isRedirect = m.RedirectTargetTreeIndex >= 0;
+
+            var attacks = m.AttackDbPaths
+                .Select(NormalizeAnimPath)
+                .Where(p => !string.IsNullOrEmpty(p))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(db => (db, anim: ResolveAnimationFromDB(db) ?? ""))
+                .ToList();
+
+            var createdIds = new List<int>();
+            if (attacks.Count == 0 || isRedirect)
+            {
+                var node = new ComboNode
+                {
+                    Id = nextId++,
+                    TreeIndex = m.TreeIndex,
+                    Name = nodeName,
+                    AnimPath = "",
+                    DefaultAnimPath = "",
+                    DefaultDBPath = "",
+                    SourceDBPath = "",
+                    DisplayName = baseDisplayName,
+                    IsRoot = isRoot,
+                    DirectionLabel = "",
+                    IsRedirect = isRedirect,
+                    RedirectTargetTreeIndex = m.RedirectTargetTreeIndex,
+                    Kind = ComboNodeKind.ImportedNew
+                };
+                graph.Nodes.Add(node);
+                createdIds.Add(node.Id);
+                surfacedNodes++;
+                if (isRedirect) extraRedirects.Add((node, m.RedirectTargetTreeIndex));
+            }
+            else
+            {
+                var distinctDirs = attacks
+                    .Select(a => ExtractDirectionLabel(a.db))
+                    .Where(d => !string.IsNullOrEmpty(d))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                bool showDirLabels = distinctDirs.Count > 1;
+                foreach (var (db, anim) in attacks)
+                {
+                    var dir = ExtractDirectionLabel(db);
+                    var displayName = baseDisplayName;
+                    if (showDirLabels && !string.IsNullOrEmpty(dir) &&
+                        !displayName.EndsWith(dir, StringComparison.OrdinalIgnoreCase))
+                        displayName = $"{baseDisplayName} {dir}";
+
+                    var node = new ComboNode
+                    {
+                        Id = nextId++,
+                        TreeIndex = m.TreeIndex,
+                        Name = nodeName,
+                        AnimPath = anim,
+                        DefaultAnimPath = anim,
+                        DefaultDBPath = db,
+                        SourceDBPath = db,
+                        DisplayName = displayName,
+                        ImportedDisplayName = PrettifyAttackName(db, dir),
+                        IsRoot = isRoot,
+                        DirectionLabel = dir,
+                        Kind = ComboNodeKind.ImportedNew
+                    };
+                    graph.Nodes.Add(node);
+                    createdIds.Add(node.Id);
+                    surfacedNodes++;
+                }
+            }
+            extraIdsByTreeIndex[m.TreeIndex] = createdIds;
+        }
+
+        // Resolve redirect targets (extra -> extra, extra -> vanilla).
+        foreach (var (node, targetTreeIndex) in extraRedirects)
+        {
+            int resolved = -1;
+            if (extraIdsByTreeIndex.TryGetValue(targetTreeIndex, out var ids) && ids.Count > 0)
+                resolved = ids[0];
+            else
+                resolved = graph.Nodes.FirstOrDefault(n => n.TreeIndex == targetTreeIndex)?.Id ?? -1;
+            node.ResolvedRedirectNodeId = resolved;
+            if (resolved >= 0)
+                graph.RedirectOriginalTargets[node.Id] = resolved;
+        }
+
+        List<int> IdsFor(int treeIndex)
+        {
+            if (extraIdsByTreeIndex.TryGetValue(treeIndex, out var ids)) return ids;
+            return graph.Nodes.Where(n => n.TreeIndex == treeIndex).Select(n => n.Id).ToList();
+        }
+
+        var candidateEdges = new List<ComboEdge>();
+        void AddEdgesFrom(int fromTreeIndex, List<ModdedTransitionInfo> transitions, bool sourceIsRedirect)
+        {
+            if (sourceIsRedirect || transitions.Count == 0) return;
+            var fromIds = IdsFor(fromTreeIndex);
+            if (fromIds.Count == 0) return;
+            foreach (var t in transitions)
+            {
+                if (t.TargetTreeIndex < 0) continue;
+                var toIds = IdsFor(t.TargetTreeIndex);
+                foreach (var f in fromIds)
+                    foreach (var to in toIds)
+                        candidateEdges.Add(new ComboEdge
+                        {
+                            FromNodeId = f,
+                            ToNodeId = to,
+                            InputName = t.InputName
+                        });
+            }
+        }
+
+        foreach (var m in extras)
+            AddEdgesFrom(m.TreeIndex, m.Transitions, m.RedirectTargetTreeIndex >= 0);
+
+        // Vanilla nodes whose modded counterpart now transitions into a surfaced node
+        // (the mod re-wires an existing node into its new content - WW's core technique).
+        foreach (var (vanillaTreeIndex, m) in groupToModded)
+        {
+            var intoExtras = m.Transitions
+                .Where(t => extraIdsByTreeIndex.ContainsKey(t.TargetTreeIndex))
+                .ToList();
+            if (intoExtras.Count > 0)
+                AddEdgesFrom(vanillaTreeIndex, intoExtras, false);
+        }
+
+        var existingPairs = graph.Edges.Select(e => (e.FromNodeId, e.ToNodeId)).ToHashSet();
+        int addedEdges = 0;
+        foreach (var e in candidateEdges)
+        {
+            if (e.FromNodeId == e.ToNodeId) continue;
+            if (!existingPairs.Add((e.FromNodeId, e.ToNodeId))) continue;
+            graph.Edges.Add(e);
+            addedEdges++;
+        }
+
+        LogDebug($"[IMPORT] Surfaced {surfacedNodes} modded-only node(s) ({extras.Count} m_Nodes entries), {addedEdges} edge(s)");
+        return surfacedNodes;
     }
 
     private string ExtractInputName(FStructFallback transitionData)
     {
         var inputProp = transitionData.Properties.FirstOrDefault(p => p.Name.Text == "m_eInputTransition");
         if (inputProp?.Tag is EnumProperty inputEnum)
-        {
-            var raw = inputEnum.Value.Text;
-            var name = raw.Contains("::") ? raw.Split("::")[^1] : raw;
-
-            return name switch
-            {
-                "Light" => "LMB",
-                "Heavy" => "RMB",
-                "HeavyHold" => "RMB Hold",
-                "HeavyAlt" => "RMB",
-                "Special" => "S",
-                "Dodge" => "Shift",
-                "Throw" => "Q",
-                "None" or "" => "",
-                _ => name
-            };
-        }
-
+            return InputNameFromEnumRaw(inputEnum.Value.Text);
         return "";
+    }
+
+    internal static string InputNameFromEnumRaw(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return "";
+        var name = raw.Contains("::") ? raw.Split("::")[^1] : raw;
+        return name switch
+        {
+            "Light" => "LMB",
+            "Heavy" => "RMB",
+            "HeavyHold" => "RMB Hold",
+            "HeavyAlt" => "RMB",
+            "Special" => "S",
+            "Dodge" => "Shift",
+            "Throw" => "Q",
+            "None" or "" => "",
+            _ => name
+        };
     }
 
 

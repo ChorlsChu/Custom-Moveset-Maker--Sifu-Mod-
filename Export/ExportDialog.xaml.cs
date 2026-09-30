@@ -131,15 +131,11 @@ public partial class ExportDialog : Window
             var entry = kvp.Value;
             var graph = entry.Graph;
 
-            // A node is modified if its animation changed OR if only its attack DB changed
-            // (an attack swap can keep the same animation). Transition/redirect nodes carry an
-            // empty AnimPath and an empty DefaultDBPath, so they are never picked up here.
+            // A node is modified if it was authored here (new attack/redirect nodes, which
+            // may carry an empty AnimPath) OR if its animation changed OR if only its attack
+            // DB changed (an attack swap can keep the same animation).
             var modified = graph.Nodes
-                .Where(n => !n.IsRoot && !string.IsNullOrEmpty(n.AnimPath)
-                    && (n.TreeIndex == -1 || n.AnimPath != n.DefaultAnimPath
-                        || (!string.IsNullOrEmpty(n.VanillaAnimPath) && n.AnimPath != n.VanillaAnimPath)
-                        || (!string.IsNullOrEmpty(n.DefaultDBPath) && !string.IsNullOrEmpty(n.SourceDBPath)
-                            && !string.Equals(n.SourceDBPath, n.DefaultDBPath, StringComparison.OrdinalIgnoreCase))))
+                .Where(ProjectChangeSummary.IsModifiedNode)
                 .ToList();
 
             bool hasRetargets = graph.RedirectOriginalTargets.Any(rd =>
@@ -159,7 +155,10 @@ public partial class ExportDialog : Window
             // AttackDB field tuning does not touch AnimPath/DefaultAnimPath, so it would never
             // show up in `modified` - the unit still has to be exported for its cards to ship.
             bool hasAttackTuning = ProjectChangeSummary.GraphHasAttackDbTuning(graph);
-            if (modified.Count > 0 || hasRetargets || hasUnitProps || hasAttackTuning)
+            // Links between existing nodes add no modified node either - the unit still has to
+            // ship so the combo pass can append the new transitions.
+            bool hasNewLinks = graph.Edges.Any(ed => ed.IsNewLink);
+            if (modified.Count > 0 || hasRetargets || hasUnitProps || hasAttackTuning || hasNewLinks)
             {
                 _perUnitModifiedNodes[unitKey] = modified;
                 if (hasUnitProps) _perUnitProps[unitKey] = entry.Props!;
@@ -316,15 +315,36 @@ public partial class ExportDialog : Window
                         : comboPath[(comboPath.LastIndexOf('/') + 1)..]
                 };
 
-                if (modified.Count > 0)
+                var multiMoveNodes = modified.Where(n => n.Kind != ComboNodeKind.UserCreated).ToList();
+                var multiNewNodes = modified.Where(n => n.Kind == ComboNodeKind.UserCreated).ToList();
+                if (multiMoveNodes.Count > 0)
                 {
-                    var moveRows = modified
+                    var moveRows = multiMoveNodes
                         .OrderBy(n => n.TreeIndex)
                         .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase)
                         .Select(ProjectChangeSummary.ToChangeRow)
                         .ToList();
                     unit.Sections.Add(new UnitSectionReview { Name = "Moves", Rows = moveRows });
                 }
+                if (multiNewNodes.Count > 0)
+                {
+                    var newNodeRows = multiNewNodes
+                        .OrderBy(n => n.TreeIndex)
+                        .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase)
+                        .Select(ProjectChangeSummary.ToNewNodeRow)
+                        .ToList();
+                    unit.Sections.Add(new UnitSectionReview { Name = "New Nodes", Rows = newNodeRows });
+                }
+                var multiLinkRows = ProjectChangeSummary.BuildLinkRows(graph);
+                if (multiLinkRows.Count > 0)
+                    unit.Sections.Add(new UnitSectionReview { Name = "New Links", Rows = multiLinkRows });
+
+                var multiImportedNodes = ProjectChangeSummary.BuildImportedNodeRows(graph);
+                if (multiImportedNodes.Count > 0)
+                    unit.Sections.Add(new UnitSectionReview { Name = "Imported Nodes", Rows = multiImportedNodes });
+                var multiImportedLinkRows = ProjectChangeSummary.BuildImportedLinkRows(graph);
+                if (multiImportedLinkRows.Count > 0)
+                    unit.Sections.Add(new UnitSectionReview { Name = "Imported Links", Rows = multiImportedLinkRows });
 
                 var attackRows = ProjectChangeSummary.BuildAttackDbRows(graph.Nodes, _contentPath);
                 if (attackRows.Count > 0) attackByUnit.Add((unitKey, attackRows));
@@ -400,12 +420,39 @@ public partial class ExportDialog : Window
 
             if (_modifiedNodes is { Count: > 0 })
             {
-                var moveRows = _modifiedNodes
-                    .OrderBy(n => n.TreeIndex)
-                    .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase)
-                    .Select(ProjectChangeSummary.ToChangeRow)
-                    .ToList();
-                unit.Sections.Add(new UnitSectionReview { Name = "Moves", Rows = moveRows });
+                var singleMoveNodes = _modifiedNodes.Where(n => n.Kind != ComboNodeKind.UserCreated).ToList();
+                var singleNewNodes = _modifiedNodes.Where(n => n.Kind == ComboNodeKind.UserCreated).ToList();
+                if (singleMoveNodes.Count > 0)
+                {
+                    var moveRows = singleMoveNodes
+                        .OrderBy(n => n.TreeIndex)
+                        .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase)
+                        .Select(ProjectChangeSummary.ToChangeRow)
+                        .ToList();
+                    unit.Sections.Add(new UnitSectionReview { Name = "Moves", Rows = moveRows });
+                }
+                if (singleNewNodes.Count > 0)
+                {
+                    var newNodeRows = singleNewNodes
+                        .OrderBy(n => n.TreeIndex)
+                        .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase)
+                        .Select(ProjectChangeSummary.ToNewNodeRow)
+                        .ToList();
+                    unit.Sections.Add(new UnitSectionReview { Name = "New Nodes", Rows = newNodeRows });
+                }
+            }
+            if (_graph != null)
+            {
+                var singleLinkRows = ProjectChangeSummary.BuildLinkRows(_graph);
+                if (singleLinkRows.Count > 0)
+                    unit.Sections.Add(new UnitSectionReview { Name = "New Links", Rows = singleLinkRows });
+
+                var singleImportedNodes = ProjectChangeSummary.BuildImportedNodeRows(_graph);
+                if (singleImportedNodes.Count > 0)
+                    unit.Sections.Add(new UnitSectionReview { Name = "Imported Nodes", Rows = singleImportedNodes });
+                var singleImportedLinkRows = ProjectChangeSummary.BuildImportedLinkRows(_graph);
+                if (singleImportedLinkRows.Count > 0)
+                    unit.Sections.Add(new UnitSectionReview { Name = "Imported Links", Rows = singleImportedLinkRows });
             }
 
             if (_graph != null)
@@ -734,14 +781,15 @@ public partial class ExportDialog : Window
         UpdateOutputPreview(outputDir);
     }
 
-    // ErrorLog.Writes snapshot taken when an export starts - ShowComplete reports the
-    // delta so swallowed per-step failures show up in the UI instead of only in error.log.
-    private int _errBaseline;
+    // ErrorLog.Warnings snapshot taken when an export starts - ShowComplete reports the
+    // delta so real failures show up in the UI instead of only in error.log. The export
+    // routine also logs progress through ErrorLog, so only warning-classified writes count.
+    private int _warnBaseline;
 
     private async void Confirm_Click(object sender, RoutedEventArgs e)
     {
         CollectExcludedCustomStems();
-        _errBaseline = ErrorLog.Writes;
+        _warnBaseline = ErrorLog.Warnings;
         panelReview.Visibility = Visibility.Collapsed;
         panelExporting.Visibility = Visibility.Visible;
 
@@ -1232,7 +1280,8 @@ public partial class ExportDialog : Window
             var node = _graph.Nodes.FirstOrDefault(n => n.Id == kvp.Key);
             return node != null && node.ResolvedRedirectNodeId >= 0 && node.ResolvedRedirectNodeId != kvp.Value;
         });
-        var hasComboChanges = _modifiedNodes.Count > 0 || hasRetargets;
+        var hasComboChanges = _modifiedNodes.Count > 0 || hasRetargets
+            || (_graph != null && _graph.Edges.Any(ed => ed.IsNewLink));
         var hasStanceChange = !string.IsNullOrEmpty(_activeStance) && _activeStance != "MainChar";
 
         ErrorLog.Write("EXPORT", new Exception($"=== EXPORT START: {_modifiedNodes.Count} modified nodes, stance={_activeStance ?? "MainChar"} ==="));
@@ -1316,7 +1365,8 @@ public partial class ExportDialog : Window
                     if (CustomRefExists(node.AnimPath) || CustomRefExists(node.DefaultDBPath)
                         || CustomRefExists(node.SourceDBPath))
                         _exportUsesCustomAssets = true;
-                    if (!string.IsNullOrEmpty(node.DefaultDBPath) && node.DefaultDBPath.Contains("/AI/Archetypes/", StringComparison.OrdinalIgnoreCase) && _graph != null && !string.Equals(_graph.WeaponName, "MainChar", StringComparison.OrdinalIgnoreCase))
+                    string deferDbPath = !string.IsNullOrEmpty(node.DefaultDBPath) ? node.DefaultDBPath : node.SourceDBPath ?? "";
+                    if (!string.IsNullOrEmpty(deferDbPath) && deferDbPath.Contains("/AI/Archetypes/", StringComparison.OrdinalIgnoreCase) && _graph != null && !string.Equals(_graph.WeaponName, "MainChar", StringComparison.OrdinalIgnoreCase))
                     {
                         ErrorLog.Write("EXPORT", new Exception($"  ENEMY DEFER: {node.DisplayName} -> combo tree Import swap"));
                         continue;
@@ -2260,10 +2310,13 @@ public partial class ExportDialog : Window
                                     ErrorLog.Write("EXPORT", new Exception($"Enemy redirect patches: {enemyRedirectPatched}"));
                             }
 
+                            var (appendedNodes, appendedLinks, _) =
+                                AppendEnemyAuthoredContent(_graph, enemyAsset, enemyComboExport, enemyNodesArr);
+
                             // Only rewrite the combo tree when this export actually changed it -
                             // with no swaps and no retargets the write was a pointless re-serialize
                             // of vanilla (and, being staged, it shipped an unmodified tree).
-                            if (enemyComboBinSwaps.Count > 0 || enemyRedirectPatched > 0)
+                            if (enemyComboBinSwaps.Count > 0 || enemyRedirectPatched > 0 || appendedNodes > 0 || appendedLinks > 0)
                             {
                                 Directory.CreateDirectory(Path.GetDirectoryName(enemyOutUasset)!);
                                 enemyAsset.Write(enemyOutUasset);
@@ -3269,7 +3322,7 @@ public partial class ExportDialog : Window
         {
             // Full exception (message + stack): a swallowed per-unit failure used to be
             // indistinguishable from success in the UI - log the exact line, and the
-            // completion panel now shows a warning count (ErrorLog.Writes delta).
+            // completion panel now shows a warning count (ErrorLog.Warnings delta).
             ErrorLog.Write("EXPORT", new Exception($"[UNIT_PROPS] Error patching {variantTag}: {ex}"));
         }
     }
@@ -3783,6 +3836,335 @@ public partial class ExportDialog : Window
             mm.Value = tm;
         }
         return clone;
+    }
+
+    private static string InputToEnumRaw(string inputName) => inputName switch
+    {
+        "" => "None",
+        "LMB" => "Light",
+        "RMB" => "Heavy",
+        "RMB Hold" => "HeavyHold",
+        "S" => "Special",
+        "Shift" => "Dodge",
+        "Q" => "Throw",
+        _ => "None"
+    };
+
+    private static string SanitizeNodeName(string s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "CustomNode";
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (char c in s.Trim())
+            sb.Append(char.IsLetterOrDigit(c) || " _-().'".IndexOf(c) >= 0 ? c : '_');
+        var outName = sb.ToString().Trim('_');
+        return outName.Length == 0 ? "CustomNode" : outName;
+    }
+
+    /// <summary>
+    /// Appends authored content - user-created attack/redirect nodes and new links - to the
+    /// enemy combo tree. New nodes clone a base template (so conditions, availability layers
+    /// and attack slots stay structurally valid); new links clone the source's own first
+    /// transition when possible. Attack nodes must reference an attack already registered in
+    /// the tree's m_Attacks map, otherwise the game cannot resolve them and the node is skipped.
+    /// </summary>
+    public static (int nodes, int links, int skipped) AppendEnemyAuthoredContent(
+        ComboGraph graph, UAsset enemyAsset, NormalExport enemyComboExport, ArrayPropertyData enemyNodesArr)
+    {
+        if (graph == null || enemyNodesArr.Value == null) return (0, 0, 0);
+
+        var newUserNodes = graph.Nodes
+            .Where(n => n.TreeIndex < 0 && n.Kind == ComboNodeKind.UserCreated)
+            .OrderBy(n => n.Id)
+            .ToList();
+        var newLinks = graph.Edges.Where(e => e.IsNewLink).ToList();
+        if (newUserNodes.Count == 0 && newLinks.Count == 0) return (0, 0, 0);
+
+        int baseCount = enemyNodesArr.Value.Length;
+        int appendedNodes = 0, appendedLinks = 0, skipped = 0;
+        void Skip(string why)
+        {
+            skipped++;
+            ErrorLog.Write("EXPORT", new Exception($"  APPEND SKIP: {why}"));
+        }
+
+        static StructPropertyData? StructChild(StructPropertyData s, string name) =>
+            s.Value?.OfType<StructPropertyData>().FirstOrDefault(p => p.Name?.Value?.ToString() == name);
+        static ArrayPropertyData? TransitionsArray(StructPropertyData nodeSp) =>
+            StructChild(nodeSp, "m_Transitions")?.Value?.OfType<ArrayPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Transitions");
+
+        // Templates: an attack node (non-None attack slots), a redirect node, any transition.
+        StructPropertyData? attackTemplate = null, redirectTemplate = null, transitionTemplate = null;
+        var usedNames = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < baseCount; i++)
+        {
+            if (enemyNodesArr.Value[i] is not StructPropertyData sp || sp.Value == null) continue;
+            var nm = sp.Value.OfType<NamePropertyData>().FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Name");
+            if (nm?.Value?.Value != null) usedNames.Add(nm.Value.Value.ToString()!);
+            var redir = sp.Value.OfType<IntPropertyData>().FirstOrDefault(p => p.Name?.Value?.ToString() == "m_NodeRedirect");
+            if (redir != null && redir.Value >= 0 && redirectTemplate == null) redirectTemplate = sp;
+            bool hasAttack = sp.Value.OfType<StructPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_AttackInfos")?.Value
+                .OfType<NamePropertyData>()
+                .Any(p => p.Name?.Value?.ToString() == "m_Attacks"
+                       && p.Value?.Value?.ToString() is string ap && ap != "None") == true;
+            if (hasAttack && attackTemplate == null) attackTemplate = sp;
+            if (transitionTemplate == null)
+                transitionTemplate = TransitionsArray(sp)?.Value?.OfType<StructPropertyData>().FirstOrDefault();
+        }
+        if (transitionTemplate == null)
+        {
+            Skip("tree has no transition template to clone");
+            return (0, 0, skipped);
+        }
+
+        // Registry: path -> attack object, keyed like the m_Attacks slots (/Game/...X.X).
+        var registryKeys = new List<string>();
+        foreach (var map in FindAllMapsNamed(enemyComboExport.Data, "m_Attacks"))
+        {
+            if (map.Value == null) continue;
+            foreach (var kvp in map.Value)
+            {
+                string k = GetKeyString(kvp.Key);
+                if (!string.IsNullOrEmpty(k)) registryKeys.Add(k);
+            }
+        }
+
+        string? FindRegistryKey(ComboNode node)
+        {
+            string db = !string.IsNullOrEmpty(node.SourceDBPath) ? node.SourceDBPath
+                      : !string.IsNullOrEmpty(node.DefaultDBPath) ? node.DefaultDBPath
+                      : "";
+            if (string.IsNullOrWhiteSpace(db) && MoveInfo.IsAttackDbGamePath(node.AnimPath))
+                db = node.AnimPath;
+            if (string.IsNullOrWhiteSpace(db)) return null;
+            string norm = db.Trim();
+            if (norm.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase)) norm = norm[..^7];
+            if (!norm.StartsWith("/")) norm = "/" + norm;
+            string file = Path.GetFileName(norm);
+            foreach (var k in registryKeys)
+            {
+                if (string.Equals(k, norm, StringComparison.OrdinalIgnoreCase)) return k;
+                if (string.Equals(k, norm + "." + file, StringComparison.OrdinalIgnoreCase)) return k;
+                if (k.StartsWith(norm + ".", StringComparison.OrdinalIgnoreCase)) return k;
+            }
+            return null;
+        }
+
+        // Phase A: accept/reject each new node (index-independent checks only).
+        var accepted = new List<(ComboNode node, bool isRedirect, string? registryKey)>();
+        var acceptedSet = new HashSet<int>();
+        foreach (var node in newUserNodes)
+        {
+            bool isRedirectNode = node.IsRedirect;
+            string? registryKey = null;
+            if (!isRedirectNode)
+            {
+                registryKey = FindRegistryKey(node);
+                if (registryKey == null)
+                {
+                    Skip($"node '{node.DisplayName}' attack not registered in this tree (source='{node.SourceDBPath}', anim='{node.AnimPath}')");
+                    continue;
+                }
+            }
+            var template = isRedirectNode ? redirectTemplate ?? attackTemplate : attackTemplate ?? redirectTemplate;
+            if (template == null)
+            {
+                Skip($"node '{node.DisplayName}': no template node in this tree");
+                continue;
+            }
+            accepted.Add((node, isRedirectNode, registryKey));
+            acceptedSet.Add(node.Id);
+        }
+
+        // Final indices: base nodes keep theirs, accepted nodes get baseCount+k.
+        var finalIndex = new Dictionary<int, int>();
+        for (int i = 0; i < accepted.Count; i++)
+            finalIndex[accepted[i].node.Id] = baseCount + i;
+
+        int? ResolveIndex(int graphNodeId)
+        {
+            var n = graph.Nodes.FirstOrDefault(x => x.Id == graphNodeId);
+            if (n == null) return null;
+            if (n.TreeIndex >= 0) return n.TreeIndex < baseCount ? n.TreeIndex : (int?)null;
+            return finalIndex.TryGetValue(graphNodeId, out var idx) ? idx : (int?)null;
+        }
+
+        HashSet<int> ExistingTargets(StructPropertyData srcSp)
+        {
+            var set = new HashSet<int>();
+            var arr = TransitionsArray(srcSp);
+            if (arr?.Value == null) return set;
+            foreach (var t in arr.Value)
+            {
+                if (t is not StructPropertyData ts || ts.Value == null) continue;
+                var map = ts.Value.OfType<MapPropertyData>().FirstOrDefault(p => p.Name?.Value?.ToString() == "m_TargetNodes");
+                if (map?.Value == null) continue;
+                foreach (var kvp in map.Value)
+                {
+                    int tv = kvp.Value switch
+                    {
+                        IntPropertyData ipd => ipd.Value,
+                        BytePropertyData bpd => bpd.Value,
+                        _ => -1
+                    };
+                    if (tv >= 0) set.Add(tv);
+                }
+            }
+            return set;
+        }
+
+        StructPropertyData? MakeTransition(StructPropertyData? preferred, string inputName, int target)
+        {
+            var tpl = preferred ?? transitionTemplate!;
+            var t = ClonePropSameAsset(tpl) as StructPropertyData;
+            if (t?.Value == null) return null;
+            var input = t.Value.OfType<EnumPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_eInputTransition");
+            if (input != null)
+                input.Value = FName.FromString(enemyAsset, "EComboTransition::" + InputToEnumRaw(inputName));
+            var map = t.Value.OfType<MapPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_TargetNodes");
+            if (map?.Value == null) return null;
+            if (target > 255 && map.Value.Any(kvp => kvp.Value is BytePropertyData)) return null;
+            var tm = new TMap<PropertyData, PropertyData>();
+            foreach (var kvp in map.Value)
+            {
+                if (kvp.Value is IntPropertyData ip) { ip.Value = target; tm.Add(kvp.Key, ip); }
+                else if (kvp.Value is BytePropertyData bp) { bp.Value = (byte)target; tm.Add(kvp.Key, bp); }
+                else tm.Add(kvp.Key, kvp.Value);
+            }
+            if (tm.Count == 0) return null;
+            map.Value = tm;
+            return t;
+        }
+
+        string MakeUniqueName(string display)
+        {
+            string baseName = SanitizeNodeName(display);
+            string candidate = baseName;
+            int suffix = 2;
+            while (!usedNames.Add(candidate))
+                candidate = $"{baseName} ({suffix++})";
+            return candidate;
+        }
+
+        // Phase A2: build clones now that every appended index is final.
+        var clones = new List<PropertyData>();
+        foreach (var (node, isRedirectNode, registryKey) in accepted)
+        {
+            var template = isRedirectNode ? redirectTemplate! : (attackTemplate ?? redirectTemplate!);
+            var clone = ClonePropSameAsset(template) as StructPropertyData;
+            if (clone?.Value == null) { Skip($"node '{node.DisplayName}': clone failed"); continue; }
+
+            var nameProp = clone.Value.OfType<NamePropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Name");
+            string finalName = MakeUniqueName(node.DisplayName);
+            if (nameProp != null)
+                nameProp.Value = FName.FromString(enemyAsset, finalName);
+
+            if (isRedirectNode)
+            {
+                int? targetIdx = node.ResolvedRedirectNodeId >= 0
+                    ? ResolveIndex(node.ResolvedRedirectNodeId)
+                    : null;
+                if (targetIdx == null)
+                {
+                    Skip($"redirect '{node.DisplayName}': target node missing ({node.ResolvedRedirectNodeId})");
+                    continue;
+                }
+                var redirProp = clone.Value.OfType<IntPropertyData>()
+                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_NodeRedirect");
+                if (redirProp == null) { Skip($"redirect '{node.DisplayName}': template lacks m_NodeRedirect"); continue; }
+                redirProp.Value = targetIdx.Value;
+                // New redirects fall back to a dead end when the availability layer blocks the
+                // forward - never to the template node's stale targets.
+                var rarr = TransitionsArray(clone);
+                if (rarr != null) rarr.Value = Array.Empty<PropertyData>();
+            }
+            else
+            {
+                var slots = StructChild(clone, "m_AttackInfos")?.Value
+                    .OfType<NamePropertyData>()
+                    .Where(p => p.Name?.Value?.ToString() == "m_Attacks")
+                    .ToList() ?? new List<NamePropertyData>();
+                if (slots.Count == 0) { Skip($"node '{node.DisplayName}': template has no attack slots"); continue; }
+                foreach (var s in slots)
+                    s.Value = FName.FromString(enemyAsset, registryKey!);
+
+                var built = new List<PropertyData>();
+                foreach (var e in newLinks.Where(x => x.FromNodeId == node.Id))
+                {
+                    var toIdx = ResolveIndex(e.ToNodeId);
+                    if (toIdx == null) { Skip($"link from '{node.DisplayName}': target node missing"); continue; }
+                    if (toIdx == finalIndex[node.Id]) { Skip($"self link on '{node.DisplayName}'"); continue; }
+                    var t = MakeTransition(null, e.InputName, toIdx.Value);
+                    if (t == null) { Skip($"link from '{node.DisplayName}': transition template unusable"); continue; }
+                    built.Add(t);
+                    appendedLinks++;
+                }
+                var arr = TransitionsArray(clone);
+                if (arr != null) arr.Value = built.ToArray();
+            }
+
+            clones.Add(clone);
+            appendedNodes++;
+            ErrorLog.Write("EXPORT", new Exception(
+                $"  APPEND NODE: [{finalIndex[node.Id]}] '{finalName}' {(isRedirectNode ? $"redirect->{(node.ResolvedRedirectNodeId >= 0 ? ResolveIndex(node.ResolvedRedirectNodeId)?.ToString() : "?")}" : $"attack={registryKey}")}"));
+        }
+
+        if (clones.Count > 0)
+            enemyNodesArr.Value = enemyNodesArr.Value.Concat(clones).ToArray();
+
+        // Phase B: new links whose source is an existing base node.
+        foreach (var e in newLinks)
+        {
+            if (e.IsRedirect) continue;
+            var fromNode = graph.Nodes.FirstOrDefault(n => n.Id == e.FromNodeId);
+            if (fromNode == null) { Skip($"link: source node {e.FromNodeId} missing"); continue; }
+            if (fromNode.TreeIndex < 0)
+            {
+                // User-created sources carry their own transitions; only complain when the
+                // source node itself was skipped above.
+                if (!acceptedSet.Contains(fromNode.Id))
+                    Skip($"link source '{fromNode.DisplayName}' was skipped");
+                continue;
+            }
+            int fromIdx = fromNode.TreeIndex;
+            var toIdx = ResolveIndex(e.ToNodeId);
+            if (toIdx == null)
+            {
+                var toNode = graph.Nodes.FirstOrDefault(n => n.Id == e.ToNodeId);
+                Skip($"link from '{fromNode.DisplayName}': target node missing ({toNode?.DisplayName ?? e.ToNodeId.ToString()})");
+                continue;
+            }
+            if (toIdx == fromIdx) { Skip($"self link on '{fromNode.DisplayName}'"); continue; }
+
+            if (enemyNodesArr.Value[fromIdx] is not StructPropertyData srcSp || srcSp.Value == null)
+            { Skip($"link from '{fromNode.DisplayName}': source struct missing"); continue; }
+
+            if (ExistingTargets(srcSp).Contains(toIdx.Value))
+            {
+                ErrorLog.Write("EXPORT", new Exception(
+                    $"  APPEND LINK dedup: '{fromNode.DisplayName}' -> [{toIdx}] already exists in base"));
+                continue;
+            }
+
+            var srcArr = TransitionsArray(srcSp);
+            if (srcArr?.Value == null) { Skip($"link from '{fromNode.DisplayName}': source has no transitions array"); continue; }
+            var preferred = srcArr.Value.OfType<StructPropertyData>().FirstOrDefault();
+            var trans = MakeTransition(preferred, e.InputName, toIdx.Value);
+            if (trans == null) { Skip($"link from '{fromNode.DisplayName}': transition template unusable"); continue; }
+
+            srcArr.Value = srcArr.Value.Append(trans).ToArray();
+            appendedLinks++;
+            ErrorLog.Write("EXPORT", new Exception(
+                $"  APPEND LINK: '{fromNode.DisplayName}' [{fromIdx}] -> [{toIdx}] input='{InputToEnumRaw(e.InputName)}'"));
+        }
+
+        ErrorLog.Write("EXPORT", new Exception(
+            $"APPEND: {appendedNodes} nodes, {appendedLinks} links, {skipped} skipped (base={baseCount})"));
+        return (appendedNodes, appendedLinks, skipped);
     }
 
     private static void CollectScalars(PropertyData p, string path, Dictionary<string, object> dict)
@@ -4445,7 +4827,7 @@ public partial class ExportDialog : Window
             ? $"{pakSize / (1024.0 * 1024.0):F1} MB"
             : $"{pakSize / 1024.0:F1} KB";
 
-        var errCount = ErrorLog.Writes - _errBaseline;
+        var errCount = ErrorLog.Warnings - _warnBaseline;
         txtResult.Text = errCount > 0
             ? $"{pakName} ({changeCount} changes, {sizeStr}) - {errCount} warning(s), see error.log"
             : $"{pakName} ({changeCount} changes, {sizeStr})";

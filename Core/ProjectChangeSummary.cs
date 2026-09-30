@@ -41,6 +41,20 @@ public static class ProjectChangeSummary
         => graph != null && graph.Nodes.Any(HasAttackDbTuning);
 
     /// <summary>
+    /// Shared change detector used by the export gates and both change lists.
+    /// Authored content (new attack/redirect nodes) always counts - those nodes may
+    /// carry an empty AnimPath, so they are checked before the vanilla rules.
+    /// </summary>
+    public static bool IsModifiedNode(ComboNode? n)
+        => n != null && !n.IsRoot && (
+            n.Kind == ComboNodeKind.UserCreated
+            || (!string.IsNullOrEmpty(n.AnimPath)
+                && (n.TreeIndex == -1 || n.AnimPath != n.DefaultAnimPath
+                    || (!string.IsNullOrEmpty(n.VanillaAnimPath) && n.AnimPath != n.VanillaAnimPath)
+                    || (!string.IsNullOrEmpty(n.DefaultDBPath) && !string.IsNullOrEmpty(n.SourceDBPath)
+                        && !string.Equals(n.SourceDBPath, n.DefaultDBPath, StringComparison.OrdinalIgnoreCase)))));
+
+    /// <summary>
     /// One row per tuned field, showing the vanilla value it was changed from.
     /// Rows whose override already equals vanilla are dropped so a type-in of the
     /// current value never shows up as a change. Baseline is the card the node
@@ -100,14 +114,15 @@ public static class ProjectChangeSummary
             if (graph == null) continue;
 
             var modified = graph.Nodes
-                .Where(n => !n.IsRoot && !string.IsNullOrEmpty(n.AnimPath)
-                    && (n.TreeIndex == -1 || n.AnimPath != n.DefaultAnimPath
-                        || (!string.IsNullOrEmpty(n.VanillaAnimPath) && n.AnimPath != n.VanillaAnimPath)
-                        || (!string.IsNullOrEmpty(n.DefaultDBPath) && !string.IsNullOrEmpty(n.SourceDBPath)
-                            && !string.Equals(n.SourceDBPath, n.DefaultDBPath, StringComparison.OrdinalIgnoreCase))))
+                .Where(IsModifiedNode)
                 .OrderBy(n => n.TreeIndex)
                 .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+            var newNodes = modified.Where(n => n.Kind == ComboNodeKind.UserCreated).ToList();
+            var moveNodes = modified.Where(n => n.Kind != ComboNodeKind.UserCreated).ToList();
+            var linkRows = BuildLinkRows(graph);
+            var importedNodes = BuildImportedNodeRows(graph);
+            var importedLinkRows = BuildImportedLinkRows(graph);
 
             var retargetRows = BuildRetargetRows(graph);
             var attackRows = BuildAttackDbRows(graph.Nodes, contentPath);
@@ -121,7 +136,8 @@ public static class ProjectChangeSummary
             if (propRows.Count > 0 && !propsVariants.Add(variant))
                 propRows.Clear();
 
-            if (modified.Count == 0 && retargetRows.Count == 0 && propRows.Count == 0)
+            if (modified.Count == 0 && retargetRows.Count == 0 && propRows.Count == 0
+                && linkRows.Count == 0 && importedNodes.Count == 0 && importedLinkRows.Count == 0)
                 continue;
 
             var unit = new UnitReview
@@ -131,12 +147,28 @@ public static class ProjectChangeSummary
                 Subtitle = ""
             };
 
-            if (modified.Count > 0)
+            if (moveNodes.Count > 0)
                 unit.Sections.Add(new UnitSectionReview
                 {
                     Name = "Moves",
-                    Rows = modified.Select(ToChangeRow).Cast<object>().ToList()
+                    Rows = moveNodes.Select(ToChangeRow).Cast<object>().ToList()
                 });
+
+            if (newNodes.Count > 0)
+                unit.Sections.Add(new UnitSectionReview
+                {
+                    Name = "New Nodes",
+                    Rows = newNodes.Select(ToNewNodeRow).ToList()
+                });
+
+            if (linkRows.Count > 0)
+                unit.Sections.Add(new UnitSectionReview { Name = "New Links", Rows = linkRows });
+
+            if (importedNodes.Count > 0)
+                unit.Sections.Add(new UnitSectionReview { Name = "Imported Nodes", Rows = importedNodes });
+
+            if (importedLinkRows.Count > 0)
+                unit.Sections.Add(new UnitSectionReview { Name = "Imported Links", Rows = importedLinkRows });
 
             if (retargetRows.Count > 0)
                 unit.Sections.Add(new UnitSectionReview { Name = "Retargets", Rows = retargetRows });
@@ -258,6 +290,116 @@ public static class ProjectChangeSummary
             ToolTip = $"{oldPath} → {newPath}"
         };
     }
+
+    public static object ToNewNodeRow(ComboNode n)
+    {
+        string name = string.IsNullOrEmpty(n.DisplayName)
+            ? (string.IsNullOrEmpty(n.Name) ? $"Node {n.Id}" : n.Name)
+            : n.DisplayName;
+        string right = n.IsRedirect ? "redirect"
+            : string.IsNullOrEmpty(n.AnimPath) ? "node"
+            : n.AnimPath;
+        return new ChangeRow
+        {
+            Title = name,
+            ShowDetail = true,
+            DetailLeft = "added",
+            DetailRight = right,
+            ToolTip = n.IsRedirect
+                ? $"{name} (new redirect node)"
+                : string.IsNullOrEmpty(n.AnimPath)
+                    ? $"{name} (new node)"
+                    : $"{name} (new node) → {n.AnimPath}"
+        };
+    }
+
+    public static object ToImportedNodeRow(ComboNode n)
+    {
+        string name = string.IsNullOrEmpty(n.DisplayName)
+            ? (string.IsNullOrEmpty(n.Name) ? $"Node {n.Id}" : n.Name)
+            : n.DisplayName;
+        string right = n.IsRedirect ? "redirect"
+            : string.IsNullOrEmpty(n.AnimPath) ? "node"
+            : n.AnimPath;
+        return new ChangeRow
+        {
+            Title = name,
+            ShowDetail = true,
+            DetailLeft = "imported",
+            DetailRight = right,
+            ToolTip = n.IsRedirect
+                ? $"{name} (imported redirect node)"
+                : string.IsNullOrEmpty(n.AnimPath)
+                    ? $"{name} (imported node)"
+                    : $"{name} (imported node) → {n.AnimPath}"
+        };
+    }
+
+    public static List<object> BuildLinkRows(ComboGraph? graph)
+    {
+        var rows = new List<object>();
+        if (graph?.Edges == null || graph.Nodes == null) return rows;
+
+        foreach (var e in graph.Edges.Where(ed => ed.IsNewLink))
+            rows.Add(MakeLinkRow(graph, e, "new link"));
+        return rows;
+    }
+
+    /// <summary>
+    /// Mod-surfaced nodes (Kind=ImportedNew). Display-only: these never satisfy
+    /// IsModifiedNode, so export gates and append behavior stay untouched.
+    /// </summary>
+    public static List<object> BuildImportedNodeRows(ComboGraph? graph)
+    {
+        var rows = new List<object>();
+        if (graph?.Nodes == null) return rows;
+
+        foreach (var n in graph.Nodes
+            .Where(n => n.Kind == ComboNodeKind.ImportedNew)
+            .OrderBy(n => n.TreeIndex)
+            .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase))
+            rows.Add(ToImportedNodeRow(n));
+        return rows;
+    }
+
+    /// <summary>
+    /// Links touching mod-surfaced nodes. Surfaced edges carry IsNewLink=false so the
+    /// export never re-appends content the staged file already has; they are listed
+    /// here purely so an imported tree reads complete in the change list.
+    /// </summary>
+    public static List<object> BuildImportedLinkRows(ComboGraph? graph)
+    {
+        var rows = new List<object>();
+        if (graph?.Edges == null || graph.Nodes == null) return rows;
+
+        bool TouchesImported(int nodeId)
+            => graph.Nodes.Any(n => n.Id == nodeId && n.Kind == ComboNodeKind.ImportedNew);
+
+        foreach (var e in graph.Edges.Where(ed => !ed.IsNewLink
+            && (TouchesImported(ed.FromNodeId) || TouchesImported(ed.ToNodeId))))
+            rows.Add(MakeLinkRow(graph, e, "imported link"));
+        return rows;
+    }
+
+    private static object MakeLinkRow(ComboGraph graph, ComboEdge e, string kindLabel)
+    {
+        var src = graph.Nodes.FirstOrDefault(n => n.Id == e.FromNodeId);
+        var dst = graph.Nodes.FirstOrDefault(n => n.Id == e.ToNodeId);
+        string srcName = NodeLabel(src, e.FromNodeId);
+        string dstName = NodeLabel(dst, e.ToNodeId);
+        string title = $"{srcName} → {dstName}"
+            + (string.IsNullOrEmpty(e.InputName) ? "" : $" [{e.InputName}]");
+        return new ChangeRow
+        {
+            Title = title,
+            ShowDetail = false,
+            ToolTip = $"{srcName} → {dstName} ({kindLabel})"
+        };
+    }
+
+    private static string NodeLabel(ComboNode? n, int id) => n == null ? $"#{id}"
+        : !string.IsNullOrEmpty(n.DisplayName) ? n.DisplayName
+        : !string.IsNullOrEmpty(n.Name) ? n.Name : $"#{n.Id}";
 
     public static ChangeRow MakeValueRow(string title, string left, string right, string? toolTip = null)
     {

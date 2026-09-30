@@ -300,7 +300,11 @@
                     <Grid>
                         <Canvas Name="comboCanvas"
                                 Background="#1e1e2e"
-                                MinWidth="600" MinHeight="400">
+                                MinWidth="600" MinHeight="400"
+                                AllowDrop="True"
+                                DragEnter="ComboCanvas_DragEnter"
+                                DragOver="ComboCanvas_DragOver"
+                                Drop="ComboCanvas_Drop">
                             <Canvas.RenderTransform>
                                 <TranslateTransform x:Name="_comboTranslate" X="0" Y="0"/>
                             </Canvas.RenderTransform>

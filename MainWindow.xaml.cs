@@ -33,14 +33,25 @@ public static class ErrorLog
     /// errors (an export must not fail silently in the UI while only the log knows).</summary>
     public static int Writes;
 
+    /// <summary>
+    /// Writes whose payload looks like a real problem (thrown exception, or a
+    /// WARNING/FAIL/Error marker). The export routine logs its progress through
+    /// this same log, so Writes alone overstates failures - the completion panel
+    /// snapshots this counter instead.
+    /// </summary>
+    public static int Warnings;
+
     public static void Init()
     {
         try { File.WriteAllText(LogPath, ""); } catch { }
+        Writes = 0;
+        Warnings = 0;
     }
 
     public static void Write(string tag, Exception ex)
     {
         Interlocked.Increment(ref Writes);
+        if (LooksLikeWarning(ex)) Interlocked.Increment(ref Warnings);
         try
         {
             var msg = $"[{DateTime.Now:HH:mm:ss}] [{tag}] {ex}\n";
@@ -52,6 +63,7 @@ public static class ErrorLog
     public static void Write(string tag, string message)
     {
         Interlocked.Increment(ref Writes);
+        if (MessageLooksLikeWarning(message)) Interlocked.Increment(ref Warnings);
         try
         {
             var msg = $"[{DateTime.Now:HH:mm:ss}] [{tag}] {message}\n";
@@ -59,6 +71,17 @@ public static class ErrorLog
         }
         catch { }
     }
+
+    /// <summary>Thrown exceptions carry a stack trace; progress lines are fresh
+    /// Exception objects built for the log and never thrown.</summary>
+    private static bool LooksLikeWarning(Exception ex)
+        => ex.StackTrace != null || MessageLooksLikeWarning(ex.Message);
+
+    private static bool MessageLooksLikeWarning(string? message)
+        => message != null
+        && (message.Contains("WARNING", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("FAIL", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("Error", StringComparison.OrdinalIgnoreCase));
 }
 
 public partial class MainWindow : Window
@@ -142,6 +165,11 @@ public partial class MainWindow : Window
     private bool _isResetMode = false;
     private bool _isRetargetMode = false;
     private ComboNode? _retargetSourceNode = null;
+    // Link authoring mode: source selected via context menu ("Connect to…" / "Add Redirect
+    // via new node…"), target picked by clicking a node, then an input picker menu opens.
+    private ComboNode? _linkSourceNode = null;
+    private bool _linkCreatesRedirect = false;
+    private bool _linkPickCommitted = false;
     private ComboGraph? _originalVanillaComboGraph;
     private string _activeStance = "MainChar";
     private string? _activeVariant;
@@ -2394,7 +2422,8 @@ public partial class MainWindow : Window
                         Depth = 0,
                         InputLabel = "",
                         DirectionLabel = "",
-                        VanillaAnimPath = ""
+                        VanillaAnimPath = "",
+                        Kind = ComboNodeKind.UserCreated
                     };
                     _comboGraph.Nodes.Add(newNode);
                 }
@@ -2509,6 +2538,38 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Post-import change summary: same list as save/load, filtered to the units
+    /// this import actually touched. Imported sections are display-only - they do
+    /// not affect export gates.
+    /// </summary>
+    private void ShowImportFeedback(IEnumerable<string> unitKeys, string fileName)
+    {
+        try
+        {
+            var keys = unitKeys
+                .Where(k => !string.IsNullOrEmpty(k))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var units = ProjectChangeSummary.BuildFromUnitCaches(_unitCaches, _contentPath)
+                .Where(u => keys.Contains(u.Key))
+                .ToList();
+            var dlg = new ProjectFeedbackDialog(
+                "Import",
+                "Imported mod changes",
+                fileName,
+                units,
+                null)
+            {
+                Owner = this
+            };
+            dlg.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("IMPORT_FEEDBACK", ex);
+        }
+    }
+
     private void ExportPak_Click(object sender, RoutedEventArgs e)
     {
         if (_comboGraph == null)
@@ -2529,11 +2590,7 @@ public partial class MainWindow : Window
 
         bool hasMultiUnitChanges = _unitCaches.Count > 1 && _unitCaches.Values.Any(c =>
             {
-                var modified = c.Graph.Nodes.Any(n => !n.IsRoot && !string.IsNullOrEmpty(n.AnimPath)
-                    && (n.TreeIndex == -1 || n.AnimPath != n.DefaultAnimPath
-                        || (!string.IsNullOrEmpty(n.VanillaAnimPath) && n.AnimPath != n.VanillaAnimPath)
-                        || (!string.IsNullOrEmpty(n.DefaultDBPath) && !string.IsNullOrEmpty(n.SourceDBPath)
-                            && !string.Equals(n.SourceDBPath, n.DefaultDBPath, StringComparison.OrdinalIgnoreCase))));
+                var modified = c.Graph.Nodes.Any(ProjectChangeSummary.IsModifiedNode);
                 var hasRetargets = c.Graph.RedirectOriginalTargets.Any(rd =>
                 {
                     var node = c.Graph.Nodes.FirstOrDefault(n => n.Id == rd.Key);
@@ -2541,7 +2598,8 @@ public partial class MainWindow : Window
                 });
                 bool hasUnitProps = c.Props != null && UnitPropertiesManager.HasChanges(_contentPath, c.ActiveVariant ?? "", c.Props);
                 bool hasAttackTuning = ProjectChangeSummary.GraphHasAttackDbTuning(c.Graph);
-                return modified || hasRetargets || hasUnitProps || hasAttackTuning;
+                bool hasNewContent = c.Graph.Edges.Any(ed => ed.IsNewLink);
+                return modified || hasRetargets || hasUnitProps || hasAttackTuning || hasNewContent;
             });
 
         if (hasMultiUnitChanges)
@@ -2585,11 +2643,7 @@ public partial class MainWindow : Window
 
         var stanceChanged = detectedStance != "MainChar";
         var modified = _comboGraph.Nodes
-            .Where(n => !n.IsRoot && !string.IsNullOrEmpty(n.AnimPath)
-                && (n.TreeIndex == -1 || n.AnimPath != n.DefaultAnimPath
-                    || (!string.IsNullOrEmpty(n.VanillaAnimPath) && n.AnimPath != n.VanillaAnimPath)
-                    || (!string.IsNullOrEmpty(n.DefaultDBPath) && !string.IsNullOrEmpty(n.SourceDBPath)
-                        && !string.Equals(n.SourceDBPath, n.DefaultDBPath, StringComparison.OrdinalIgnoreCase))))
+            .Where(ProjectChangeSummary.IsModifiedNode)
             .ToList();
 
         bool hasRetargets = _comboGraph.RedirectOriginalTargets.Any(kvp =>
@@ -2603,7 +2657,9 @@ public partial class MainWindow : Window
 
         bool hasAttackTuning = ProjectChangeSummary.GraphHasAttackDbTuning(_comboGraph);
 
-        if (modified.Count == 0 && !stanceChanged && !hasRetargets && !hasUnitProps && !hasAttackTuning)
+        bool hasNewLinks = _comboGraph.Edges.Any(ed => ed.IsNewLink);
+
+        if (modified.Count == 0 && !stanceChanged && !hasRetargets && !hasUnitProps && !hasAttackTuning && !hasNewLinks)
         {
             txtStatus.Text = "No changes to export. Drag animations onto combo nodes first, or connect existing nodes.";
             return;
@@ -3088,7 +3144,7 @@ public partial class MainWindow : Window
                             continue;
                         }
 
-                        var (moves, retargets, unmatched) = _parser.ApplyModdedComboToVanilla(vanilla, moddedNodes, entry.WeaponName);
+                        var (moves, retargets, unmatched, surfaced) = _parser.ApplyModdedComboToVanilla(vanilla, moddedNodes, entry.WeaponName);
                         int attackTuning = ApplyAttackDbImport(vanilla, overlayContentRoot);
                         importedUnits.Add((entry.UnitKey, vanilla, moves, retargets, entry));
                         int vanillaRawCount = vanilla.RawNodeCount > 0
@@ -3098,7 +3154,7 @@ public partial class MainWindow : Window
                                 .Select(n => n.TreeIndex)
                                 .Distinct()
                                 .Count();
-                        ErrorLog.Write("IMPORT", new Exception($"Applied {entry.UnitKey}: {moves} move(s), {retargets} retarget(s), {unmatched} unmatched, {attackTuning} attackDb tune(s) (mod={moddedNodes.Count} vanillaRaw={vanillaRawCount})"));
+                        ErrorLog.Write("IMPORT", new Exception($"Applied {entry.UnitKey}: {moves} move(s), {retargets} retarget(s), {unmatched} unmatched, {surfaced} new node(s) surfaced, {attackTuning} attackDb tune(s) (mod={moddedNodes.Count} vanillaRaw={vanillaRawCount})"));
                         if (moddedNodes.Count != vanillaRawCount)
                             treeMismatches.Add($"{entry.UnitKey}: {moddedNodes.Count} mod node(s) vs {vanillaRawCount} vanilla");
                         UI(() => importDialog.SetProgress(pct));
@@ -3406,6 +3462,10 @@ public partial class MainWindow : Window
                     }
                 }
                 UI(() => importDialog.ShowSuccess(summary, details));
+                UI(() => ShowImportFeedback(
+                    finalImported.Select(u => u.unitKey)
+                        .Concat(importedProps.Keys.Select(v => $"{GetArchFromVariant(v)}|{v}")),
+                    Path.GetFileName(pakPath)));
             });
         }
         catch (Exception ex)
@@ -4213,6 +4273,15 @@ public partial class MainWindow : Window
             };
             hitPath.Tag = edge;
             hitPath.Cursor = Cursors.Hand;
+            if (edge.IsNewLink)
+            {
+                var edgeMenu = new ContextMenu();
+                var deleteLinkItem = new MenuItem { Header = "Delete Link", Tag = edge };
+                deleteLinkItem.Click += DeleteEdgeMenuItem_Click;
+                edgeMenu.Items.Add(deleteLinkItem);
+                hitPath.ContextMenu = edgeMenu;
+                path.ContextMenu = edgeMenu;
+            }
             Canvas.SetZIndex(hitPath, -1);
             comboCanvas.Children.Add(hitPath);
 
@@ -4291,6 +4360,17 @@ public partial class MainWindow : Window
                 resetItem.Click += ResetNodeToVanilla_Click;
                 ctxMenu.Items.Add(resetItem);
 
+                if (!node.IsRedirect)
+                {
+                    var connectItem = new MenuItem { Header = "Connect to…", Tag = node };
+                    connectItem.Click += ConnectTo_Click;
+                    ctxMenu.Items.Add(connectItem);
+
+                    var redirectViaItem = new MenuItem { Header = "Add Redirect via new node…", Tag = node };
+                    redirectViaItem.Click += RedirectVia_Click;
+                    ctxMenu.Items.Add(redirectViaItem);
+                }
+
                 if (node.IsRedirect)
                 {
                     var retargetItem = new MenuItem { Header = "Retarget", Tag = node };
@@ -4298,6 +4378,12 @@ public partial class MainWindow : Window
                     ctxMenu.Items.Add(retargetItem);
                 }
 
+                if (node.TreeIndex < 0 && node.Kind == ComboNodeKind.UserCreated)
+                {
+                    var deleteItem = new MenuItem { Header = "Delete Node", Tag = node };
+                    deleteItem.Click += DeleteNodeMenuItem_Click;
+                    ctxMenu.Items.Add(deleteItem);
+                }
 
                 border.ContextMenu = ctxMenu;
             }
@@ -4468,6 +4554,14 @@ public partial class MainWindow : Window
         }
 
 
+        if (e.Key == Key.Escape && _linkSourceNode != null)
+        {
+            ExitLinkMode();
+            txtStatus.Text = "Link cancelled";
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.Delete && _comboGraph != null)
         {
             if (_selectedNodeId >= 0)
@@ -4475,19 +4569,7 @@ public partial class MainWindow : Window
                 var node = _comboGraph.Nodes.FirstOrDefault(n => n.Id == _selectedNodeId);
                 if (node == null || node.IsRoot || node.TreeIndex >= 0) return;
 
-                PushUndo("Delete node");
-                _comboGraph.Edges.RemoveAll(ed => ed.FromNodeId == node.Id || ed.ToNodeId == node.Id);
-                foreach (var n in _comboGraph.Nodes)
-                {
-                    if (n.IsRedirect && n.ResolvedRedirectNodeId == node.Id)
-                        n.ResolvedRedirectNodeId = -1;
-                }
-                _comboGraph.Nodes.Remove(node);
-                _nodePositions.Remove(node.Id);
-                _nodeBorders.Remove(node.Id);
-                ClearNodeSelection();
-                RenderComboGraph();
-                txtStatus.Text = $"Deleted node: {node.DisplayName}";
+                DeleteAuthoredNode(node);
                 e.Handled = true;
             }
         }
@@ -4677,6 +4759,12 @@ public partial class MainWindow : Window
         {
             ExitRetargetMode();
             txtStatus.Text = "Retarget cancelled";
+            e.Handled = true;
+        }
+        else if (_linkSourceNode != null)
+        {
+            ExitLinkMode();
+            txtStatus.Text = "Link cancelled";
             e.Handled = true;
         }
     }
@@ -5046,6 +5134,10 @@ public partial class MainWindow : Window
     {
         if (node.IsRedirect)
             return new SolidColorBrush(Color.FromArgb(0x60, 0x6c, 0x70, 0x86));
+        if (node.Kind == ComboNodeKind.ImportedNew)
+            return new SolidColorBrush(Color.FromRgb(0xcb, 0xa6, 0xf7));
+        if (node.Kind == ComboNodeKind.UserCreated)
+            return new SolidColorBrush(Color.FromRgb(0x94, 0xe2, 0xd5));
         if (!string.IsNullOrEmpty(node.VanillaAnimPath) && node.AnimPath != node.VanillaAnimPath)
             return new SolidColorBrush(Color.FromRgb(0xfa, 0xb3, 0x87));
         if (node.AnimPath != node.DefaultAnimPath)
@@ -5059,6 +5151,10 @@ public partial class MainWindow : Window
     {
         if (node.IsRedirect)
             return new SolidColorBrush(Color.FromArgb(0x15, 0x6c, 0x70, 0x86));
+        if (node.Kind == ComboNodeKind.ImportedNew)
+            return new SolidColorBrush(Color.FromArgb(0x40, 0xcb, 0xa6, 0xf7));
+        if (node.Kind == ComboNodeKind.UserCreated)
+            return new SolidColorBrush(Color.FromArgb(0x40, 0x94, 0xe2, 0xd5));
         if (!string.IsNullOrEmpty(node.VanillaAnimPath) && node.AnimPath != node.VanillaAnimPath)
             return new SolidColorBrush(Color.FromArgb(0x40, 0xfa, 0xb3, 0x87));
         if (node.AnimPath != node.DefaultAnimPath)
@@ -5547,6 +5643,12 @@ public partial class MainWindow : Window
                 return;
             }
 
+            if (_linkSourceNode != null)
+            {
+                HandleLinkTargetClick(node, e);
+                return;
+            }
+
             var now = DateTime.UtcNow;
             bool isDoubleClick = node.Id == _lastClickedNodeId && (now - _lastClickTime).TotalMilliseconds < 400;
             _lastClickedNodeId = node.Id;
@@ -5708,10 +5810,280 @@ public partial class MainWindow : Window
         _retargetSourceNode = null;
     }
 
+    private void ConnectTo_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem mi && mi.Tag is ComboNode source)
+            EnterLinkMode(source, createsRedirect: false);
+    }
+
+    private void RedirectVia_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem mi && mi.Tag is ComboNode source)
+            EnterLinkMode(source, createsRedirect: true);
+    }
+
+    private void EnterLinkMode(ComboNode source, bool createsRedirect)
+    {
+        ExitRetargetMode();
+        _linkSourceNode = source;
+        _linkCreatesRedirect = createsRedirect;
+        _linkPickCommitted = false;
+        txtStatus.Text = createsRedirect
+            ? "Redirect mode: click the node the redirect should forward to, Escape to cancel"
+            : "Connect mode: click the node to link to, Escape to cancel";
+    }
+
+    private void ExitLinkMode()
+    {
+        _linkSourceNode = null;
+        _linkCreatesRedirect = false;
+        _linkPickCommitted = false;
+    }
+
+    private void HandleLinkTargetClick(ComboNode target, MouseButtonEventArgs e)
+    {
+        var source = _linkSourceNode;
+        if (source == null) return;
+
+        if (target.Id == source.Id || target.IsRoot)
+        {
+            txtStatus.Text = "Pick a different node as the target (Escape cancels)";
+            return;
+        }
+        if (_linkCreatesRedirect && target.IsRedirect)
+        {
+            txtStatus.Text = "Redirects cannot chain - pick an attack node (Escape cancels)";
+            return;
+        }
+
+        _nodeBorders.TryGetValue(target.Id, out var targetBorder);
+        ShowLinkInputPicker(target, targetBorder);
+    }
+
+    private IEnumerable<(string label, string value)> LinkInputChoices()
+    {
+        if (!IsCurrentGraphMainChar())
+        {
+            // Enemy combo transitions are AI-gated: every m_eInputTransition in both
+            // vanilla and modded enemy trees is None (verified 3231/3231 across the
+            // WW Kuroki tree vs vanilla), so a player input label would be a lie.
+            yield return ("Default (None)", "");
+            yield break;
+        }
+        yield return ("Default (no input)", "");
+        yield return ("LMB (Light)", "LMB");
+        yield return ("RMB (Heavy)", "RMB");
+        yield return ("RMB Hold (HeavyHold)", "RMB Hold");
+        yield return ("S (Special)", "S");
+        yield return ("Shift (Dodge)", "Shift");
+        yield return ("Q (Throw)", "Q");
+    }
+
+    /// <summary>True when the graph being edited is the player's moveset (full input list).</summary>
+    private bool IsCurrentGraphMainChar()
+    {
+        if (_activeStance != null
+            && string.Equals(_activeStance.Split('|')[0], "MainChar", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (_comboGraph != null)
+        {
+            var w = _comboGraph.WeaponName ?? "";
+            if (string.Equals(w, "MainChar", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(w, "BareHands", StringComparison.OrdinalIgnoreCase)
+                || w.StartsWith("MainChar_", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (_comboGraph.Nodes.Any(n => !string.IsNullOrEmpty(n.DefaultDBPath)
+                && n.DefaultDBPath.Contains("/_MainChar/", StringComparison.OrdinalIgnoreCase)))
+                return true;
+        }
+        return false;
+    }
+
+    private void ShowLinkInputPicker(ComboNode target, Border? targetBorder)
+    {
+        _linkPickCommitted = false;
+        var menu = new ContextMenu
+        {
+            PlacementTarget = targetBorder,
+            Placement = PlacementMode.MousePoint
+        };
+        var header = new MenuItem
+        {
+            Header = _linkCreatesRedirect
+                ? $"Redirect via new node → {target.DisplayName}"
+                : $"Connect → {target.DisplayName}",
+            IsEnabled = false
+        };
+        menu.Items.Add(header);
+        menu.Items.Add(new Separator());
+        if (!IsCurrentGraphMainChar())
+        {
+            menu.Items.Add(new MenuItem
+            {
+                Header = "Enemy links are AI-gated (input = None)",
+                IsEnabled = false
+            });
+            menu.Items.Add(new Separator());
+        }
+        foreach (var (label, value) in LinkInputChoices())
+        {
+            var item = new MenuItem { Header = label, Tag = value };
+            item.Click += (s, ev) =>
+            {
+                _linkPickCommitted = true;
+                menu.Closed -= OnPickerClosed;
+                CommitLink(target, (string)((MenuItem)s!).Tag!);
+            };
+            menu.Items.Add(item);
+        }
+
+        void OnPickerClosed(object? s, RoutedEventArgs ev)
+        {
+            menu.Closed -= OnPickerClosed;
+            if (!_linkPickCommitted)
+            {
+                ExitLinkMode();
+                txtStatus.Text = "Link cancelled";
+            }
+        }
+
+        menu.Closed += OnPickerClosed;
+        menu.IsOpen = true;
+    }
+
+    private void CommitLink(ComboNode target, string inputName)
+    {
+        var source = _linkSourceNode;
+        bool createRedirect = _linkCreatesRedirect;
+        ExitLinkMode();
+        if (source == null || _comboGraph == null) return;
+
+        int nextId = (_comboGraph.Nodes.Count > 0 ? _comboGraph.Nodes.Max(n => n.Id) : -1) + 1;
+
+        if (createRedirect)
+        {
+            PushUndo("Add redirect node");
+            var redirectNode = new ComboNode
+            {
+                Id = nextId,
+                TreeIndex = -1,
+                Kind = ComboNodeKind.UserCreated,
+                IsRedirect = true,
+                Name = "",
+                DisplayName = $"→ {target.DisplayName}",
+                AnimPath = "",
+                DefaultAnimPath = "",
+                DefaultDBPath = "",
+                SourceDBPath = "",
+                VanillaAnimPath = "",
+                IsRoot = false,
+                RedirectTargetTreeIndex = -1,
+                ResolvedRedirectNodeId = target.Id
+            };
+            _comboGraph.Nodes.Add(redirectNode);
+            _comboGraph.RedirectOriginalTargets[nextId] = target.Id;
+            _comboGraph.Edges.Add(new ComboEdge
+            {
+                FromNodeId = source.Id,
+                ToNodeId = nextId,
+                InputName = inputName,
+                IsNewLink = true
+            });
+            if (_nodePositions.TryGetValue(source.Id, out var sp))
+                _nodePositions[nextId] = new Point(sp.X + NODE_WIDTH + 90, sp.Y + 40);
+            else
+                _nodePositions[nextId] = new Point(0, 0);
+            RenderComboGraph();
+            txtStatus.Text = $"Added redirect → '{target.DisplayName}', solid link from '{source.DisplayName}'";
+        }
+        else
+        {
+            if (_comboGraph.Edges.Any(e2 => e2.FromNodeId == source.Id && e2.ToNodeId == target.Id && !e2.IsRedirect))
+            {
+                txtStatus.Text = "Those nodes are already linked";
+                return;
+            }
+            PushUndo("Add link");
+            _comboGraph.Edges.Add(new ComboEdge
+            {
+                FromNodeId = source.Id,
+                ToNodeId = target.Id,
+                InputName = inputName,
+                IsNewLink = true
+            });
+            RenderComboGraph();
+            txtStatus.Text = string.IsNullOrEmpty(inputName)
+                ? $"Linked '{source.DisplayName}' → '{target.DisplayName}'"
+                : $"Linked '{source.DisplayName}' → '{target.DisplayName}' [{inputName}]";
+        }
+    }
+
+    private void DeleteNodeMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem mi && mi.Tag is ComboNode node)
+            DeleteAuthoredNode(node);
+    }
+
+    private void DeleteAuthoredNode(ComboNode node)
+    {
+        if (_comboGraph == null || node.IsRoot || node.TreeIndex >= 0) return;
+
+        PushUndo("Delete node");
+        _comboGraph.Edges.RemoveAll(ed => ed.FromNodeId == node.Id || ed.ToNodeId == node.Id);
+
+        // Authored redirects pointing at the deleted node would render as orphans (hidden),
+        // so remove them with their incoming links; vanilla redirects keep existing behavior.
+        var brokenRedirects = _comboGraph.Nodes
+            .Where(n => n.IsRedirect && n.Kind == ComboNodeKind.UserCreated && n.ResolvedRedirectNodeId == node.Id)
+            .ToList();
+        foreach (var br in brokenRedirects)
+        {
+            _comboGraph.Edges.RemoveAll(ed => ed.FromNodeId == br.Id || ed.ToNodeId == br.Id);
+            _comboGraph.Nodes.Remove(br);
+            _nodePositions.Remove(br.Id);
+            _nodeBorders.Remove(br.Id);
+            _comboGraph.RedirectOriginalTargets.Remove(br.Id);
+        }
+
+        foreach (var n in _comboGraph.Nodes)
+        {
+            if (n.IsRedirect && n.ResolvedRedirectNodeId == node.Id)
+                n.ResolvedRedirectNodeId = -1;
+        }
+        _comboGraph.Nodes.Remove(node);
+        _nodePositions.Remove(node.Id);
+        _nodeBorders.Remove(node.Id);
+        _comboGraph.RedirectOriginalTargets.Remove(node.Id);
+        ClearNodeSelection();
+        RenderComboGraph();
+        txtStatus.Text = $"Deleted node: {node.DisplayName}"
+            + (brokenRedirects.Count > 0 ? $" (+{brokenRedirects.Count} linked redirect)" : "");
+    }
+
+    private void DeleteEdgeMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem mi && mi.Tag is ComboEdge edge && _comboGraph != null)
+        {
+            PushUndo("Delete link");
+            _comboGraph.Edges.Remove(edge);
+            RenderComboGraph();
+            txtStatus.Text = "Link removed";
+        }
+    }
+
 
     private void RetargetNode_MouseEnter(object sender, MouseEventArgs e)
     {
         if (sender is not Border border || border.Tag is not ComboNode node) return;
+        if (_linkSourceNode != null)
+        {
+            bool valid = node.Id != _linkSourceNode.Id && !node.IsRoot &&
+                         (!_linkCreatesRedirect || !node.IsRedirect);
+            if (!valid) return;
+            border.BorderBrush = new SolidColorBrush(Color.FromRgb(0xa6, 0xe3, 0xa1));
+            border.Background = new SolidColorBrush(Color.FromArgb(0x40, 0xa6, 0xe3, 0xa1));
+            return;
+        }
         if (_isRetargetMode)
         {
             if (node.Id == _retargetSourceNode?.Id || node.IsRedirect) return;
@@ -7067,6 +7439,85 @@ public partial class MainWindow : Window
             }
         }
 
+    private void ComboCanvas_DragEnter(object sender, DragEventArgs e)
+    {
+        ComboCanvas_DragOver(sender, e);
+    }
+
+    private void ComboCanvas_DragOver(object sender, DragEventArgs e)
+    {
+        // Background drops create a new attack node. Over a node border the node's own
+        // handlers run first (they set e.Handled), so this only sees the canvas background.
+        e.Effects = e.Data.GetDataPresent(typeof(MoveInfo)) && _comboGraph != null
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void ComboCanvas_Drop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        if (_comboGraph == null) return;
+        if (!e.Data.GetDataPresent(typeof(MoveInfo))) return;
+        if (e.Data.GetData(typeof(MoveInfo)) is not MoveInfo move) return;
+
+        var canvasPos = e.GetPosition(comboCanvas);
+        if (HitTestNode(canvasPos) != null) return; // owned by ComboNode_Drop
+
+        AddNewAttackNode(move, canvasPos);
+    }
+
+    private void AddNewAttackNode(MoveInfo move, Point canvasPos)
+    {
+        if (_comboGraph == null) return;
+        string fullPath = move.FullPath ?? "";
+        if (string.IsNullOrEmpty(fullPath))
+        {
+            txtStatus.Text = "Dragged card has no path";
+            return;
+        }
+
+        CommitAttackDbPanel();
+        PushUndo("Add attack node");
+
+        int id = (_comboGraph.Nodes.Count > 0 ? _comboGraph.Nodes.Max(n => n.Id) : -1) + 1;
+        string animPath = IsAttackDbPath(fullPath)
+            ? _parser.ResolveAnimationFromDB(fullPath) ?? ""
+            : fullPath;
+        string display = string.IsNullOrEmpty(move.DisplayName)
+            ? Path.GetFileNameWithoutExtension(fullPath)
+            : move.DisplayName;
+
+        var node = new ComboNode
+        {
+            Id = id,
+            TreeIndex = -1,
+            Kind = ComboNodeKind.UserCreated,
+            Name = "",
+            DisplayName = display,
+            AnimPath = animPath,
+            DefaultAnimPath = "",
+            VanillaAnimPath = "",
+            DefaultDBPath = "",
+            SourceDBPath = "",
+            IsRoot = false,
+            DirectionLabel = ""
+        };
+        ApplyMoveSourceDbPath(node, move);
+        // Enemy-tree cards are attack DBs: record it as the node's DB path too, so the
+        // exporter defers the node to the combo-tree pass instead of the MainChar DB clone.
+        if (IsAttackDbPath(fullPath))
+            node.DefaultDBPath = fullPath;
+
+        _comboGraph.Nodes.Add(node);
+        _nodePositions[id] = canvasPos;
+        RenderComboGraph();
+
+        if (_nodeBorders.TryGetValue(id, out var border))
+            SelectNode(border, node);
+        txtStatus.Text = $"Added node '{display}' - right-click it, Connect to… to link it";
+    }
+
     #region Undo/Redo
 
     private sealed class UndoEntry
@@ -7194,6 +7645,7 @@ public partial class MainWindow : Window
 
         SetResetMode(false);
         ExitRetargetMode();
+        ExitLinkMode();
         // The graph is about to be swapped out - drop any pending panel edit instead of
         // letting it land on the restored node.
         ClearAttackDbPanel();
@@ -7221,7 +7673,8 @@ public partial class MainWindow : Window
                 FromNodeId = e.FromNodeId,
                 ToNodeId = e.ToNodeId,
                 InputName = e.InputName,
-                IsRedirect = e.IsRedirect
+                IsRedirect = e.IsRedirect,
+                IsNewLink = e.IsNewLink
             }).ToList(),
             RedirectOriginalTargets = new Dictionary<int, int>(graph.RedirectOriginalTargets)
         };
@@ -7252,6 +7705,7 @@ public partial class MainWindow : Window
             AttackGameplayRange = n.AttackGameplayRange,
             DelayWindowLo = n.DelayWindowLo,
             DelayWindowHi = n.DelayWindowHi,
+            Kind = n.Kind,
             IsImportedFromMod = n.IsImportedFromMod
         };
     }
