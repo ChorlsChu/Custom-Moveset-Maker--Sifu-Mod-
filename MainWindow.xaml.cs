@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -28,6 +29,10 @@ public static class ErrorLog
     private static readonly string LogPath = Path.Combine(
         Directory.GetCurrentDirectory(), "error.log");
 
+    /// <summary>Total writes this session - callers snapshot it to surface new
+    /// errors (an export must not fail silently in the UI while only the log knows).</summary>
+    public static int Writes;
+
     public static void Init()
     {
         try { File.WriteAllText(LogPath, ""); } catch { }
@@ -35,6 +40,7 @@ public static class ErrorLog
 
     public static void Write(string tag, Exception ex)
     {
+        Interlocked.Increment(ref Writes);
         try
         {
             var msg = $"[{DateTime.Now:HH:mm:ss}] [{tag}] {ex}\n";
@@ -45,6 +51,7 @@ public static class ErrorLog
 
     public static void Write(string tag, string message)
     {
+        Interlocked.Increment(ref Writes);
         try
         {
             var msg = $"[{DateTime.Now:HH:mm:ss}] [{tag}] {message}\n";
@@ -2683,7 +2690,18 @@ public partial class MainWindow : Window
         }
 
         var pakPath = fileDialog.FileName;
-        var importTempRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ImportTemp");
+        // Short root in %TEMP%: UnrealPak cannot WRITE extraction outputs whose full path
+        // is exactly 260 characters (legacy MAX_PATH dead zone) and only logs a warning -
+        // the old <app>\ImportTemp\a\b\c prefix hit the zone and silently dropped files.
+        // Prefix here is ~56 chars; the zone would need rel paths of 204+, real max is ~152.
+        try
+        {
+            foreach (var stale in Directory.GetDirectories(Path.GetTempPath(), "SifuImp*"))
+                try { Directory.Delete(stale, true); } catch { }
+        }
+        catch { }
+        var importTempRoot = Path.Combine(Path.GetTempPath(),
+            "SifuImp" + Guid.NewGuid().ToString("N").Substring(0, 6));
         var stagingDir = Path.Combine(importTempRoot, "a", "b", "c");
 
         var importDialog = new Import.ImportDialog
@@ -2781,6 +2799,19 @@ public partial class MainWindow : Window
                         errLines = string.IsNullOrWhiteSpace(stderr) ? stdout.Trim() : stderr.Trim();
                     Fail($"Failed to extract pak (UnrealPak exit {process.ExitCode}).",
                         string.IsNullOrWhiteSpace(errLines) ? null : errLines);
+                    return;
+                }
+
+                // UnrealPak exits 0 even when it cannot write a file (260-char dead zone);
+                // those files would be lost forever, so abort instead of importing partial content.
+                var extractSkipped = new List<string>();
+                foreach (Match m in Regex.Matches(stdout + "\n" + stderr,
+                    "(?:Unable to create file|Missing file) \"([^\"]+)\""))
+                    if (!extractSkipped.Contains(m.Groups[1].Value)) extractSkipped.Add(m.Groups[1].Value);
+                if (extractSkipped.Count > 0)
+                {
+                    Fail($"Extraction skipped {extractSkipped.Count} file(s) - the import would be incomplete.",
+                        string.Join("\n", extractSkipped));
                     return;
                 }
 

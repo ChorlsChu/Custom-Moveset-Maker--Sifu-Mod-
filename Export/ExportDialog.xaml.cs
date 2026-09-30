@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -733,11 +734,19 @@ public partial class ExportDialog : Window
         UpdateOutputPreview(outputDir);
     }
 
+    // ErrorLog.Writes snapshot taken when an export starts - ShowComplete reports the
+    // delta so swallowed per-step failures show up in the UI instead of only in error.log.
+    private int _errBaseline;
+
     private async void Confirm_Click(object sender, RoutedEventArgs e)
     {
         CollectExcludedCustomStems();
+        _errBaseline = ErrorLog.Writes;
         panelReview.Visibility = Visibility.Collapsed;
         panelExporting.Visibility = Visibility.Visible;
+
+        // Declared outside try so the finally below can clean it up on every exit path.
+        var mirrorRoot = Path.Combine(Path.GetTempPath(), "SifuPackSrc");
 
         try
         {
@@ -891,6 +900,24 @@ public partial class ExportDialog : Window
                     "[CUSTOM-ASSETS] skipped: no Custom Section dependency"));
             }
 
+            // Deterministic dedup by destination: the first staged entry wins, so the
+            // patch/focus passes (which run before the CustomAssets bulk at line ~883)
+            // keep their tuned copies instead of leaving it to UnrealPak's collect order.
+            var seenDests = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            int dupEntries = 0;
+            var dedupedEntries = new List<(string src, string dest)>();
+            foreach (var entry in fileEntries)
+            {
+                if (seenDests.Add(entry.dest)) dedupedEntries.Add(entry);
+                else dupEntries++;
+            }
+            if (dupEntries > 0)
+            {
+                fileEntries = dedupedEntries;
+                ErrorLog.Write("EXPORT", new Exception(
+                    $"[DEDUP] dropped {dupEntries} duplicate destination(s); first entry wins"));
+            }
+
             if (fileEntries.Count == 0)
             {
                 ShowError("No files to export.");
@@ -904,20 +931,43 @@ public partial class ExportDialog : Window
             UpdateStep(3, "active");
             txtCurrentAction.Text = "Building pak file...";
 
-            var tempDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "temp_mod");
-            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
-            Directory.CreateDirectory(tempDir);
+            // Sources go into the response file RELATIVE to UnrealPak's working directory,
+            // but that does NOT escape the legacy MAX_PATH dead zone: the OS resolves the
+            // relative path back to its canonical absolute form before UnrealPak opens it,
+            // and a canonical path of exactly 260 characters fails to open (one warning,
+            // exit 0, incomplete pak that crashes the game on load). Mirror every
+            // exactly-260 source to a short temp path and point the filelist there instead.
+            var pakWd = Setup.ContentExtractor.EnsureUnrealPakWorkingDirectory();
+            var filelistPath = Path.Combine(Path.GetTempPath(), "SifuPakFilelist.txt");
 
-            foreach (var (src, dest) in fileEntries)
+            fileEntries = MirrorDeadZoneSources(fileEntries, mirrorRoot, out int mirroredCount);
+            if (mirroredCount > 0)
+                ErrorLog.Write("EXPORT", new Exception(
+                    $"[MIRROR] redirected {mirroredCount} source(s) at exactly 260 chars to {mirrorRoot}"));
+
+            var mismatches = FindBasenameMismatches(fileEntries);
+            if (mismatches.Count > 0)
             {
-                var tempDest = Path.Combine(tempDir, dest.TrimStart('/').Replace('/', '\\'));
-                Directory.CreateDirectory(Path.GetDirectoryName(tempDest)!);
-                if (File.Exists(src))
-                    File.Copy(src, tempDest, true);
+                ErrorLog.Write("EXPORT", new Exception(
+                    $"ABORT: {mismatches.Count} source/destination file name mismatch(es):"));
+                foreach (var m in mismatches)
+                    ErrorLog.Write("EXPORT", new Exception($"  {m}"));
+                ShowError("Export blocked: source and destination file names differ; UnrealPak "
+                    + "would archive the source under its own name and split the asset pair "
+                    + "in game:\n\n" + string.Join("\n", mismatches));
+                return;
             }
 
-            var filelistPath = Path.Combine(tempDir, "filelist.txt");
-            var filelistContent = string.Join("\n", fileEntries.Select(f => $"\"{f.src}\" \"{f.dest}\""));
+            var (filelistLines, deadZoneLines) = BuildFilelistLines(pakWd, fileEntries);
+            if (deadZoneLines.Count > 0)
+            {
+                ErrorLog.Write("EXPORT", new Exception(
+                    $"ABORT: {deadZoneLines.Count} source path(s) are exactly 260 characters (UnrealPak dead zone)"));
+                ShowError("Export blocked: source path is exactly 260 characters (UnrealPak dead zone):\n\n"
+                    + string.Join("\n", deadZoneLines));
+                return;
+            }
+            var filelistContent = string.Join("\n", filelistLines);
             File.WriteAllText(filelistPath, filelistContent);
 
             ErrorLog.Write("EXPORT", new Exception($"Filelist content:\n{filelistContent}"));
@@ -965,6 +1015,27 @@ public partial class ExportDialog : Window
                 return;
             }
 
+            // UnrealPak exits 0 even when it skips files; a skipped file means the pak is
+            // incomplete and the game crashes on load ("Serial size mismatch: Got 0").
+            var skippedFiles = new List<string>();
+            foreach (Match m in Regex.Matches(stdout + "\n" + stderr,
+                "(?:Missing file|Unable to create file) \"([^\"]+)\""))
+                if (!skippedFiles.Contains(m.Groups[1].Value)) skippedFiles.Add(m.Groups[1].Value);
+            var addedMatch = Regex.Match(stdout, @"Added (\d+) files, \d+ bytes total");
+            int uniqueDests = fileEntries.Select(e => e.dest).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+            int addedFiles = addedMatch.Success ? int.Parse(addedMatch.Groups[1].Value) : -1;
+            if (skippedFiles.Count > 0 || (addedMatch.Success && addedFiles != uniqueDests))
+            {
+                ErrorLog.Write("EXPORT", new Exception(
+                    $"ABORT: UnrealPak reported {skippedFiles.Count} skipped file(s); Added={addedFiles} expected={uniqueDests}"));
+                try { if (File.Exists(_pakPath)) File.Delete(_pakPath); } catch { }
+                var detail = skippedFiles.Count > 0
+                    ? "UnrealPak skipped these files:\n" + string.Join("\n", skippedFiles)
+                    : $"UnrealPak added {addedFiles} files but {uniqueDests} were staged.";
+                ShowError("Export aborted - the pak would have been incomplete and crash the game.\n\n" + detail);
+                return;
+            }
+
             if (File.Exists(_pakPath))
             {
                 var pakSize = new FileInfo(_pakPath).Length;
@@ -983,8 +1054,6 @@ public partial class ExportDialog : Window
                 if (Directory.Exists(stagingDir)) Directory.Delete(stagingDir, true);
             }
             catch { }
-
-            try { Directory.Delete(tempDir, true); } catch { }
 
             string gameInstallDir = null;
             var searchDir = _contentPath;
@@ -1050,6 +1119,107 @@ public partial class ExportDialog : Window
             ErrorLog.Write("EXPORT", ex);
             ShowError($"Export failed: {ex.Message}");
         }
+        finally
+        {
+            try { if (Directory.Exists(mirrorRoot)) Directory.Delete(mirrorRoot, true); } catch { }
+            try
+            {
+                var fl = Path.Combine(Path.GetTempPath(), "SifuPakFilelist.txt");
+                if (File.Exists(fl)) File.Delete(fl);
+            }
+            catch { }
+        }
+    }
+
+    /// <summary>
+    /// Swaps any source whose CANONICAL absolute path is exactly 260 characters (the
+    /// legacy MAX_PATH dead zone - both UnrealPak and plain .NET reads fail on it) for a
+    /// byte-identical copy under a short temp root, so the filelist's resolved path can
+    /// never land on the dead length. Each copy goes into its own numbered SUBDIRECTORY
+    /// and keeps its original file name: this UnrealPak build archives entries as
+    /// destdir(dest) + basename(src), so a renamed copy would land in the pak under the
+    /// wrong name and split uasset/uexp pairs (in-game crash). Reads the original
+    /// through a \\?\ prefix, which bypasses MAX_PATH. Destinations are unchanged.
+    /// Throws if a dead-zone source cannot be read, so the export aborts loudly
+    /// instead of shipping a broken pak.
+    /// </summary>
+    internal static List<(string src, string dest)> MirrorDeadZoneSources(
+        List<(string src, string dest)> fileEntries, string mirrorRoot, out int mirrored)
+    {
+        mirrored = 0;
+        var result = new List<(string src, string dest)>(fileEntries.Count);
+        foreach (var (src, dest) in fileEntries)
+        {
+            string canonical;
+            try { canonical = Path.GetFullPath(src); }
+            catch { canonical = src; }
+            if (canonical.Length != 260)
+            {
+                result.Add((src, dest));
+                continue;
+            }
+
+            var name = Path.GetFileName(canonical);
+            if (string.IsNullOrEmpty(name)) name = "file";
+            var entryDir = Path.Combine(mirrorRoot, $"{mirrored}");
+            Directory.CreateDirectory(entryDir);
+            var target = Path.Combine(entryDir, name);
+            using (var read = File.OpenRead(@"\\?\" + canonical))
+            using (var write = File.Create(target))
+                read.CopyTo(write);
+            mirrored++;
+            result.Add((target, dest));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Backstop for the packer's archive-name rule (destdir(dest) + basename(src)):
+    /// any entry whose source file name differs from its destination file name would
+    /// be archived under the wrong name, leaving uasset/uexp half-pairs that crash the
+    /// game on load. Returns one "src -> dest" line per offender; the caller aborts.
+    /// </summary>
+    internal static List<string> FindBasenameMismatches(
+        List<(string src, string dest)> fileEntries)
+    {
+        var bad = new List<string>();
+        foreach (var (src, dest) in fileEntries)
+        {
+            var s = Path.GetFileName(src);
+            var d = Path.GetFileName(dest);
+            if (!string.Equals(s, d, StringComparison.OrdinalIgnoreCase))
+                bad.Add($"{s}  ->  {d}");
+        }
+        return bad;
+    }
+
+    /// <summary>
+    /// Response-file lines with every source path expressed RELATIVE to UnrealPak's
+    /// working directory (forward slashes). The dead-zone check measures the CANONICAL
+    /// absolute path - the OS resolves relative sources before UnrealPak opens them, so
+    /// only the resolved length matters. A canonical path of exactly 260 characters
+    /// fails to open: UnrealPak logs one warning, exits 0 and ships an incomplete pak
+    /// that crashes the game. The caller mirrors exactly-260 sources first; this is the
+    /// backstop that refuses to pack any that slipped through. Returns the lines plus
+    /// any source whose canonical path still measures exactly 260 characters.
+    /// </summary>
+    internal static (List<string> lines, List<string> deadZone) BuildFilelistLines(
+        string pakWd, List<(string src, string dest)> fileEntries)
+    {
+        var lines = new List<string>(fileEntries.Count);
+        var deadZone = new List<string>();
+        foreach (var (src, dest) in fileEntries)
+        {
+            var rel = Path.GetRelativePath(pakWd, src);
+            if (Path.IsPathRooted(rel)) rel = src;
+            rel = rel.Replace('\\', '/');
+            string canonical;
+            try { canonical = Path.GetFullPath(Path.IsPathRooted(src) ? src : Path.Combine(pakWd, src)); }
+            catch { canonical = src; }
+            if (canonical.Length == 260) deadZone.Add(canonical);
+            lines.Add($"\"{rel}\" \"{dest}\"");
+        }
+        return (lines, deadZone);
     }
 
     private async System.Threading.Tasks.Task PatchComboAndStanceForCurrentState(
@@ -3097,7 +3267,10 @@ public partial class ExportDialog : Window
         }
         catch (Exception ex)
         {
-            ErrorLog.Write("EXPORT", new Exception($"[UNIT_PROPS] Error patching {variantTag}: {ex.Message}"));
+            // Full exception (message + stack): a swallowed per-unit failure used to be
+            // indistinguishable from success in the UI - log the exact line, and the
+            // completion panel now shows a warning count (ErrorLog.Writes delta).
+            ErrorLog.Write("EXPORT", new Exception($"[UNIT_PROPS] Error patching {variantTag}: {ex}"));
         }
     }
 
@@ -3159,8 +3332,19 @@ public partial class ExportDialog : Window
             string outUasset = Path.Combine(outputPath, "Sifu", "Content", relFs + ".uasset");
             string destBase = "../../../Sifu/Content/" + rel;
 
+            // Resolve the payload base per extension: whichever half (custom or vanilla)
+            // exists - the halves of a byte-identical pair are interchangeable, and a half
+            // differing from vanilla keeps the mod's bytes under the tuning patch.
+            string? baseUexp;
+            var customUexp = CustomAssets.FileForContentRel(relFs + ".uexp");
+            var trueVanillaUexp = Path.ChangeExtension(Path.Combine(gameRoot, relFs + ".uasset"), ".uexp");
+            if (File.Exists(customUexp)) baseUexp = customUexp;
+            else if (File.Exists(trueVanillaUexp)) baseUexp = trueVanillaUexp;
+            else baseUexp = null;
+
             if (!AttackDbCard.StageAndPatch(vanillaUasset, outUasset, destBase,
-                    node.AttackBuildupFrames, node.AttackGameplayRange, fileEntries, out var err))
+                    node.AttackBuildupFrames, node.AttackGameplayRange, fileEntries, out var err,
+                    baseUexp))
             {
                 ErrorLog.Write("EXPORT", new Exception($"  ATTACKDB FAIL: {node.DisplayName} ({rel}): {err}"));
                 continue;
@@ -3226,9 +3410,10 @@ public partial class ExportDialog : Window
 
     /// <summary>
     /// Source file for a Content-relative asset: the persistent CustomAssets copy when
-    /// it exists (a manual same-path drop is a deliberate override - Harvest never
-    /// creates one), otherwise the vanilla game copy. Null when neither side has it.
-    /// A custom hit also trips the export's CustomAssets dependency flag.
+    /// it exists (a byte-differing vanilla overlap that Harvest shipped, or a manual
+    /// same-path drop - both deliberate overrides), otherwise the vanilla game copy.
+    /// Null when neither side has it. A custom hit also trips the export's
+    /// CustomAssets dependency flag.
     /// </summary>
     private static string? ResolveStageSource(string gameRoot, string contentRel)
     {
@@ -3316,6 +3501,9 @@ public partial class ExportDialog : Window
             foreach (var file in Directory.GetFiles(CustomAssets.Root, "*", SearchOption.AllDirectories))
             {
                 var rel = Path.GetRelativePath(CustomAssets.Root, file).Replace('\\', '/');
+                // Defensive twin of the Harvest exclusion: a legacy CustomAssets may
+                // still hold a harvested .pak; never pack it back into the export.
+                if (rel.EndsWith(".pak", StringComparison.OrdinalIgnoreCase)) continue;
                 if (excludedStems != null
                     && excludedStems.Contains(CustomAssets.AssetStemOfRel(rel)))
                 {
@@ -4257,7 +4445,10 @@ public partial class ExportDialog : Window
             ? $"{pakSize / (1024.0 * 1024.0):F1} MB"
             : $"{pakSize / 1024.0:F1} KB";
 
-        txtResult.Text = $"{pakName} ({changeCount} changes, {sizeStr})";
+        var errCount = ErrorLog.Writes - _errBaseline;
+        txtResult.Text = errCount > 0
+            ? $"{pakName} ({changeCount} changes, {sizeStr}) - {errCount} warning(s), see error.log"
+            : $"{pakName} ({changeCount} changes, {sizeStr})";
 
         if (!string.IsNullOrEmpty(installedTo))
         {

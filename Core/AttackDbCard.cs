@@ -194,21 +194,24 @@ public static class AttackDbCard
     /// Copies a card into the export staging area (unless the export already staged it), patches
     /// the given fields into its payload and registers both files in <paramref name="fileEntries"/>.
     /// A card staged earlier in the same export keeps whatever earlier pass wrote to it - the
-    /// patch is applied on top; a file left over from a previous export is rebuilt from vanilla.
+    /// patch is applied on top; a file left over from a previous export is rebuilt from its base
+    /// pair. <paramref name="baseUexp"/> overrides the payload base when the uasset and uexp
+    /// halves resolve differently (custom half + vanilla half of a byte-identical pair).
     /// </summary>
     public static bool StageAndPatch(
-        string vanillaUasset,
+        string baseUasset,
         string outUasset,
         string destBase,
         int? buildup,
         float? range,
         List<(string src, string dest)> fileEntries,
-        out string error)
+        out string error,
+        string? baseUexp = null)
     {
         error = "";
-        if (!File.Exists(vanillaUasset))
+        if (!File.Exists(baseUasset))
         {
-            error = $"vanilla card missing: {vanillaUasset}";
+            error = $"base card missing: {baseUasset}";
             return false;
         }
 
@@ -218,17 +221,17 @@ public static class AttackDbCard
             if (!string.IsNullOrEmpty(outDir)) Directory.CreateDirectory(outDir);
 
             string? outUexp = Path.ChangeExtension(outUasset, ".uexp");
+            string? srcUexp = baseUexp ?? Path.ChangeExtension(baseUasset, ".uexp");
             if (!fileEntries.Any(e => e.src == outUasset))
             {
-                File.Copy(vanillaUasset, outUasset, true);
-                string? vanillaUexp = Path.ChangeExtension(vanillaUasset, ".uexp");
-                if (File.Exists(vanillaUexp)) File.Copy(vanillaUexp, outUexp!, true);
+                File.Copy(baseUasset, outUasset, true);
+                if (File.Exists(srcUexp)) File.Copy(srcUexp, outUexp!, true);
                 fileEntries.Add((outUasset, destBase + ".uasset"));
                 if (File.Exists(outUexp!)) fileEntries.Add((outUexp!, destBase + ".uexp"));
             }
-            else if (!File.Exists(outUexp!) && File.Exists(Path.ChangeExtension(vanillaUasset, ".uexp")))
+            else if (!File.Exists(outUexp!) && File.Exists(srcUexp))
             {
-                File.Copy(Path.ChangeExtension(vanillaUasset, ".uexp")!, outUexp!, true);
+                File.Copy(srcUexp, outUexp!, true);
                 fileEntries.Add((outUexp!, destBase + ".uexp"));
             }
 

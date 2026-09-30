@@ -9,15 +9,22 @@ namespace SifuMovesetEditor;
 /// Persistent custom-content root ({BaseDirectory}/CustomAssets). Its layout mirrors
 /// the game's Sifu/Content folder (Animations/..., DB/..., CustomDB/..., Effects/...)
 /// so entries mount straight into the CUE4Parse provider and stage into the export
-/// pak unchanged. Everything a mod import harvests (any pak file absent from vanilla)
-/// lands here, as does anything the user drops in by hand. The accepted-files manifest
+/// pak unchanged. Everything a mod import harvests (any pak file whose bytes differ
+/// from vanilla) lands here, as does anything the user drops in by hand. The accepted-files manifest
 /// (rel|lastWriteUtcTicks) drives the close prompt: Yes keeps the current manifest in
 /// settings, No deletes only files that are new or modified against it.
 /// </summary>
 public static class CustomAssets
 {
-    public static readonly string Root =
-        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CustomAssets");
+    public static readonly string Root = ResolveRoot();
+
+    // Tests set SIFU_CUSTOM_ASSETS_ROOT so fixture cleanup can never delete the real library.
+    private static string ResolveRoot()
+    {
+        var env = Environment.GetEnvironmentVariable("SIFU_CUSTOM_ASSETS_ROOT");
+        if (!string.IsNullOrWhiteSpace(env)) return Path.GetFullPath(env);
+        return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CustomAssets");
+    }
 
     public static void EnsureRoot()
     {
@@ -189,28 +196,64 @@ public static class CustomAssets
         {
             EnsureRoot();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var wanted = new List<(string file, string rel)>();
             foreach (var contentRoot in FindContentRoots(extractRoot))
             {
                 foreach (var file in Directory.GetFiles(contentRoot, "*", SearchOption.AllDirectories))
                 {
                     if (!seen.Add(file)) continue;
 
+                    // The extracted pak itself (a mod's .pak dropped at the extract
+                    // root) is not content - harvesting it packs a pak-inside-pak
+                    // (~599 MB of junk) into every export.
+                    if (file.EndsWith(".pak", StringComparison.OrdinalIgnoreCase)) continue;
+
                     var rel = Path.GetRelativePath(contentRoot, file).Replace('\\', '/');
                     if (!string.IsNullOrEmpty(vanillaContentDir))
                     {
                         var vanillaPath = Path.Combine(vanillaContentDir,
                             rel.Replace('/', Path.DirectorySeparatorChar));
-                        if (File.Exists(vanillaPath)) continue;
+                        // Skip only files byte-identical to vanilla. An existence check here
+                        // silently dropped every mod change that overlaps a vanilla path
+                        // (the WW re-export lost ~1166 modified files that way).
+                        if (FilesIdentical(vanillaPath, file)) continue;
                     }
 
-                    var dest = Path.Combine(Root, rel.Replace('/', Path.DirectorySeparatorChar));
-                    if (string.Equals(Path.GetFullPath(dest), Path.GetFullPath(file),
-                            StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-                    File.Copy(file, dest, true);
-                    copied++;
+                    wanted.Add((file, rel));
                 }
+            }
+
+            // A cooked asset ships as a .uasset + .uexp (+ .ubulk/.uptnl) family that must
+            // stay together: UAssetAPI resolves export payloads through the sibling .uexp,
+            // so harvesting only the half that differs from vanilla leaves a lone .uasset
+            // whose parse reads garbage (it silently broke unit-prop patching on the Kuroki
+            // defenses). Any half that qualifies therefore drags its companions in too,
+            // even when they are byte-identical to vanilla.
+            var rels = new HashSet<string>(wanted.Select(w => w.rel), StringComparer.OrdinalIgnoreCase);
+            var extras = new List<(string file, string rel)>();
+            foreach (var (file, rel) in wanted)
+            {
+                if (!IsCompanionExt(Path.GetExtension(rel))) continue;
+                var stem = rel[..^Path.GetExtension(rel).Length];
+                var dir = Path.GetDirectoryName(file)!;
+                foreach (var cExt in CompanionExts)
+                {
+                    var sibRel = stem + cExt;
+                    if (!rels.Add(sibRel)) continue;
+                    var sibFile = Path.Combine(dir, Path.GetFileName(stem) + cExt);
+                    if (File.Exists(sibFile)) extras.Add((sibFile, sibRel));
+                }
+            }
+
+            foreach (var (file, rel) in wanted.Concat(extras))
+            {
+                var dest = Path.Combine(Root, rel.Replace('/', Path.DirectorySeparatorChar));
+                if (string.Equals(Path.GetFullPath(dest), Path.GetFullPath(file),
+                        StringComparison.OrdinalIgnoreCase))
+                    continue;
+                Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                File.Copy(file, dest, true);
+                copied++;
             }
         }
         catch (Exception ex)
@@ -218,6 +261,54 @@ public static class CustomAssets
             ErrorLog.Write("CUSTOM", ex);
         }
         return copied;
+    }
+
+    private static readonly string[] CompanionExts = { ".uasset", ".uexp", ".ubulk", ".uptnl" };
+
+    private static bool IsCompanionExt(string ext) =>
+        ext.Equals(".uasset", StringComparison.OrdinalIgnoreCase)
+        || ext.Equals(".uexp", StringComparison.OrdinalIgnoreCase)
+        || ext.Equals(".ubulk", StringComparison.OrdinalIgnoreCase)
+        || ext.Equals(".uptnl", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// True when both files exist with identical content. On any read error returns
+    /// false (harvest it) - losing a file is worse than shipping a duplicate.
+    /// </summary>
+    private static bool FilesIdentical(string vanillaPath, string modPath)
+    {
+        try
+        {
+            var fa = new FileInfo(vanillaPath);
+            var fb = new FileInfo(modPath);
+            if (!fa.Exists || !fb.Exists) return false;
+            if (fa.Length != fb.Length) return false;
+            if (fa.Length == 0) return true;
+
+            const int bufSize = 65536;
+            using var sa = File.OpenRead(vanillaPath);
+            using var sb = File.OpenRead(modPath);
+            var ba = new byte[bufSize];
+            var bb = new byte[bufSize];
+            int ra, rb;
+            while ((ra = ReadFull(sa, ba)) > 0)
+            {
+                rb = ReadFull(sb, bb);
+                if (ra != rb) return false;
+                for (int i = 0; i < ra; i++)
+                    if (ba[i] != bb[i]) return false;
+            }
+            return ReadFull(sb, bb) == 0;
+        }
+        catch { return false; }
+
+        static int ReadFull(Stream s, byte[] buf)
+        {
+            int off = 0, n;
+            while (off < buf.Length && (n = s.Read(buf, off, buf.Length - off)) > 0)
+                off += n;
+            return off;
+        }
     }
 
     /// <summary>
