@@ -20,22 +20,12 @@ public static class ExtractionManifest
         "DB/Movement",          // Stance movement DBs (BaseMovementDB, transitions)
     ];
 
-    // Specific directories to scan for character meshes
-    // (we only need SK_ files, not the entire Characters/ tree)
+    // Character mesh roots: every SK_*.uasset under Characters/ (any depth -
+    // M/ and W/ variants, outfit subfolders, Old/, _Shared, Boss/Sifu, ...).
+    // Whitelisting per-gender dirs silently dropped 162 of 418 meshes.
     public static readonly string[] MeshDirectories =
     [
-        "Characters/MainChar/M/Meshes",
-        "Characters/PNJ/Grunt/M/Meshes",
-        "Characters/PNJ/Disicple/M/Meshes",
-        "Characters/PNJ/FlashKick/Meshes",
-        "Characters/PNJ/BigGuy/Meshes",
-        "Characters/PNJ/BodyGuards/M/Meshes",
-        "Characters/PNJ/Servant/M/Meshes",
-        "Characters/Boss/Fajar/Meshes",
-        "Characters/Boss/Sean/Meshes",
-        "Characters/Boss/Kuroki/Meshes",
-        "Characters/Boss/Yang/Meshes",
-        "Characters/Boss/Fengjie/Meshes",
+        "Characters",
     ];
 
     // Engine content needed for animation decompression

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>combo_parse_smoke</AssemblyName>
+    <RootNamespace>combo_parse_smoke</RootNamespace>
+    <NoWarn>$(NoWarn);CS0618;SYSLIB0014</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="Stubs.cs" />
+    <Compile Include="..\..\Core\AnimationParser.cs" Link="AnimationParser.cs" />
+    <Compile Include="..\..\Core\ActionNodeCatalog.cs" Link="ActionNodeCatalog.cs" />
+    <Compile Include="..\..\Core\ConditionCatalog.cs" Link="ConditionCatalog.cs" />
+    <Compile Include="..\..\Core\MeshTextureResolver.cs" Link="MeshTextureResolver.cs" />
+    <Compile Include="..\..\Core\EnemyAttackScanner.cs" Link="EnemyAttackScanner.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="UAssetAPI">
+      <HintPath>..\..\libs\UAssetAPI.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CUE4Parse" Version="1.2.2.202608" />
+    <PackageReference Include="CUE4Parse-Conversion" Version="1.2.2.202608" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+  </ItemGroup>
+</Project>

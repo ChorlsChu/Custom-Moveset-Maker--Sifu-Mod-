@@ -11,6 +11,7 @@ using CUE4Parse.UE4.Assets.Exports.SkeletalMesh;
 using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Assets.Objects.Properties;
+using CUE4Parse.UE4.Objects.GameplayTags;
 using CUE4Parse.UE4.Versions;
 using CUE4Parse_Conversion.Animations;
 using CUE4Parse_Conversion.Animations.PSA;
@@ -166,6 +167,10 @@ public class ComboNode
     public bool IsRedirect { get; set; }
     public int RedirectTargetTreeIndex { get; set; } = -1;
     public int ResolvedRedirectNodeId { get; set; } = -1;
+    // True when this vanilla redirect had >=1 of its own transition rows re-sourced onto its
+    // target attack node at parse time (A' pass-through). Export routes new links from that
+    // target back to this redirect's struct - the row must land where the engine reads it.
+    public bool OwnedContinuation { get; set; }
     // AttackDB tuning (m_iWantedBuildupFrames / m_fGameplayRange). Null = leave vanilla as-is.
     public int? AttackBuildupFrames { get; set; }
     public float? AttackGameplayRange { get; set; }
@@ -178,7 +183,29 @@ public class ComboNode
     public ComboNodeKind Kind { get; set; } = ComboNodeKind.Vanilla;
     [Newtonsoft.Json.JsonIgnore]
     public bool IsImportedFromMod { get; set; }
-}
+    public bool IsActionNode { get; set; }
+    public string ActionClass { get; set; } = "";
+    public bool IsEventNode { get; set; }
+    public string EventName { get; set; } = "";
+    // Cross-asset import provenance: the combo file (Content-relative, no extension) whose
+    // node struct at ImportSourceTreeIndex the exporter clones when appending this node.
+    // Empty = no import (attack/redirect nodes use the target-tree template flow).
+    public string ImportComboRel { get; set; } = "";
+    public int ImportSourceTreeIndex { get; set; } = -1;
+    public bool Removed { get; set; }
+    // MainChar in-place replacement: export copies the source combo's m_AIAttackAction
+    // (class import + instance export) or m_Event onto this node's own m_Nodes struct and
+    // clears its attack slots; m_Transitions / m_NodeRedirect / m_Name stay untouched.
+    public bool ReplacedByAiNode { get; set; }
+    public string ReplacedAiKind { get; set; } = "";
+    public string ReplacedAiClass { get; set; } = "";
+    public string ReplacedImportComboRel { get; set; } = "";
+    public int ReplacedSourceTreeIndex { get; set; } = -1;
+    // Attack payload replacement (kind Attack): the attack card's game path whose
+    // registry entry export writes into this node's m_AttackInfos slots, after
+    // clearing m_AIAttackAction / m_Event. Empty for Action/Event replacements.
+    public string ReplacedAttackCardRel { get; set; } = "";
+    }
 
 public class ComboEdge
 {
@@ -189,6 +216,286 @@ public class ComboEdge
     // True when this link was created in the editor (not present in any parsed tree) -
     // export appends only these (plus links touching UserCreated nodes) to the combo tree.
     public bool IsNewLink { get; set; }
+    // For A' pass-through edges: the redirect node whose m_Transitions row this edge came
+    // from (raw id before reindex, remapped to the graph id during the final edge pass).
+    // -1 = the edge belongs to the source node's own transitions.
+    public int OwnerRedirectNodeId { get; set; } = -1;
+    // Branch chances: explicit m_fProbability for the row this new link appends.
+    // null = auto (default weight = average vanilla row, rebalanced on export so the
+    // struct keeps summing to 100 and the engine's roll reaches the appended row).
+    public float? NewLinkProbability { get; set; }
+    // True when the Conditions & Chances dialog created this link while syncing a
+    // cleared condition's entry back to the node's forward links (the dropped outcome
+    // becomes its own chance row = mixup). Restore / re-picking the condition drops
+    // these edges again; user-created links never carry the flag.
+    public bool FromClearMixup { get; set; }
+    // Merge into an existing conditioned row: the link gets NO appended chance row -
+    // its target joins the row's m_TargetNodes under MergedIntoKey as a new outcome
+    // key (TreeRowConditionEdit.AddedKeys holds the write, keyed the same way).
+    // -1 = not merged. Serialized with the graph (ComboEdge saves directly through
+    // SavedUnitCache.Edges); old saves deserialize -1.
+    public int MergedIntoStruct { get; set; } = -1;
+    public int MergedIntoRow { get; set; } = -1;
+    public int MergedIntoKey { get; set; } = -1;
+}
+
+/// <summary>
+/// One vanilla m_Transitions row, snapshotted at parse time for branch-chance editing.
+/// Keyed in ComboGraph.TreeRows by the struct's tree index; RowIndex matches the row's
+/// position in the asset array so export can patch m_fProbability in place. User edits
+/// live in ComboGraph.TreeRowProbabilityOverrides (original stays here as the baseline).
+/// </summary>
+public class TreeRowInfo
+{
+    public int RowIndex { get; set; }
+    public string InputName { get; set; } = "";
+    public float OriginalProbability { get; set; } = 100f;
+    public int KeyCount { get; set; } = 1;
+    // m_TargetNodes values in map iteration order (-1 = non-int value); Keys mirrors
+    // the key bytes so multi-key conditional rows keep their routing visible.
+    public List<int> TargetTreeIndices { get; set; } = new();
+    public List<byte> Keys { get; set; } = new();
+    public bool ConditionPresent { get; set; }
+    public string ConditionClass { get; set; } = "";
+    // Flattened "prop = value" lines from the condition export (params only; the
+    // internal m_PerConditionValueToNodeMap is excluded - engine semantics TBD).
+    public List<string> ConditionParams { get; set; } = new();
+    // m_ConditionInstance FPackageIndex value (0 = none, >0 = same-file export) -
+    // lets condition-param edits key on the instance export at write time.
+    public int ConditionInstanceIndex { get; set; }
+    // Structured params behind ConditionParams strings; null/empty on old saves
+    // (strings still display, editors need a fresh parse).
+    public List<ConditionParamInfo>? ConditionParamList { get; set; }
+}
+
+/// <summary>
+/// Node-level condition data from the m_Nodes struct: required gameplay tags
+/// (m_RequiredTags) and conditional attack sets (m_ConditionalAttacks - gameplay
+/// tag -> alternate m_Attacks), snapshotted at parse time and persisted per unit.
+/// </summary>
+public class TreeNodeConditionInfo
+{
+    public List<string> RequiredTags { get; set; } = new();
+    public List<ConditionalAttackEntry> ConditionalAttacks { get; set; } = new();
+}
+
+/// <summary>One m_ConditionalAttacks pair: the gating tag plus the unique attack assets.</summary>
+public class ConditionalAttackEntry
+{
+    public string TagName { get; set; } = "";
+    public List<string> AttackNames { get; set; } = new();
+}
+
+/// <summary>
+/// One condition parameter captured at parse time: dotted property path inside the
+/// condition export (ObjectProperty hops + struct prefixes), the value string, and
+/// the tag kind (Int/Float/Bool/Enum/Name/Str/Byte/Text, else ReadOnly) that picks
+/// the editor type. Editable edits live in ComboGraph.TreeConditionParamOverrides.
+/// </summary>
+public class ConditionParamInfo
+{
+    public string Path { get; set; } = "";
+    public string Kind { get; set; } = "ReadOnly";
+    public string Value { get; set; } = "";
+}
+
+/// <summary>
+/// One row-level condition edit: empty m_ConditionInstance to a null reference
+/// (ClearCondition - the vanilla "instance ref empty" layout, with the surviving
+/// target becoming the row's unconditional 255 entry), re-route
+/// m_TargetNodes outcome keys (Retarget holds only changed keys -> new tree index),
+/// and/or attach a condition instance the vanilla row did not carry: SetInstance points
+/// at a same-file condition export (share - params are shared by definition), while
+/// CloneSourceRel/CloneSourceExport describe a condition export in another combo file
+/// to clone into this asset at export time. Cross-file clone param edits are keyed by
+/// CloneVirtualKey - a stable negative "export index" that the exporter resolves to the
+/// clone's new export index after AssetCloner appends it.
+/// </summary>
+public class TreeRowConditionEdit
+{
+    public bool ClearCondition { get; set; }
+    public Dictionary<byte, int> Retarget { get; set; } = new();
+    public int SetInstance { get; set; }
+    public string? CloneSourceRel { get; set; }
+    public int CloneSourceExport { get; set; } = -1;
+    public string CloneClass { get; set; } = "";
+    /// <summary>The Retarget[255] entry was seeded by a Clear (the collapse target
+    /// shown as the row's unconditional route) rather than chosen by the user -
+    /// Restore drops it so clear-then-restore never leaves a retarget nobody picked.</summary>
+    public bool SeededCollapse { get; set; }
+    public bool HasPendingInstance =>
+        SetInstance > 0 || (!string.IsNullOrEmpty(CloneSourceRel) && CloneSourceExport >= 0);
+
+    /// <summary>Merged links: new outcome key -> the link's target NODE id (graph id,
+    /// resolved at export through resolveNodeIndex - unlike Retarget, which holds tree
+    /// indices directly). Add-only: export inserts entries the row's m_TargetNodes
+    /// lacks, so a merged link's target rides the row's own condition instead of
+    /// getting a standalone chance row. Empty on old saves.</summary>
+    public Dictionary<byte, int> AddedKeys { get; set; } = new();
+
+    /// <summary>Outcome key -> graph NODE id for user-authored targets (TreeIndex -1
+    /// nodes that only get their index at export). Complementary to Retarget (vanilla
+    /// tree indices); the UI keeps the two mutually exclusive per key and export
+    /// resolves these through resolveNodeIndex, same as AddedKeys. Empty on old saves.</summary>
+    public Dictionary<byte, int> RetargetNodeIds { get; set; } = new();
+
+    /// <summary>Deep copy - every clone site (undo snapshot, dialog row overlays)
+    /// must stay in sync when a field is added.</summary>
+    public TreeRowConditionEdit Clone() => new()
+    {
+        ClearCondition = ClearCondition,
+        Retarget = new Dictionary<byte, int>(Retarget),
+        SetInstance = SetInstance,
+        CloneSourceRel = CloneSourceRel,
+        CloneSourceExport = CloneSourceExport,
+        CloneClass = CloneClass,
+        SeededCollapse = SeededCollapse,
+        AddedKeys = new Dictionary<byte, int>(AddedKeys),
+        RetargetNodeIds = new Dictionary<byte, int>(RetargetNodeIds)
+    };
+
+    /// <summary>Retarget value sentinels for edge-keyed condition edits (rows that only
+    /// exist after export): TargetBlocked omits the outcome key from m_TargetNodes so
+    /// the branch never routes on it; TargetNatural routes to the edge's own target,
+    /// resolved at export (the picker cannot list user-added nodes).</summary>
+    public const int TargetBlocked = -1;
+    public const int TargetNatural = -2;
+
+    /// <summary>
+    /// Stable negative key for a pending cross-file clone: derived from
+    /// (source asset, source export index) so every dialog session and the exporter
+    /// compute the same bucket for the same clone - rows sharing one clone share
+    /// their param edits, and never collide with real (positive) export indices.
+    /// </summary>
+    public static int CloneVirtualKey(string? sourceRel, int sourceExport)
+    {
+        unchecked
+        {
+            int h = 17;
+            foreach (char c in (sourceRel ?? "").ToLowerInvariant()) h = h * 31 + c;
+            h = (h * 31 + sourceExport) & 0x7FFFFFFF;
+            return h == 0 ? -1 : -h;
+        }
+    }
+}
+
+/// <summary>
+/// Shared branch-chance math (dialog display + export writeback). A row is either
+/// explicit (user-typed - always kept exactly) or automatic (weight = vanilla
+/// probability, or the average vanilla weight for new links). With normalize = true -
+/// only for structs that received an append - automatic rows share whatever remains
+/// after the explicit values, so the struct sums to 100 and the engine's cumulative
+/// 0-100 roll still reaches the appended rows.
+/// </summary>
+public static class TreeChanceMath
+{
+    public const float SumTarget = 100f;
+
+    public readonly struct Row
+    {
+        public readonly float? Explicit;
+        public readonly float AutoWeight;
+        public Row(float? explicitValue, float autoWeight)
+        {
+            Explicit = explicitValue;
+            AutoWeight = autoWeight;
+        }
+    }
+
+    public static List<float> Compute(IReadOnlyList<Row> rows, bool normalize)
+    {
+        var result = new List<float>(rows.Count);
+        if (!normalize)
+        {
+            foreach (var r in rows) result.Add(r.Explicit ?? r.AutoWeight);
+            return result;
+        }
+
+        float explicitSum = 0f;
+        float autoWeightSum = 0f;
+        int autoCount = 0;
+        foreach (var r in rows)
+        {
+            if (r.Explicit.HasValue) explicitSum += r.Explicit.Value;
+            else { autoWeightSum += Math.Max(0f, r.AutoWeight); autoCount++; }
+        }
+
+        float remainder = SumTarget - explicitSum;
+        float scale = autoWeightSum > 0f ? remainder / autoWeightSum : 0f;
+        if (scale < 0f) scale = 0f;
+        float equal = autoCount > 0 ? Math.Max(0f, remainder) / autoCount : 0f;
+
+        foreach (var r in rows)
+        {
+            if (r.Explicit.HasValue) result.Add(r.Explicit.Value);
+            else if (autoWeightSum > 0f) result.Add(Math.Max(0f, r.AutoWeight * scale));
+            else result.Add(equal);
+        }
+        return result;
+    }
+
+    /// <summary>Default weight for new-link rows: the average of the vanilla rows'
+    /// assigned values (overrides count at their typed value). All-new structs (Phase A)
+    /// fall back to the full 100 so the rows split evenly.</summary>
+    public static float NewRowAutoWeight(IReadOnlyList<Row> vanillaRows)
+    {
+        if (vanillaRows.Count == 0) return SumTarget;
+        float sum = 0f;
+        foreach (var r in vanillaRows) sum += r.Explicit ?? r.AutoWeight;
+        return sum > 0f ? sum / vanillaRows.Count : SumTarget;
+    }
+
+    /// <summary>The target set one row will route to after condition overrides apply -
+    /// mirrors ExportDialog.ApplyConditionOverrides exactly: a cleared row collapses to
+    /// its outcome-0 value (else the first entry) re-keyed 255, then Retarget[255]
+    /// overwrites it; an uncleared row rewrites per-key targets in place (Retarget keys
+    /// absent from the map are skipped, negatives excluded). Non-target sentinels
+    /// (blocked/natural) and duplicate values are the caller's concern. Shared by the
+    /// dialog's clear/mixup coverage math and the export append dedup so they can never
+    /// disagree about which targets an entry still serves.</summary>
+    public static List<int> PostOverrideTargets(
+        IReadOnlyList<byte> keys, IReadOnlyList<int> targets, TreeRowConditionEdit? edit)
+    {
+        var result = new List<int>();
+        if (edit == null)
+        {
+            foreach (var t in targets) if (t >= 0) result.Add(t);
+            return result;
+        }
+
+        if (edit.ClearCondition)
+        {
+            int survivor = -1;
+            int n = Math.Min(keys.Count, targets.Count);
+            for (int i = 0; i < n; i++)
+            {
+                if (keys[i] == 0) { survivor = targets[i]; break; }
+            }
+            if (survivor < 0 && n > 0) survivor = targets[0];
+            if (edit.Retarget.TryGetValue(255, out var rt255) && rt255 >= 0) survivor = rt255;
+            if (survivor >= 0) result.Add(survivor);
+            return result;
+        }
+
+        int count = Math.Min(keys.Count, targets.Count);
+        for (int i = 0; i < count; i++)
+        {
+            int v = edit.Retarget.TryGetValue(keys[i], out var rt) && rt >= 0 ? rt : targets[i];
+            if (v >= 0) result.Add(v);
+        }
+        return result;
+    }
+
+    /// <summary>Struct a new link from <paramref name="fromNode"/> appends to - mirrors
+    /// export Phase B's A' owner-writeback (single owning redirect wins; ambiguous or
+    /// ownerless falls back to the node's own struct; custom nodes have none).</summary>
+    public static int ResolveWriteStruct(ComboGraph graph, ComboNode fromNode)
+    {
+        if (fromNode.TreeIndex < 0) return -1;
+        var owners = graph.Nodes.Where(n => n.IsRedirect && n.OwnedContinuation
+            && n.ResolvedRedirectNodeId == fromNode.Id && n.TreeIndex >= 0).ToList();
+        return owners.Count == 1 ? owners[0].TreeIndex : fromNode.TreeIndex;
+    }
 }
 
 public class ComboGraph
@@ -198,6 +505,239 @@ public class ComboGraph
     public List<ComboNode> Nodes { get; set; } = [];
     public List<ComboEdge> Edges { get; set; } = [];
     public Dictionary<int, int> RedirectOriginalTargets { get; set; } = new();
+    // m_ComboStartNodesContainer: AI start-state tickets -> first combo node.
+    // Only present/edited for enemy archetype trees (MainChar trees have no AI tickets).
+    public List<StartEntry> StartEntries { get; set; } = [];
+    // Branch chances: vanilla m_Transitions rows per struct tree index, snapshotted at
+    // parse time (empty on old saves - the dialog then falls back to new-link rows and
+    // export still works, since it reads probabilities from the asset itself).
+    public Dictionary<int, List<TreeRowInfo>> TreeRows { get; set; } = new();
+    // Content-relative combo path the graph was parsed from; lets old saves (whose
+    // TreeRows snapshot is empty) re-parse the vanilla rows on demand.
+    public string SourceGamePath { get; set; } = "";
+    // Session flag: a TreeRows merge from SourceGamePath was already attempted, so a
+    // struct still missing from TreeRows is genuinely row-less (not an old save).
+    public bool TreeRowsBackfillAttempted { get; set; }
+    // User-edited branch chances: struct tree index -> (row index -> m_fProbability).
+    // Presence marks the row modified; Reset All / node reset clear these.
+    public Dictionary<int, Dictionary<int, float>> TreeRowProbabilityOverrides { get; set; } = new();
+    // Node-level condition data (required tags + conditional attacks) per tree index,
+    // snapshotted at parse time; persisted per unit like TreeRows.
+    public Dictionary<int, TreeNodeConditionInfo> TreeNodeConditions { get; set; } = new();
+    // User-edited condition PARAMS: condition export index (m_ConditionInstance value)
+    // -> (dotted property path -> new value string). Keyed by the instance so rows
+    // sharing one export stay consistent; presence marks a change.
+    public Dictionary<int, Dictionary<string, string>> TreeConditionParamOverrides { get; set; } = new();
+    // User-edited row conditions: struct tree index -> (row index -> clear/re-route).
+    // Presence marks the row modified; Reset All / node reset clear these.
+    public Dictionary<int, Dictionary<int, TreeRowConditionEdit>> TreeRowConditionOverrides { get; set; } = new();
+    // Conditions on rows that do not exist in vanilla (every new link appends one row,
+    // including the outgoing rows of appended nodes): edge key -> attach/re-route.
+    // Retarget sentinels per TreeRowConditionEdit.TargetBlocked/TargetNatural; edits
+    // whose edge no longer exists are orphans and are pruned on commit / ignored on export.
+    public Dictionary<string, TreeRowConditionEdit> TreeEdgeConditionOverrides { get; set; } = new();
+    // Vanilla conduit nodes (m_NodeRedirect passthroughs) stripped from the graph at
+    // parse time: raw file index -> raw downstream file indices it routed to. Display
+    // annotation only - rows keep their raw conduit target and export keeps it too
+    // (the conduit struct survives in the asset). Empty on old saves.
+    public Dictionary<int, List<int>> ConduitTargets { get; set; } = new();
+
+    /// <summary>Stable key for condition edits on export-appended transition rows -
+    /// one row per new (from, to, input) link, save/load/parse independent.</summary>
+    public static string EdgeConditionKey(ComboEdge e)
+        => $"{e.FromNodeId}>{e.ToNodeId}|{e.InputName}";
+
+    /// <summary>
+    /// Re-resolves every transition's TargetNodeId/TargetName against this graph's
+    /// TreeIndex values. Used when start entries are recovered from a fresh vanilla
+    /// parse for an old save: fresh-parse node ids may not match the saved graph, but
+    /// TreeIndex (asset order) is stable. A miss (condensed conduit target, or a node
+    /// the save no longer has) falls back to -1 while keeping TargetTreeIndex. Original*
+    /// mirrors the result so recovered rows are an unmodified baseline.
+    /// </summary>
+    public void RemapStartEntryTargets(List<StartEntry> entries)
+    {
+        var byTreeIndex = Nodes.Where(n => n.TreeIndex >= 0).ToLookup(n => n.TreeIndex);
+        foreach (var entry in entries)
+        {
+            foreach (var t in entry.Transitions)
+            {
+                var node = t.TargetTreeIndex >= 0
+                    ? byTreeIndex[t.TargetTreeIndex].FirstOrDefault()
+                    : null;
+                t.TargetNodeId = node?.Id ?? -1;
+                t.TargetName = node?.Name ?? "";
+                t.OriginalTargetNodeId = t.TargetNodeId;
+                t.OriginalTargetTreeIndex = t.TargetTreeIndex;
+                t.OriginalTargetName = t.TargetName;
+            }
+        }
+    }
+
+    /// <summary>Follows a redirect node's ResolvedRedirectNodeId chain to the final
+    /// non-redirect node (cycle-guarded, max 8 hops). Returns the input id when it
+    /// exists in the graph and is not a redirect; -1 when the input id is absent,
+    /// the chain is a loop, or it ends at an unresolved/missing node. Reflects user
+    /// RedirectMods (live node state).</summary>
+    public int ResolveRedirectFinal(int nodeId)
+    {
+        var visited = new HashSet<int>();
+        int cur = nodeId;
+        for (int hop = 0; hop < 8; hop++)
+        {
+            if (cur < 0 || !visited.Add(cur)) return -1;
+            var n = Nodes.FirstOrDefault(x => x.Id == cur);
+            if (n == null) return -1;
+            if (!n.IsRedirect) return cur;
+            if (n.ResolvedRedirectNodeId < 0) return -1;
+            cur = n.ResolvedRedirectNodeId;
+        }
+        return -1;
+    }
+
+    /// <summary>
+    /// Old saves (pre per-key editing) serialize multi-key start transitions with
+    /// KeyCount + TargetSummary but empty Keys/KeyTarget* parallel lists, so the
+    /// dialog can only render the view-only "0→7, 1→9" summary. Rebuild the lists
+    /// from the summary ("key→treeIndex" pairs joined by ", ", U+2192 arrow) and
+    /// resolve each key's node id/name from this graph's TreeIndex-stable nodes
+    /// (no match = condensed/conduit target, keep the tree index - same rule the
+    /// vanilla parse uses). OriginalKeyTargetTreeIndices mirrors the rebuilt values
+    /// so untouched rows stay unmodified for the diff/write gate. Entries whose
+    /// lists already line up with KeyCount (fresh parses, post-edit saves) are left
+    /// alone; an empty or unparsable summary keeps the view-only fallback.
+    /// </summary>
+    public void RehydrateStartEntryKeyModels()
+    {
+        if (StartEntries == null || StartEntries.Count == 0) return;
+        var byTreeIndex = Nodes.Where(n => n.TreeIndex >= 0).ToLookup(n => n.TreeIndex);
+        foreach (var entry in StartEntries)
+        {
+            foreach (var t in entry.Transitions)
+            {
+                if (t.KeyCount <= 1 || t.Keys.Count == t.KeyCount) continue;
+                if (string.IsNullOrWhiteSpace(t.TargetSummary)) continue;
+
+                var keys = new List<byte>();
+                var treeIndices = new List<int>();
+                foreach (var part in t.TargetSummary.Split(',', StringSplitOptions.TrimEntries))
+                {
+                    int arrow = part.IndexOf('→');
+                    if (arrow <= 0) { keys.Clear(); treeIndices.Clear(); break; }
+                    if (!byte.TryParse(part[..arrow].Trim(), out var k)
+                        || !int.TryParse(part[(arrow + 1)..].Trim(), out var v))
+                    { keys.Clear(); treeIndices.Clear(); break; }
+                    keys.Add(k);
+                    treeIndices.Add(v);
+                }
+                if (keys.Count == 0) continue;
+
+                t.KeyCount = Math.Max(1, keys.Count);
+                t.Keys = keys;
+                t.KeyTargetTreeIndices = treeIndices;
+                t.KeyTargetNodeIds = new List<int>(treeIndices.Count);
+                t.KeyTargetNames = new List<string>(treeIndices.Count);
+                foreach (var v in treeIndices)
+                {
+                    var node = v >= 0 ? byTreeIndex[v].FirstOrDefault() : null;
+                    t.KeyTargetNodeIds.Add(node?.Id ?? -1);
+                    t.KeyTargetNames.Add(node?.Name ?? "");
+                }
+                t.OriginalKeyTargetTreeIndices = new List<int>(treeIndices);
+            }
+        }
+    }
+}
+
+/// <summary>
+/// One ComboStartNode element of m_ComboStartNodesContainer: an AI ticket
+/// (BP_AIAttackTIcketNames) plus its possible first combo nodes with probabilities.
+/// </summary>
+public class StartEntry
+{
+    public string Label { get; set; } = "";
+    public string TicketEnumValue { get; set; } = "";
+    public string ConditionClass { get; set; } = "";
+    public string PhaseName { get; set; } = "";
+    public uint MCDominationFlags { get; set; }
+    // Position in the vanilla container; export patches entries by this index
+    // (MVP never adds or removes entries, so container order is stable).
+    public int VanillaIndex { get; set; } = -1;
+    // Entry dropped in the editor: kept in the model so export can drop it from
+    // the container (and the dialog can report it), but skipped everywhere else.
+    public bool Removed { get; set; }
+    public List<StartTransition> Transitions { get; set; } = [];
+
+    public StartEntry Clone() => new StartEntry
+    {
+        Label = Label,
+        TicketEnumValue = TicketEnumValue,
+        ConditionClass = ConditionClass,
+        PhaseName = PhaseName,
+        MCDominationFlags = MCDominationFlags,
+        VanillaIndex = VanillaIndex,
+        Removed = Removed,
+        Transitions = Transitions.Select(t => t.Clone()).ToList()
+    };
+
+    public bool IsModified() => Removed || Transitions.Any(t => t.IsModified());
+}
+
+/// <summary>
+/// One ComboTransition inside a start entry. Original* fields mirror the parsed
+/// vanilla row and are never edited - they drive the change list and diff.
+/// </summary>
+public class StartTransition
+{
+    public float Probability { get; set; } = 100;
+    // Current target: graph node id (-1 = target node was condensed away, keep TargetTreeIndex).
+    public int TargetNodeId { get; set; } = -1;
+    // Current target's tree index when known (-1 = user-created node, assigned on export).
+    public int TargetTreeIndex { get; set; } = -1;
+    public string TargetName { get; set; } = "";
+    // m_TargetNodes map: key bytes (255 = unconditional; 0/1 = condition outcome routing).
+    public byte KeyByte { get; set; } = 255;
+    public int KeyCount { get; set; } = 1;
+    // Multi-key conditional maps: parallel per-key lists (one entry per map key, in map
+    // order) so every key's target is editable. Populated at parse for single-key rows
+    // too; empty on old saves (dialog falls back to the view-only summary there).
+    public List<byte> Keys { get; set; } = [];
+    public List<int> KeyTargetTreeIndices { get; set; } = [];
+    // Graph node id per key (-1 = condensed/unknown node, keep the tree index).
+    public List<int> KeyTargetNodeIds { get; set; } = [];
+    public List<string> KeyTargetNames { get; set; } = [];
+    // "0→18, 1→19"-style summary (kept fresh by the dialog as keys are re-routed).
+    public string TargetSummary { get; set; } = "";
+
+    // Vanilla baseline (parse-time snapshot).
+    public int OriginalIndex { get; set; } = -1;
+    public float OriginalProbability { get; set; } = 100;
+    public int OriginalTargetNodeId { get; set; } = -1;
+    public int OriginalTargetTreeIndex { get; set; } = -1;
+    public string OriginalTargetName { get; set; } = "";
+    public List<int> OriginalKeyTargetTreeIndices { get; set; } = [];
+    // Row deleted in the editor (kept in the model so export knows what to drop).
+    public bool Removed { get; set; }
+
+    public bool IsModified()
+        => Removed
+        || OriginalIndex < 0
+        || Math.Abs(Probability - OriginalProbability) > 0.001f
+        || TargetNodeId != OriginalTargetNodeId
+        || (KeyTargetTreeIndices.Count > 0
+            && !KeyTargetTreeIndices.SequenceEqual(OriginalKeyTargetTreeIndices));
+
+    public StartTransition Clone()
+    {
+        var c = (StartTransition)MemberwiseClone();
+        // MemberwiseClone would share the per-key lists with the graph's own rows.
+        c.Keys = new List<byte>(Keys);
+        c.KeyTargetTreeIndices = new List<int>(KeyTargetTreeIndices);
+        c.KeyTargetNodeIds = new List<int>(KeyTargetNodeIds);
+        c.KeyTargetNames = new List<string>(KeyTargetNames);
+        c.OriginalKeyTargetTreeIndices = new List<int>(OriginalKeyTargetTreeIndices);
+        return c;
+    }
 }
 
 public class ModdedComboNodeInfo
@@ -207,12 +747,80 @@ public class ModdedComboNodeInfo
     public int RedirectTargetTreeIndex { get; set; } = -1;
     public List<string> AttackDbPaths { get; set; } = [];
     public List<ModdedTransitionInfo> Transitions { get; set; } = [];
+    // Per-row snapshot (row index = position in the asset m_Transitions array) so the
+    // import diff can align against vanilla TreeRows with a signature guard. Transitions
+    // above stays the flat per-key list SurfaceModdedOnlyNodes builds edges from.
+    public List<ModdedTransitionRowInfo> TransitionRows { get; set; } = [];
+    // AI payload on the node struct: "Action" (m_AIAttackAction class), "Event"
+    // (m_Event object/class name), or "" (no payload). AiClass holds the raw name.
+    public string AiKind { get; set; } = "";
+    public string AiClass { get; set; } = "";
+    // Content-relative path (no extension) of the modded combo file this node came
+    // from - the ImportComboRel surfaced AI nodes need so export can clone their
+    // payload back out of the harvested CustomAssets copy of the mod.
+    public string ModdedContentRel { get; set; } = "";
 }
 
 public class ModdedTransitionInfo
 {
     public string InputName { get; set; } = "";
     public int TargetTreeIndex { get; set; } = -1;
+}
+
+/// <summary>One modded m_Transitions row with everything the chance/condition diff
+/// needs: probability, condition class + instance export (1-based FPackageIndex value,
+/// -1 = import reference or none), params, and the key->target map for the
+/// signature guard.</summary>
+public class ModdedTransitionRowInfo
+{
+    public int RowIndex { get; set; }
+    public string InputName { get; set; } = "";
+    public float Probability { get; set; } = 100f;
+    public string ConditionClass { get; set; } = "";
+    public int ConditionInstanceExport { get; set; } = -1;
+    public List<ConditionParamInfo> ConditionParams { get; set; } = new();
+    public List<byte> Keys { get; set; } = new();
+    public List<int> TargetTreeIndices { get; set; } = new();
+}
+
+/// <summary>One m_ComboStartNodesContainer entry read from the modded file.</summary>
+public class ModdedStartEntryInfo
+{
+    public string TicketEnumValue { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string PhaseName { get; set; } = "";
+    public uint MCDominationFlags { get; set; }
+    public string ConditionClass { get; set; } = "";
+    public List<ModdedStartTransitionInfo> Transitions { get; set; } = [];
+}
+
+/// <summary>One start-entry transition row from the modded file.</summary>
+public class ModdedStartTransitionInfo
+{
+    public float Probability { get; set; } = 100f;
+    public string ConditionClass { get; set; } = "";
+    public List<byte> Keys { get; set; } = [];
+    public List<int> KeyTargetTreeIndices { get; set; } = [];
+}
+
+/// <summary>Counts from ApplyModdedComboToVanilla (anim/redirect pass plus the AI
+/// payload, chance/condition, and start-entry diffs).</summary>
+public class ModdedApplyResult
+{
+    public int MoveChanges { get; set; }
+    public int RetargetChanges { get; set; }
+    public int Unmatched { get; set; }
+    public int Surfaced { get; set; }
+    public int AiChanges { get; set; }
+    public int AiRemovalsSkipped { get; set; }
+    public int ChanceOverrides { get; set; }
+    public int CondClears { get; set; }
+    public int CondInstances { get; set; }
+    public int CondParamWrites { get; set; }
+    public int CondSkipped { get; set; }
+    public int StartEntriesChanged { get; set; }
+    public int StartTransitionsChanged { get; set; }
+    public int StartStructuralSkipped { get; set; }
 }
 
 public class BoneData
@@ -284,7 +892,7 @@ public class MeshJsonData
     public string[] boneNames { get; set; } = [];
     public float[] bindPose { get; set; } = [];
     public int[] boneParents { get; set; } = [];
-
+    public List<MeshMaterialGroup>? materials { get; set; }
 }
 
 public class AnimationParser : IDisposable
@@ -295,6 +903,16 @@ public class AnimationParser : IDisposable
     private string _contentPath = "";
     private string ContentDir => Setup.ContentDetector.ResolveContentDir(_contentPath);
     public bool IsLoaded => _provider != null;
+
+    private MeshTextureResolver? _texResolver;
+    private const int MeshCacheMax = 15;
+    private readonly object _meshCacheSync = new();
+    private readonly Dictionary<string, (LinkedListNode<string> node, MeshJsonData data)> _meshCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly LinkedList<string> _meshCacheOrder = new();
+    // FindMeshPath walks Content/Characters recursively; memoized so unmapped characters
+    // don't repeat the directory scan on every mesh load (null results memoized too).
+    private readonly object _findMeshPathSync = new();
+    private readonly Dictionary<string, string?> _findMeshPathMemo = new(StringComparer.OrdinalIgnoreCase);
     public ConcurrentDictionary<string, string> AnimToDbPath { get; } = new();
     public Dictionary<string, (float hitFrame, int buildupFrame)> AnimToTiming { get; } = new();
 
@@ -342,6 +960,21 @@ public class AnimationParser : IDisposable
         _provider.Initialize();
 
         LoadEngineContent(gameRootPath);
+
+        var texCacheDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "SifuMovesetEditor", "Thumbnails", "tex");
+        _texResolver = new MeshTextureResolver(_provider, ContentDir, texCacheDir);
+        ClearMeshCache();
+    }
+
+    private void ClearMeshCache()
+    {
+        lock (_meshCacheSync)
+        {
+            _meshCache.Clear();
+            _meshCacheOrder.Clear();
+        }
     }
 
     private void LoadEngineContent(string gameRootPath)
@@ -1165,7 +1798,9 @@ public class AnimationParser : IDisposable
                 return null;
             }
 
-            return ParseComboTreeFromObject(obj);
+            var graph = ParseComboTreeFromObject(obj);
+            if (graph != null) graph.SourceGamePath = "Game/DB/_MainChar/Combos/MainChar_ComboTree";
+            return graph;
         }
         catch (Exception ex)
         {
@@ -1187,7 +1822,9 @@ public class AnimationParser : IDisposable
                 return null;
             }
 
-            return ParseComboTreeFromObject(obj, weaponName);
+            var graph = ParseComboTreeFromObject(obj, weaponName);
+            if (graph != null) graph.SourceGamePath = gamePath;
+            return graph;
         }
         catch (Exception ex)
         {
@@ -1309,23 +1946,14 @@ public class AnimationParser : IDisposable
 
             LogDebug($"[COMBO] Parsed {rawNodes.Count} raw nodes from {allNodeStructs.Count} tree nodes");
 
-            if (isMainChar)
-            {
-                foreach (var node in rawNodes)
-                {
-                    if (node.IsRedirect)
-                    {
-                        node.IsRedirect = false;
-                        node.RedirectTargetTreeIndex = -1;
-                    }
-                }
-                LogDebug("[COMBO] MainChar: stripped redirect flags (redirects are enemy-only)");
-            }
-
             var rawEdges = new List<ComboEdge>();
             var redirectNodeIds = new HashSet<int>(rawNodes.Where(n => n.IsRedirect).Select(n => n.Id));
             if (redirectNodeIds.Count > 0)
                 LogDebug($"[COMBO] Found {redirectNodeIds.Count} redirect nodes: {string.Join(", ", rawNodes.Where(n => n.IsRedirect).Select(n => $"{n.Name} → tree[{n.RedirectTargetTreeIndex}]"))}");
+            var conduitIds = new HashSet<int>(
+                rawNodes.Where(n => string.IsNullOrEmpty(n.AnimPath) && !n.IsRoot && !n.IsRedirect
+                                    && !n.IsActionNode && !n.IsEventNode).Select(n => n.Id));
+            var treeRows = new Dictionary<int, List<TreeRowInfo>>();
             for (int ti = 0; ti < allNodeStructs.Count; ti++)
             {
                 var nodeData = allNodeStructs[ti];
@@ -1338,16 +1966,91 @@ public class AnimationParser : IDisposable
                 if (transArr?.Tag is not ArrayProperty tArr)
                     continue;
 
+                var treeNodeRows = new List<TreeRowInfo>();
+
                 var sourceIds = treeIndexToNodeIds[ti];
-                if (sourceIds.Any(id => redirectNodeIds.Contains(id))) continue;
+                var plainSources = sourceIds.Where(id => !redirectNodeIds.Contains(id)).ToList();
+                var redirectSources = sourceIds.Where(id => redirectNodeIds.Contains(id)).ToList();
+
+                // A' pass-through: a redirect's own transition rows define the continuation
+                // of the chain step whose attack it plays. Re-source them onto that attack
+                // node so the graph reads attack -> next-redirect instead of dropping them.
+                // The redirect's play target chain (redirect->redirect) is followed once
+                // with a cycle guard; an unresolvable/conduit target falls back to the old
+                // behavior (rows dropped) with a debug note.
+                var reSource = new List<(int redirectId, List<int> fromIds)>();
+                foreach (var rId in redirectSources)
+                {
+                    var rNode = rawNodes.FirstOrDefault(n => n.Id == rId);
+                    if (rNode == null) continue;
+                    int cur = rNode.RedirectTargetTreeIndex;
+                    var visitedTi = new HashSet<int>();
+                    List<int>? fromIds = null;
+                    while (true)
+                    {
+                        if (cur < 0 || cur >= allNodeStructs.Count || !treeIndexToNodeIds.ContainsKey(cur)
+                            || !visitedTi.Add(cur))
+                        {
+                            LogDebug($"[COMBO] Redirect tree[{ti}] node[{rId}]: unresolvable play target tree[{cur}] - transitions not re-sourced");
+                            break;
+                        }
+                        var ids = treeIndexToNodeIds[cur];
+                        var nextRedirect = ids.FirstOrDefault(id => redirectNodeIds.Contains(id), -1);
+                        if (nextRedirect < 0)
+                        {
+                            fromIds = ids.Any(id => conduitIds.Contains(id)) ? null : ids;
+                            if (fromIds == null)
+                                LogDebug($"[COMBO] Redirect tree[{ti}] node[{rId}]: play target tree[{cur}] is a conduit - transitions not re-sourced");
+                            break;
+                        }
+                        var nextNode = rawNodes.FirstOrDefault(n => n.Id == nextRedirect);
+                        if (nextNode == null) break;
+                        cur = nextNode.RedirectTargetTreeIndex;
+                    }
+                    if (fromIds != null && fromIds.Count > 0)
+                        reSource.Add((rId, fromIds));
+                }
+
+                int rowIndex = -1;
                 foreach (var elem in tArr.Value.Properties)
                 {
+                    rowIndex++;
                     if (elem is not StructProperty elemStruct ||
                         elemStruct.Value.StructType is not FStructFallback elemData)
                         continue;
 
                     var inputName = ExtractInputName(elemData);
                     var targetNodesProp = elemData.Properties.FirstOrDefault(p => p.Name.Text == "m_TargetNodes");
+
+                    // Branch-chance snapshot: index-aligned with the asset array (rows
+                    // without m_TargetNodes are captured too - export patches by row index).
+                    var snapRow = new TreeRowInfo
+                    {
+                        RowIndex = rowIndex,
+                        InputName = inputName,
+                        OriginalProbability =
+                            elemData.Properties.FirstOrDefault(p => p.Name.Text == "m_fProbability")?.Tag is FloatProperty probFp
+                                ? probFp.Value : 100f,
+                        ConditionPresent = elemData.Properties.Any(p => p.Name.Text == "m_ConditionInstance"),
+                        ConditionClass = ResolveConditionClass(elemData),
+                        ConditionInstanceIndex = ResolveConditionInstanceIndex(elemData),
+                        ConditionParamList = ResolveConditionParams(elemData)
+                    };
+                    snapRow.ConditionParams = (snapRow.ConditionParamList ?? new List<ConditionParamInfo>())
+                        .Select(pi => pi.Path + " = " + pi.Value).ToList();
+                    if (targetNodesProp?.Tag is MapProperty snapMap && snapMap.Value != null)
+                    {
+                        foreach (var kv in snapMap.Value.Properties)
+                        {
+                            snapRow.Keys.Add(kv.Key is ByteProperty snapBk ? snapBk.Value
+                                : kv.Key is IntProperty snapIk ? (byte)snapIk.Value
+                                : (byte)255);
+                            snapRow.TargetTreeIndices.Add(kv.Value is IntProperty snapIv ? snapIv.Value : -1);
+                        }
+                        snapRow.KeyCount = Math.Max(1, snapRow.Keys.Count);
+                    }
+                    treeNodeRows.Add(snapRow);
+
                     if (targetNodesProp?.Tag is not MapProperty targetMap)
                         continue;
 
@@ -1370,7 +2073,7 @@ public class AnimationParser : IDisposable
                                 var tgtName = rawNodes.FirstOrDefault(n => n.Id == targetIds.FirstOrDefault())?.Name ?? "?";
                                 if (!isMainChar)
                                     LogDebug($"[REDIRECT DEBUG] Transition: srcTreeIdx={ti}({srcName}) → tgtTreeIdx={targetTreeIndex}({tgtName}) input={inputName}");
-                                foreach (var srcId in sourceIds)
+                                foreach (var srcId in plainSources)
                                 {
                                     foreach (var tgtId in targetIds)
                                     {
@@ -1382,20 +2085,87 @@ public class AnimationParser : IDisposable
                                         });
                                     }
                                 }
+                                foreach (var (rId, fromIds) in reSource)
+                                {
+                                    foreach (var srcId in fromIds)
+                                    {
+                                        foreach (var tgtId in targetIds)
+                                        {
+                                            rawEdges.Add(new ComboEdge
+                                            {
+                                                FromNodeId = srcId,
+                                                ToNodeId = tgtId,
+                                                InputName = inputName,
+                                                OwnerRedirectNodeId = rId
+                                            });
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
+                if (treeNodeRows.Count > 0) treeRows[ti] = treeNodeRows;
+            }
+
+            var treeNodeConditions = new Dictionary<int, TreeNodeConditionInfo>();
+            for (int ti = 0; ti < allNodeStructs.Count; ti++)
+            {
+                var nodeData = allNodeStructs[ti];
+                var info = new TreeNodeConditionInfo();
+
+                if (nodeData.Properties.FirstOrDefault(p => p.Name.Text == "m_RequiredTags")?.Tag is StructProperty tagsSt
+                    && tagsSt.Value?.StructType is FGameplayTagContainer tagsContainer
+                    && tagsContainer.GameplayTags is { Length: > 0 })
+                {
+                    foreach (var gt in tagsContainer.GameplayTags)
+                    {
+                        var tagText = gt.TagName.Text;
+                        if (!string.IsNullOrEmpty(tagText) && !info.RequiredTags.Contains(tagText))
+                            info.RequiredTags.Add(tagText);
+                    }
+                }
+
+                if (nodeData.Properties.FirstOrDefault(p => p.Name.Text == "m_ConditionalAttacks")?.Tag is MapProperty caMap
+                    && caMap.Value != null && caMap.Value.Properties != null)
+                {
+                    foreach (var kv in caMap.Value.Properties)
+                    {
+                        var entry = new ConditionalAttackEntry();
+                        if (kv.Key is StructProperty kst && kst.Value?.StructType is FStructFallback keyData)
+                        {
+                            var tagNameProp = keyData.Properties.FirstOrDefault(p => p.Name.Text == "TagName");
+                            if (tagNameProp?.Tag is NameProperty tagNp)
+                                entry.TagName = tagNp.Value.Text;
+                        }
+                        if (kv.Value is StructProperty vst && vst.Value?.StructType is FStructFallback valData)
+                        {
+                            foreach (var ap in valData.Properties)
+                            {
+                                if (ap.Name.Text != "m_Attacks" || ap.Tag is not NameProperty apn)
+                                    continue;
+                                var path = apn.Value.Text;
+                                if (string.IsNullOrEmpty(path) || path == "None")
+                                    continue;
+                                var asset = path.Split('/')[^1].Split('.')[0];
+                                if (asset.Length > 0 && !entry.AttackNames.Contains(asset))
+                                    entry.AttackNames.Add(asset);
+                            }
+                        }
+                        if (entry.TagName.Length > 0 || entry.AttackNames.Count > 0)
+                            info.ConditionalAttacks.Add(entry);
+                    }
+                }
+
+                if (info.RequiredTags.Count > 0 || info.ConditionalAttacks.Count > 0)
+                    treeNodeConditions[ti] = info;
             }
 
             LogDebug($"[COMBO] Parsed {rawEdges.Count} raw edges");
 
             rawEdges = rawEdges.GroupBy(e => (e.FromNodeId, e.ToNodeId))
-                .Select(g => g.First()).ToList();
+                .Select(g => g.OrderByDescending(e => e.OwnerRedirectNodeId >= 0).First()).ToList();
             LogDebug($"[COMBO] After dedup: {rawEdges.Count} raw edges");
-
-            var conduitIds = new HashSet<int>(
-                rawNodes.Where(n => string.IsNullOrEmpty(n.AnimPath) && !n.IsRoot && !n.IsRedirect).Select(n => n.Id));
 
             var conduitEdges = new Dictionary<int, List<ComboEdge>>();
             foreach (var cid in conduitIds)
@@ -1438,7 +2208,8 @@ public class AnimationParser : IDisposable
                         {
                             FromNodeId = edge.FromNodeId,
                             ToNodeId = remapTarget.ToNodeId,
-                            InputName = string.IsNullOrEmpty(edge.InputName) ? remapTarget.InputName : edge.InputName
+                            InputName = string.IsNullOrEmpty(edge.InputName) ? remapTarget.InputName : edge.InputName,
+                            OwnerRedirectNodeId = edge.OwnerRedirectNodeId
                         });
                     }
                 }
@@ -1448,7 +2219,8 @@ public class AnimationParser : IDisposable
                     {
                         FromNodeId = edge.FromNodeId,
                         ToNodeId = edge.ToNodeId,
-                        InputName = edge.InputName
+                        InputName = edge.InputName,
+                        OwnerRedirectNodeId = edge.OwnerRedirectNodeId
                     });
                 }
             }
@@ -1467,7 +2239,32 @@ public class AnimationParser : IDisposable
                     ? "BareHands"
                     : weaponName;
             var graph = new ComboGraph { WeaponName = graphWeaponName, RawNodeCount = allNodeStructs.Count };
+            // Conduit routing for display: raw m_Nodes struct index -> the non-conduit
+            // nodes its passthrough reached (BFS above already collapsed conduit chains).
+            // conduitEdges is keyed in parse node-id space (direction variants shift ids
+            // off the struct index), so translate through rawNodes - rows and node
+            // TreeIndex both speak struct indices.
+            if (rawNodes.Count > 0)
+            {
+                var idToTree = rawNodes
+                    .GroupBy(n => n.Id)
+                    .ToDictionary(g => g.Key, g => g.First().TreeIndex);
+                foreach (var kv in conduitEdges)
+                {
+                    if (!idToTree.TryGetValue(kv.Key, out int conduitTree)) continue;
+                    var targets = kv.Value
+                        .Select(t => t.ToNodeId)
+                        .Where(id => idToTree.ContainsKey(id))
+                        .Select(id => idToTree[id])
+                        .Distinct()
+                        .OrderBy(x => x)
+                        .ToList();
+                    if (targets.Count > 0) graph.ConduitTargets[conduitTree] = targets;
+                }
+            }
             graph.Nodes.AddRange(keptNodes);
+            graph.TreeRows = treeRows;
+            graph.TreeNodeConditions = treeNodeConditions;
 
             foreach (var edge in finalEdges)
             {
@@ -1478,7 +2275,11 @@ public class AnimationParser : IDisposable
                     {
                         FromNodeId = newFrom,
                         ToNodeId = newTo,
-                        InputName = edge.InputName
+                        InputName = edge.InputName,
+                        OwnerRedirectNodeId = edge.OwnerRedirectNodeId >= 0
+                            && oldToNew.TryGetValue(edge.OwnerRedirectNodeId, out var newOwner)
+                                ? newOwner
+                                : -1
                     });
                 }
             }
@@ -1492,6 +2293,15 @@ public class AnimationParser : IDisposable
                         node.ResolvedRedirectNodeId = newTargetId;
                 }
                 graph.RedirectOriginalTargets[node.Id] = node.ResolvedRedirectNodeId;
+            }
+
+            // A' pass-through bookkeeping: which redirects had their rows re-sourced (export
+            // routes new links from the target attack node back to these).
+            foreach (var edge in graph.Edges)
+            {
+                if (edge.OwnerRedirectNodeId < 0) continue;
+                var owner = graph.Nodes.FirstOrDefault(n => n.Id == edge.OwnerRedirectNodeId);
+                if (owner != null) owner.OwnedContinuation = true;
             }
 
             foreach (var edge in graph.Edges)
@@ -1570,12 +2380,175 @@ public class AnimationParser : IDisposable
                 LogDebug("[COMBO] Injected Combat Stance root (barehands only)");
             }
 
+            ParseStartEntries(obj, graph, treeIndexToNodeIds, oldToNew, rawNodes);
+
             return graph;
         }
         catch (Exception ex)
         {
             LogDebug($"[COMBO] Error parsing combo tree: {ex.Message}");
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Parses m_ComboStartNodesContainer (AI start-state tickets) into graph.StartEntries.
+    /// Entry/transition display only - export re-reads the asset and patches by container index.
+    /// </summary>
+    private void ParseStartEntries(UObject obj, ComboGraph graph,
+        Dictionary<int, List<int>> treeIndexToNodeIds, Dictionary<int, int> oldToNew,
+        List<ComboNode> rawNodes)
+    {
+        try
+        {
+            var startProp = obj.Properties.FirstOrDefault(p => p.Name.Text == "m_ComboStartNodesContainer");
+            if (startProp?.Tag is not ArrayProperty startArr) return;
+
+            int vi = 0;
+            foreach (var elemTag in startArr.Value.Properties)
+            {
+                if (elemTag is not StructProperty entryStruct ||
+                    entryStruct.Value.StructType is not FStructFallback entryData)
+                {
+                    vi++;
+                    continue;
+                }
+
+                var entry = new StartEntry { VanillaIndex = vi };
+
+                if (entryData.Properties.FirstOrDefault(p => p.Name.Text == "m_EnumState")?.Tag is StructProperty enumState &&
+                    enumState.Value.StructType is FStructFallback enumData)
+                {
+                    entry.TicketEnumValue =
+                        (enumData.Properties.FirstOrDefault(p => p.Name.Text == "m_Value")?.Tag as NameProperty)?.Value.Text ?? "";
+                }
+
+                if (entryData.Properties.FirstOrDefault(p => p.Name.Text == "m_ComboTransitions")?.Tag is StructProperty comboTrans &&
+                    comboTrans.Value.StructType is FStructFallback transData)
+                {
+                    entry.Label =
+                        (transData.Properties.FirstOrDefault(p => p.Name.Text == "m_ParentNodeName")?.Tag as NameProperty)?.Value.Text ?? "";
+
+                    if (transData.Properties.FirstOrDefault(p => p.Name.Text == "m_Transitions")?.Tag is ArrayProperty tArr)
+                    {
+                        int ti = 0;
+                        foreach (var tTag in tArr.Value.Properties)
+                        {
+                            if (tTag is not StructProperty tStruct ||
+                                tStruct.Value.StructType is not FStructFallback tData)
+                            {
+                                ti++;
+                                continue;
+                            }
+
+                            var st = new StartTransition { OriginalIndex = ti };
+
+                            if (tData.Properties.FirstOrDefault(p => p.Name.Text == "m_ConditionInstance")?.Tag is ObjectProperty cond &&
+                                cond.Value != null)
+                            {
+                                var resolved = cond.Value.ResolvedObject;
+                                if (resolved != null)
+                                    entry.ConditionClass = resolved.Class?.Name.Text ?? resolved.Name.Text ?? "";
+                            }
+
+                            if (tData.Properties.FirstOrDefault(p => p.Name.Text == "m_fProbability")?.Tag is FloatProperty fp)
+                            {
+                                st.Probability = fp.Value;
+                                st.OriginalProbability = fp.Value;
+                            }
+
+                            if (tData.Properties.FirstOrDefault(p => p.Name.Text == "m_TargetNodes")?.Tag is MapProperty mp)
+                            {
+                                int kc = 0;
+                                var keyParts = new List<string>();
+                                foreach (var kv in mp.Value.Properties)
+                                {
+                                    byte key = kv.Key is ByteProperty bk ? bk.Value
+                                        : kv.Key is IntProperty ik ? (byte)ik.Value
+                                        : (byte)255;
+                                    if (kc == 0)
+                                        st.KeyByte = key;
+                                    int val = kv.Value is IntProperty iv ? iv.Value : -1;
+                                    if (val >= 0 && st.TargetTreeIndex < 0)
+                                        st.TargetTreeIndex = val;
+                                    st.Keys.Add(key);
+                                    st.KeyTargetTreeIndices.Add(val);
+                                    keyParts.Add($"{key}→{val}");
+                                    kc++;
+                                }
+                                st.KeyCount = Math.Max(1, kc);
+                                if (st.KeyCount > 1)
+                                    st.TargetSummary = string.Join(", ", keyParts);
+                            }
+
+                            // Per-key resolution: each key's target -> graph node id (or the
+                            // kept tree index for condensed/conduit targets).
+                            for (int ki = 0; ki < st.KeyTargetTreeIndices.Count; ki++)
+                            {
+                                int val = st.KeyTargetTreeIndices[ki];
+                                int id = -1;
+                                string nm = "";
+                                if (val >= 0 && treeIndexToNodeIds.TryGetValue(val, out var keyIds) && keyIds.Count > 0)
+                                {
+                                    int rawId = keyIds[0];
+                                    if (oldToNew.TryGetValue(rawId, out var keyGid))
+                                    {
+                                        id = keyGid;
+                                        nm = graph.Nodes.FirstOrDefault(n => n.Id == keyGid)?.Name ?? "";
+                                    }
+                                    else
+                                    {
+                                        // Conduit / condensed node: not a graph node, keep the tree index.
+                                        nm = rawNodes.FirstOrDefault(n => n.Id == rawId)?.Name ?? "";
+                                    }
+                                }
+                                st.KeyTargetNodeIds.Add(id);
+                                st.KeyTargetNames.Add(nm);
+                            }
+
+                            if (st.TargetTreeIndex >= 0 &&
+                                treeIndexToNodeIds.TryGetValue(st.TargetTreeIndex, out var ids) && ids.Count > 0)
+                            {
+                                int rawId = ids[0];
+                                if (oldToNew.TryGetValue(rawId, out var gid))
+                                {
+                                    st.TargetNodeId = gid;
+                                    st.TargetName = graph.Nodes.FirstOrDefault(n => n.Id == gid)?.Name ?? "";
+                                }
+                                else
+                                {
+                                    // Conduit / condensed node: not a graph node, keep the tree index.
+                                    st.TargetName = rawNodes.FirstOrDefault(n => n.Id == rawId)?.Name ?? "";
+                                }
+                            }
+
+                            st.OriginalTargetNodeId = st.TargetNodeId;
+                            st.OriginalTargetTreeIndex = st.TargetTreeIndex;
+                            st.OriginalTargetName = st.TargetName;
+                            st.OriginalKeyTargetTreeIndices = new List<int>(st.KeyTargetTreeIndices);
+                            entry.Transitions.Add(st);
+                            ti++;
+                        }
+                    }
+                }
+
+                entry.PhaseName =
+                    (entryData.Properties.FirstOrDefault(p => p.Name.Text == "m_PhaseName")?.Tag as NameProperty)?.Value.Text ?? "";
+                if (entryData.Properties.FirstOrDefault(p => p.Name.Text == "m_uiMCDominationFlags")?.Tag is UInt32Property uf)
+                    entry.MCDominationFlags = uf.Value;
+
+                graph.StartEntries.Add(entry);
+                vi++;
+            }
+
+            if (graph.StartEntries.Count > 0)
+                LogDebug($"[COMBO] Parsed {graph.StartEntries.Count} start entries: " +
+                         string.Join(", ", graph.StartEntries.Select(e =>
+                             $"{e.Label}[{e.TicketEnumValue}::{e.Transitions.Count}]")));
+        }
+        catch (Exception ex)
+        {
+            LogDebug($"[COMBO] Start entries parse failed: {ex.Message}");
         }
     }
 
@@ -1683,7 +2656,17 @@ public class AnimationParser : IDisposable
 
         var baseDisplayName = nodeName;
         if (string.IsNullOrEmpty(nodeName) || nodeName == "None")
-            baseDisplayName = $"Node_{treeIndex}";
+        {
+            var transStruct = nodeStruct.Properties.FirstOrDefault(p => p.Name.Text == "m_Transitions")?.Tag as StructProperty;
+            var transFallback = transStruct?.Value?.StructType as FStructFallback;
+            var parentName = transFallback?.Properties
+                .FirstOrDefault(p => p.Name.Text == "m_ParentNodeName")?.Tag as NameProperty;
+            var pl = parentName?.Value.Text ?? "";
+            var clean = new System.Text.StringBuilder(pl.Length);
+            foreach (char c in pl) if (!char.IsControl(c)) clean.Append(c);
+            baseDisplayName = clean.ToString().Trim();
+            if (baseDisplayName.Length == 0) baseDisplayName = $"Node_{treeIndex}";
+        }
         else
             baseDisplayName = nodeName
                 .Replace("MainChar_", "")
@@ -1731,6 +2714,38 @@ public class AnimationParser : IDisposable
         if (redirectProp?.Tag is IntProperty redirectInt && redirectInt.Value >= 0)
             redirectTarget = redirectInt.Value;
 
+        bool isActionNode = false, isEventNode = false;
+        string actionClass = "", eventName = "";
+        try
+        {
+            if (nodeStruct.Properties.FirstOrDefault(p => p.Name.Text == "m_AIAttackAction")?.Tag is StructProperty actionSp &&
+                actionSp.Value?.StructType is FStructFallback actionData)
+            {
+                var classProp = actionData.Properties.FirstOrDefault(p => p.Name.Text == "m_DefaultClassObject")?.Tag as ObjectProperty;
+                var resolved = classProp?.Value?.ResolvedObject;
+                if (resolved != null)
+                {
+                    isActionNode = true;
+                    actionClass = resolved.Name.Text ?? "";
+                    if (actionClass.EndsWith("_C", StringComparison.Ordinal)) actionClass = actionClass[..^2];
+                }
+            }
+            if (nodeStruct.Properties.FirstOrDefault(p => p.Name.Text == "m_Event")?.Tag is ObjectProperty eventProp)
+            {
+                var resolved = eventProp.Value?.ResolvedObject;
+                if (resolved != null)
+                {
+                    isEventNode = true;
+                    eventName = resolved.Name.Text ?? "";
+                    if (eventName.EndsWith("_C", StringComparison.Ordinal)) eventName = eventName[..^2];
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            LogDebug($"[COMBO] tree={treeIndex} action/event resolve failed: {ex.Message}");
+        }
+
         if (attacks.Count == 0 || redirectTarget >= 0)
         {
             return new List<ComboNode>
@@ -1748,6 +2763,10 @@ public class AnimationParser : IDisposable
                     DirectionLabel = "",
                     IsRedirect = redirectTarget >= 0,
                     RedirectTargetTreeIndex = redirectTarget,
+                    IsActionNode = isActionNode,
+                    ActionClass = actionClass,
+                    IsEventNode = isEventNode,
+                    EventName = eventName,
                 }
             };
         }
@@ -1773,18 +2792,33 @@ public class AnimationParser : IDisposable
                 DisplayName = displayName,
                 IsRoot = isRoot,
                 DirectionLabel = dir,
+                IsActionNode = isActionNode,
+                ActionClass = actionClass,
+                IsEventNode = isEventNode,
+                EventName = eventName,
             });
         }
 
         return variants;
     }
 
-    public List<ModdedComboNodeInfo> ReadModdedComboNodes(string uassetPath)
+    public List<ModdedComboNodeInfo> ReadModdedComboNodes(string uassetPath, string? contentRoot = null)
     {
         var result = new List<ModdedComboNodeInfo>();
         try
         {
             var asset = new UAsset(uassetPath, UAssetAPI.UnrealTypes.EngineVersion.VER_UE4_26, null, CustomSerializationFlags.None);
+            string contentRel = "";
+            if (!string.IsNullOrEmpty(contentRoot))
+            {
+                try
+                {
+                    contentRel = Path.GetRelativePath(contentRoot, uassetPath).Replace('\\', '/');
+                    if (contentRel.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
+                        contentRel = contentRel[..^7];
+                }
+                catch { contentRel = ""; }
+            }
             ArrayPropertyData? nodesArr = null;
             foreach (var exp in asset.Exports)
             {
@@ -1805,7 +2839,7 @@ public class AnimationParser : IDisposable
             {
                 if (nodesArr.Value[i] is not StructPropertyData nodeSp || nodeSp.Value == null) continue;
 
-                var info = new ModdedComboNodeInfo { TreeIndex = i };
+                var info = new ModdedComboNodeInfo { TreeIndex = i, ModdedContentRel = contentRel };
                 var nameProp = nodeSp.Value.OfType<NamePropertyData>()
                     .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Name");
                 info.Name = nameProp?.Value?.Value?.ToString() ?? "";
@@ -1815,6 +2849,24 @@ public class AnimationParser : IDisposable
                     .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_NodeRedirect");
                 if (redirectProp != null && redirectProp.Value >= 0)
                     info.RedirectTargetTreeIndex = redirectProp.Value;
+
+                // AI payload: prefer the action class, fall back to the event object/class
+                // name - same precedence the vanilla parser uses for node badges.
+                var actionClass = ActionNodeCatalog.ActionClassName(asset, nodeSp);
+                if (!string.IsNullOrEmpty(actionClass))
+                {
+                    info.AiKind = "Action";
+                    info.AiClass = actionClass;
+                }
+                else
+                {
+                    var evName = ActionNodeCatalog.EventClassName(asset, nodeSp);
+                    if (!string.IsNullOrEmpty(evName))
+                    {
+                        info.AiKind = "Event";
+                        info.AiClass = evName;
+                    }
+                }
 
                 var attackInfos = nodeSp.Value.OfType<StructPropertyData>()
                     .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_AttackInfos");
@@ -1840,44 +2892,81 @@ public class AnimationParser : IDisposable
                 }
 
                 // Transitions: nested m_Transitions struct -> array of { m_eInputTransition,
-                // m_TargetNodes map } (mirrors ParseComboTreeFromObject, but on PropertyData).
+                // m_fProbability, m_ConditionInstance, m_TargetNodes map } (mirrors
+                // ParseComboTreeFromObject, but on PropertyData). Rows are snapshotted
+                // index-aligned for the chance/condition diff; the flat Transitions list
+                // keeps the per-key shape the edge-surfacing pass consumes.
                 var transStructProp = nodeSp.Value.OfType<StructPropertyData>()
                     .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Transitions");
                 var transArrProp = transStructProp?.Value?.OfType<ArrayPropertyData>()
                     .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Transitions");
                 if (transArrProp?.Value != null)
                 {
+                    int rowIndex = -1;
                     foreach (var tElem in transArrProp.Value)
                     {
+                        rowIndex++;
                         if (tElem is not StructPropertyData tSp || tSp.Value == null) continue;
                         var inputProp = tSp.Value.OfType<EnumPropertyData>()
                             .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_eInputTransition");
                         string inputName = InputNameFromEnumRaw(inputProp?.Value?.Value?.ToString());
-                        var targetsProp = tSp.Value.OfType<MapPropertyData>()
-                            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_TargetNodes");
-                        if (targetsProp?.Value == null) continue;
-                        try
+
+                        var row = new ModdedTransitionRowInfo { RowIndex = rowIndex, InputName = inputName };
+                        var probProp = tSp.Value.OfType<FloatPropertyData>()
+                            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_fProbability");
+                        row.Probability = probProp?.Value ?? 100f;
+
+                        var condProp = tSp.Value.OfType<ObjectPropertyData>()
+                            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_ConditionInstance");
+                        int condIdx = condProp?.Value?.Index ?? 0;
+                        if (condIdx > 0 && condIdx <= asset.Exports.Count)
                         {
-                            foreach (System.Collections.DictionaryEntry kv in (System.Collections.IDictionary)targetsProp.Value)
+                            row.ConditionInstanceExport = condIdx;
+                            row.ConditionClass = ConditionCatalog.ExportClassName(asset, condIdx - 1);
+                            if (asset.Exports[condIdx - 1] is UAssetAPI.ExportTypes.NormalExport condExp &&
+                                condExp.Data != null)
                             {
-                                int targetTreeIndex = kv.Value switch
-                                {
-                                    IntPropertyData ipd => ipd.Value,
-                                    BytePropertyData bpd => bpd.Value,
-                                    _ => -1
-                                };
-                                if (targetTreeIndex < 0) continue;
-                                info.Transitions.Add(new ModdedTransitionInfo
-                                {
-                                    InputName = inputName,
-                                    TargetTreeIndex = targetTreeIndex
-                                });
+                                row.ConditionParams = ConditionCatalog.CollectParams(asset, condExp.Data);
                             }
                         }
-                        catch (Exception tEx)
+                        else if (condIdx < 0)
                         {
-                            LogDebug($"[IMPORT] Transition target read failed at tree[{info.TreeIndex}]: {tEx.Message}");
+                            row.ConditionClass = ActionNodeCatalog.ResolveObjectName(asset, condProp?.Value) ?? "";
                         }
+
+                        var targetsProp = tSp.Value.OfType<MapPropertyData>()
+                            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_TargetNodes");
+                        if (targetsProp?.Value != null)
+                        {
+                            try
+                            {
+                                foreach (System.Collections.DictionaryEntry kv in (System.Collections.IDictionary)targetsProp.Value)
+                                {
+                                    byte key = kv.Key is BytePropertyData bkpd ? bkpd.Value
+                                        : kv.Key is IntPropertyData ikpd ? (byte)ikpd.Value
+                                        : (byte)255;
+                                    int targetTreeIndex = kv.Value switch
+                                    {
+                                        IntPropertyData ipd => ipd.Value,
+                                        BytePropertyData bpd => bpd.Value,
+                                        _ => -1
+                                    };
+                                    row.Keys.Add(key);
+                                    row.TargetTreeIndices.Add(targetTreeIndex);
+                                    if (targetTreeIndex < 0) continue;
+                                    info.Transitions.Add(new ModdedTransitionInfo
+                                    {
+                                        InputName = inputName,
+                                        TargetTreeIndex = targetTreeIndex
+                                    });
+                                }
+                            }
+                            catch (Exception tEx)
+                            {
+                                LogDebug($"[IMPORT] Transition target read failed at tree[{info.TreeIndex}]: {tEx.Message}");
+                            }
+                        }
+                        info.TransitionRows.Add(row);
                     }
                 }
 
@@ -1889,6 +2978,109 @@ public class AnimationParser : IDisposable
         catch (Exception ex)
         {
             LogDebug($"[IMPORT] ReadModdedComboNodes failed for {uassetPath}: {ex.Message}");
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Reads m_ComboStartNodesContainer from a modded combo file (UAssetAPI walk
+    /// mirroring ParseStartEntries) so the import diff can overwrite probabilities and
+    /// targets on vanilla-matched entries. Structural adds/removes are the caller's
+    /// log-only concern.
+    /// </summary>
+    public List<ModdedStartEntryInfo> ReadModdedStartEntries(string uassetPath)
+    {
+        var result = new List<ModdedStartEntryInfo>();
+        try
+        {
+            var asset = new UAsset(uassetPath, UAssetAPI.UnrealTypes.EngineVersion.VER_UE4_26, null, CustomSerializationFlags.None);
+            ArrayPropertyData? cont = null;
+            foreach (var exp in asset.Exports)
+            {
+                if (exp is not UAssetAPI.ExportTypes.NormalExport ne || ne.Data == null) continue;
+                cont = ne.Data.OfType<ArrayPropertyData>()
+                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_ComboStartNodesContainer");
+                if (cont != null) break;
+            }
+            if (cont?.Value == null) return result;
+
+            foreach (var elem in cont.Value)
+            {
+                if (elem is not StructPropertyData en || en.Value == null) continue;
+                var entry = new ModdedStartEntryInfo();
+
+                var enumState = en.Value.OfType<StructPropertyData>()
+                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_EnumState");
+                entry.TicketEnumValue = enumState?.Value?.OfType<NamePropertyData>()
+                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Value")?.Value?.Value?.ToString() ?? "";
+
+                var transStruct = en.Value.OfType<StructPropertyData>()
+                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_ComboTransitions");
+                entry.Label = transStruct?.Value?.OfType<NamePropertyData>()
+                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_ParentNodeName")?.Value?.Value?.ToString() ?? "";
+
+                var rows = transStruct?.Value?.OfType<ArrayPropertyData>()
+                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Transitions");
+                if (rows?.Value != null)
+                {
+                    foreach (var rElem in rows.Value)
+                    {
+                        if (rElem is not StructPropertyData rSp || rSp.Value == null) continue;
+                        var row = new ModdedStartTransitionInfo();
+                        var fp = rSp.Value.OfType<FloatPropertyData>()
+                            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_fProbability");
+                        row.Probability = fp?.Value ?? 100f;
+
+                        var cond = rSp.Value.OfType<ObjectPropertyData>()
+                            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_ConditionInstance");
+                        int cIdx = cond?.Value?.Index ?? 0;
+                        if (cIdx > 0 && cIdx <= asset.Exports.Count)
+                            row.ConditionClass = ConditionCatalog.ExportClassName(asset, cIdx - 1);
+                        else if (cIdx < 0)
+                            row.ConditionClass = ActionNodeCatalog.ResolveObjectName(asset, cond?.Value) ?? "";
+
+                        var map = rSp.Value.OfType<MapPropertyData>()
+                            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_TargetNodes");
+                        if (map?.Value != null)
+                        {
+                            try
+                            {
+                                foreach (System.Collections.DictionaryEntry kv in (System.Collections.IDictionary)map.Value)
+                                {
+                                    byte key = kv.Key is BytePropertyData bkpd ? bkpd.Value
+                                        : kv.Key is IntPropertyData ikpd ? (byte)ikpd.Value
+                                        : (byte)255;
+                                    int val = kv.Value is IntPropertyData ivpd ? ivpd.Value : -1;
+                                    row.Keys.Add(key);
+                                    row.KeyTargetTreeIndices.Add(val);
+                                }
+                            }
+                            catch (Exception rEx)
+                            {
+                                LogDebug($"[IMPORT] Start-entry target read failed: {rEx.Message}");
+                            }
+                        }
+
+                        if (string.IsNullOrEmpty(entry.ConditionClass) && !string.IsNullOrEmpty(row.ConditionClass))
+                            entry.ConditionClass = row.ConditionClass;
+                        entry.Transitions.Add(row);
+                    }
+                }
+
+                entry.PhaseName = en.Value.OfType<NamePropertyData>()
+                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_PhaseName")?.Value?.Value?.ToString() ?? "";
+                var flags = en.Value.OfType<UInt32PropertyData>()
+                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_uiMCDominationFlags");
+                if (flags != null)
+                    entry.MCDominationFlags = flags.Value;
+                result.Add(entry);
+            }
+
+            LogDebug($"[IMPORT] ReadModdedStartEntries: {result.Count} entries from {Path.GetFileName(uassetPath)}");
+        }
+        catch (Exception ex)
+        {
+            LogDebug($"[IMPORT] ReadModdedStartEntries failed for {uassetPath}: {ex.Message}");
         }
         return result;
     }
@@ -2089,14 +3281,19 @@ public class AnimationParser : IDisposable
         return display;
     }
 
-    public (int moveChanges, int retargetChanges, int unmatched, int surfaced) ApplyModdedComboToVanilla(
-        ComboGraph vanillaGraph, List<ModdedComboNodeInfo> moddedNodes, string weaponName)
+    public static string PrettifyNodeName(string dbPath) =>
+        PrettifyAttackName(dbPath, ExtractDirectionLabel(dbPath));
+
+    public ModdedApplyResult ApplyModdedComboToVanilla(
+        ComboGraph vanillaGraph, List<ModdedComboNodeInfo> moddedNodes, string weaponName,
+        List<ModdedStartEntryInfo>? moddedStartEntries = null)
     {
         bool isMainChar = string.Equals(weaponName, "BareHands", StringComparison.OrdinalIgnoreCase)
                        || string.Equals(weaponName, "MainChar", StringComparison.OrdinalIgnoreCase)
                        || weaponName.StartsWith("MainChar_", StringComparison.OrdinalIgnoreCase);
 
         int moveChanges = 0, retargetChanges = 0, unmatched = 0;
+        var result = new ModdedApplyResult();
 
         var vanillaMoves = vanillaGraph.Nodes
             .Where(n => n.TreeIndex >= 0 && !n.IsRedirect && !n.IsRoot)
@@ -2306,6 +3503,10 @@ public class AnimationParser : IDisposable
                 vNode.IsImportedFromMod = true;
                 moveChanges++;
             }
+
+            // AI payload diff (m_AIAttackAction class / m_Event) - applies regardless of
+            // whether the anim pass matched; display + surfaced-node export path.
+            ApplyAiPayloadDiff(vanillaList, modded, result);
         }
 
         if (!isMainChar)
@@ -2334,6 +3535,13 @@ public class AnimationParser : IDisposable
                 }
 
                 vRedir.ResolvedRedirectNodeId = targetNode.Id;
+                // A' retarget: rows re-sourced onto the OLD play target belong to this
+                // redirect - move them to the new play target so display and export
+                // owner-writeback both follow the retarget.
+                var ownedRows = vanillaGraph.Edges
+                    .Where(e => e.OwnerRedirectNodeId == vRedir.Id && e.FromNodeId != targetNode.Id)
+                    .ToList();
+                vanillaGraph.Edges.RemoveAll(e => e.OwnerRedirectNodeId == vRedir.Id);
                 vanillaGraph.Edges.RemoveAll(e => e.FromNodeId == vRedir.Id);
                 vanillaGraph.Edges.Add(new ComboEdge
                 {
@@ -2342,14 +3550,423 @@ public class AnimationParser : IDisposable
                     InputName = "",
                     IsRedirect = true
                 });
+                foreach (var owned in ownedRows)
+                    vanillaGraph.Edges.Add(new ComboEdge
+                    {
+                        FromNodeId = targetNode.Id,
+                        ToNodeId = owned.ToNodeId,
+                        InputName = owned.InputName,
+                        OwnerRedirectNodeId = vRedir.Id
+                    });
                 retargetChanges++;
             }
         }
 
         int surfaced = SurfaceModdedOnlyNodes(vanillaGraph, moddedNodes, usedModded, groupToModded, isMainChar);
 
-        LogDebug($"[IMPORT] ApplyModdedComboToVanilla: {moveChanges} moves, {retargetChanges} retargets, {unmatched} unmatched, {surfaced} surfaced ({weaponName})");
-        return (moveChanges, retargetChanges, unmatched, surfaced);
+        result.MoveChanges = moveChanges;
+        result.RetargetChanges = retargetChanges;
+        result.Unmatched = unmatched;
+        result.Surfaced = surfaced;
+
+        var modToVanilla = BuildModToVanillaMap(vanillaGraph, groupToModded, moddedNodes);
+        ApplyModdedRowOverrides(vanillaGraph, moddedNodes, groupToModded, modToVanilla, result);
+        if (!isMainChar && moddedStartEntries is { Count: > 0 })
+            ApplyModdedStartEntries(vanillaGraph, moddedStartEntries, modToVanilla, result);
+
+        LogDebug($"[IMPORT] ApplyModdedComboToVanilla: {moveChanges} moves, {retargetChanges} retargets, {unmatched} unmatched, {surfaced} surfaced, {result.AiChanges} AI payload(s), {result.ChanceOverrides} chance override(s), {result.CondClears + result.CondInstances} cond rewire(s), {result.CondParamWrites} cond param(s), {result.StartTransitionsChanged} start row(s) ({weaponName})");
+        return result;
+    }
+
+    /// <summary>
+    /// Overwrites the matched vanilla node's AI payload fields when the modded node
+    /// carries a different action class / event name. A mod payload REMOVAL keeps the
+    /// vanilla payload (removing AI silently would break the tree) and is counted.
+    /// </summary>
+    private void ApplyAiPayloadDiff(List<ComboNode> vanillaList, ModdedComboNodeInfo modded, ModdedApplyResult result)
+    {
+        if (string.IsNullOrEmpty(modded.AiKind))
+        {
+            foreach (var vNode in vanillaList.Where(n => n.IsActionNode || n.IsEventNode))
+            {
+                result.AiRemovalsSkipped++;
+                LogDebug($"[IMPORT] AI payload removed on '{vNode.Name}' tree[{vNode.TreeIndex}] - keeping vanilla ({(vNode.IsActionNode ? vNode.ActionClass : vNode.EventName)})");
+            }
+            return;
+        }
+
+        string wantToken = NormalizeAiToken(modded.AiClass);
+        if (wantToken.Length == 0) return;
+
+        foreach (var vNode in vanillaList)
+        {
+            if (modded.AiKind == "Action")
+            {
+                if (vNode.IsActionNode &&
+                    string.Equals(NormalizeAiToken(vNode.ActionClass), wantToken, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                vNode.IsActionNode = true;
+                vNode.IsEventNode = false;
+                vNode.EventName = "";
+                vNode.ActionClass = modded.AiClass;
+                vNode.IsImportedFromMod = true;
+                result.AiChanges++;
+            }
+            else
+            {
+                if (vNode.IsEventNode &&
+                    string.Equals(NormalizeAiToken(vNode.EventName), wantToken, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                vNode.IsEventNode = true;
+                vNode.IsActionNode = false;
+                vNode.ActionClass = "";
+                vNode.EventName = modded.AiClass;
+                vNode.IsImportedFromMod = true;
+                result.AiChanges++;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Class/object-name comparison token: strips _Copy_ suffixes, trailing _&lt;digits&gt;
+    /// instance suffixes (BP_X_C_0), and a final _C - so a mod class import
+    /// ("BP_X_C"), its generated class, and the vanilla parser's already-stripped name
+    /// all normalize to the same token.
+    /// </summary>
+    private static string NormalizeAiToken(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "";
+        var s = name!.Trim();
+        int cut = s.IndexOf("_Copy_", StringComparison.Ordinal);
+        if (cut > 0) s = s[..cut];
+        for (int pass = 0; pass < 2; pass++)
+        {
+            int underscore = s.LastIndexOf('_');
+            if (underscore > 0 && underscore + 1 < s.Length &&
+                int.TryParse(s[(underscore + 1)..], out _))
+                s = s[..underscore];
+        }
+        if (s.EndsWith("_C", StringComparison.Ordinal))
+            s = s[..^2];
+        return s;
+    }
+
+    /// <summary>
+    /// modded tree index -> vanilla tree index for target-space translation. Attack
+    /// nodes come from the name/index match; unmatched indices map identity only when
+    /// the vanilla side of that index was not claimed by a different modded node.
+    /// </summary>
+    private static Dictionary<int, int> BuildModToVanillaMap(
+        ComboGraph graph, Dictionary<int, ModdedComboNodeInfo> groupToModded,
+        List<ModdedComboNodeInfo> moddedNodes)
+    {
+        var map = new Dictionary<int, int>();
+        var claimedVanilla = groupToModded.Keys.ToHashSet();
+        foreach (var (vTree, m) in groupToModded)
+            map[m.TreeIndex] = vTree;
+        foreach (var m in moddedNodes)
+        {
+            if (map.ContainsKey(m.TreeIndex)) continue;
+            if (claimedVanilla.Contains(m.TreeIndex)) continue;
+            if (graph.Nodes.Any(n => n.TreeIndex == m.TreeIndex))
+                map[m.TreeIndex] = m.TreeIndex;
+        }
+        return map;
+    }
+
+    /// <summary>
+    /// Diffs modded transition rows against the vanilla TreeRows snapshot and writes
+    /// the delta into the graph's override maps. Rows are aligned by index with a
+    /// signature guard (InputName + key set + verifiable targets through the
+    /// mod->vanilla tree map); a mismatch means the mod restructured the rows and that
+    /// node's chance/condition diff is skipped with a log. Condition re-homing: a
+    /// vanilla row's condition is overwritten only by param edits on the same class; a
+    /// mod-added condition reuses a vanilla same-class export (SetInstance); no match
+    /// -> skipped + logged (raw mod export indices are never copied).
+    /// </summary>
+    private void ApplyModdedRowOverrides(
+        ComboGraph graph, List<ModdedComboNodeInfo> moddedNodes,
+        Dictionary<int, ModdedComboNodeInfo> groupToModded,
+        Dictionary<int, int> modToVanilla, ModdedApplyResult result)
+    {
+        if (graph.TreeRows.Count == 0) return;
+
+        // Candidate same-class vanilla condition exports + their baseline params,
+        // for SetInstance re-homing of mod-added conditions.
+        var vanillaCondByClass = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var vanillaCondParamsByExport = new Dictionary<int, List<ConditionParamInfo>>();
+        foreach (var (_, rows) in graph.TreeRows)
+        {
+            foreach (var r in rows)
+            {
+                if (r.ConditionInstanceIndex <= 0) continue;
+                var tok = NormalizeAiToken(r.ConditionClass);
+                if (tok.Length > 0 && !vanillaCondByClass.ContainsKey(tok))
+                    vanillaCondByClass[tok] = r.ConditionInstanceIndex;
+                if (r.ConditionParamList is { Count: > 0 } &&
+                    !vanillaCondParamsByExport.ContainsKey(r.ConditionInstanceIndex))
+                    vanillaCondParamsByExport[r.ConditionInstanceIndex] = r.ConditionParamList;
+            }
+        }
+
+        bool SignatureMatches(TreeRowInfo vRow, ModdedTransitionRowInfo mRow)
+        {
+            if (!string.Equals(vRow.InputName, mRow.InputName, StringComparison.OrdinalIgnoreCase))
+                return false;
+            if (vRow.Keys.Count != mRow.Keys.Count) return false;
+            for (int i = 0; i < mRow.Keys.Count; i++)
+                if (vRow.Keys[i] != mRow.Keys[i]) return false;
+            for (int i = 0; i < mRow.Keys.Count && i < mRow.TargetTreeIndices.Count; i++)
+            {
+                int mt = mRow.TargetTreeIndices[i];
+                if (mt < 0) continue;
+                if (!modToVanilla.TryGetValue(mt, out int vt)) continue;
+                if (i < vRow.TargetTreeIndices.Count && vRow.TargetTreeIndices[i] >= 0 &&
+                    vRow.TargetTreeIndices[i] != vt)
+                    return false;
+            }
+            return true;
+        }
+
+        void DiffNode(int vTree, ModdedComboNodeInfo m)
+        {
+            if (!graph.TreeRows.TryGetValue(vTree, out var vRows)) return;
+            if (m.TransitionRows.Count == 0 && vRows.Count == 0) return;
+
+            // Row-count mismatch = restructured rows (overhaul mods) - skip the node.
+            if (m.TransitionRows.Count != vRows.Count)
+            {
+                if (m.TransitionRows.Count > 0 || vRows.Count > 0)
+                {
+                    result.CondSkipped++;
+                    LogDebug($"[IMPORT] ROWS SKIPPED (restructured) tree[{vTree}]: {vRows.Count} vanilla vs {m.TransitionRows.Count} modded row(s)");
+                }
+                return;
+            }
+
+            for (int rowIdx = 0; rowIdx < vRows.Count; rowIdx++)
+            {
+                var vRow = vRows[rowIdx];
+                var mRow = m.TransitionRows[rowIdx];
+                if (!SignatureMatches(vRow, mRow))
+                {
+                    result.CondSkipped++;
+                    LogDebug($"[IMPORT] ROWS SKIPPED (restructured) tree[{vTree}] row {rowIdx}: signature mismatch");
+                    return;
+                }
+
+                if (Math.Abs(mRow.Probability - vRow.OriginalProbability) > 0.001f)
+                {
+                    if (!graph.TreeRowProbabilityOverrides.TryGetValue(vTree, out var pMap))
+                        graph.TreeRowProbabilityOverrides[vTree] = pMap = new Dictionary<int, float>();
+                    pMap[rowIdx] = mRow.Probability;
+                    result.ChanceOverrides++;
+                }
+
+                bool vHasCond = vRow.ConditionInstanceIndex > 0;
+                bool mHasCond = !string.IsNullOrEmpty(mRow.ConditionClass);
+                if (vHasCond && !mHasCond)
+                {
+                    if (!graph.TreeRowConditionOverrides.TryGetValue(vTree, out var cMap))
+                        graph.TreeRowConditionOverrides[vTree] = cMap = new Dictionary<int, TreeRowConditionEdit>();
+                    cMap[rowIdx] = new TreeRowConditionEdit { ClearCondition = true };
+                    result.CondClears++;
+                }
+                else if (vHasCond && mHasCond)
+                {
+                    if (!string.Equals(NormalizeAiToken(vRow.ConditionClass), NormalizeAiToken(mRow.ConditionClass),
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        result.CondSkipped++;
+                        LogDebug($"[IMPORT] COND SKIP (class change) tree[{vTree}] row {rowIdx}: {vRow.ConditionClass} -> {mRow.ConditionClass}");
+                        continue;
+                    }
+                    result.CondParamWrites += ApplyConditionParamDiff(
+                        graph, vRow.ConditionInstanceIndex, vRow.ConditionParamList, mRow.ConditionParams);
+                }
+                else if (!vHasCond && mHasCond)
+                {
+                    var tok = NormalizeAiToken(mRow.ConditionClass);
+                    if (tok.Length > 0 && vanillaCondByClass.TryGetValue(tok, out int shareIdx))
+                    {
+                        if (!graph.TreeRowConditionOverrides.TryGetValue(vTree, out var cMap))
+                            graph.TreeRowConditionOverrides[vTree] = cMap = new Dictionary<int, TreeRowConditionEdit>();
+                        cMap[rowIdx] = new TreeRowConditionEdit
+                        {
+                            SetInstance = shareIdx,
+                            CloneClass = mRow.ConditionClass
+                        };
+                        result.CondInstances++;
+                        vanillaCondParamsByExport.TryGetValue(shareIdx, out var baseline);
+                        result.CondParamWrites += ApplyConditionParamDiff(
+                            graph, shareIdx, baseline, mRow.ConditionParams);
+                    }
+                    else
+                    {
+                        result.CondSkipped++;
+                        LogDebug($"[IMPORT] COND SKIP tree[{vTree}] row {rowIdx}: no vanilla {mRow.ConditionClass} export to share");
+                    }
+                }
+            }
+        }
+
+        foreach (var (vTree, m) in groupToModded)
+            DiffNode(vTree, m);
+
+        // Redirect structs keep their own rows (A' pass-through sources) - pair by
+        // tree index and run the same guarded diff.
+        var matchedModTrees = groupToModded.Values.Select(m => m.TreeIndex).ToHashSet();
+        var vanillaRedirectTrees = graph.Nodes
+            .Where(n => n.IsRedirect && n.TreeIndex >= 0)
+            .Select(n => n.TreeIndex)
+            .Distinct();
+        foreach (var vTree in vanillaRedirectTrees)
+        {
+            if (matchedModTrees.Contains(vTree)) continue;
+            var m = moddedNodes.FirstOrDefault(x => x.TreeIndex == vTree && x.RedirectTargetTreeIndex >= 0);
+            if (m == null) continue;
+            DiffNode(vTree, m);
+        }
+    }
+
+    /// <summary>Writes differing modded condition params (same dotted paths) into the
+    /// export-keyed override map. Returns the number of param writes.</summary>
+    private static int ApplyConditionParamDiff(
+        ComboGraph graph, int exportIdx1Based,
+        List<ConditionParamInfo>? baseline, List<ConditionParamInfo> moddedParams)
+    {
+        if (exportIdx1Based <= 0 || moddedParams.Count == 0) return 0;
+        var baseMap = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var p in baseline ?? Enumerable.Empty<ConditionParamInfo>())
+            if (!string.IsNullOrEmpty(p.Path))
+                baseMap[p.Path] = p.Value;
+
+        Dictionary<string, string>? writes = null;
+        foreach (var p in moddedParams)
+        {
+            if (string.IsNullOrEmpty(p.Path)) continue;
+            if (baseMap.TryGetValue(p.Path, out var bv) &&
+                string.Equals(bv, p.Value, StringComparison.Ordinal))
+                continue;
+            (writes ??= new Dictionary<string, string>(StringComparer.Ordinal))[p.Path] = p.Value;
+        }
+        if (writes == null || writes.Count == 0) return 0;
+
+        if (!graph.TreeConditionParamOverrides.TryGetValue(exportIdx1Based, out var map))
+            graph.TreeConditionParamOverrides[exportIdx1Based] = map = new Dictionary<string, string>();
+        foreach (var kv in writes)
+            map[kv.Key] = kv.Value;
+        return writes.Count;
+    }
+
+    /// <summary>
+    /// Overwrites current (non-Original*) fields on vanilla-matched start entries:
+    /// probabilities and per-key targets remapped through the mod->vanilla tree map.
+    /// Original* baselines stay untouched so the change list and export diff keep
+    /// working. Entries matched by ticket, then label; unmatched mod entries are
+    /// structural adds (log-only MVP) and unmatched vanilla entries are left alone.
+    /// </summary>
+    private void ApplyModdedStartEntries(
+        ComboGraph graph, List<ModdedStartEntryInfo> moddedEntries,
+        Dictionary<int, int> modToVanilla, ModdedApplyResult result)
+    {
+        var vanillaEntries = graph.StartEntries ?? new List<StartEntry>();
+        if (vanillaEntries.Count == 0)
+        {
+            result.StartStructuralSkipped += moddedEntries.Count;
+            foreach (var m in moddedEntries)
+                LogDebug($"[IMPORT] START ADD (skipped, no vanilla entries): '{m.Label}' [{m.TicketEnumValue}]");
+            return;
+        }
+
+        var used = new HashSet<StartEntry>();
+        var byTicket = new Dictionary<string, StartEntry>(StringComparer.OrdinalIgnoreCase);
+        foreach (var v in vanillaEntries)
+            if (!string.IsNullOrEmpty(v.TicketEnumValue) && !byTicket.ContainsKey(v.TicketEnumValue))
+                byTicket[v.TicketEnumValue] = v;
+        var byLabel = new Dictionary<string, StartEntry>(StringComparer.Ordinal);
+        foreach (var v in vanillaEntries)
+            if (!string.IsNullOrEmpty(v.Label) && !byLabel.ContainsKey(v.Label))
+                byLabel[v.Label] = v;
+
+        foreach (var m in moddedEntries)
+        {
+            StartEntry? v = null;
+            if (!string.IsNullOrEmpty(m.TicketEnumValue) && byTicket.TryGetValue(m.TicketEnumValue, out var byT) &&
+                used.Add(byT))
+                v = byT;
+            else if (!string.IsNullOrEmpty(m.Label) && byLabel.TryGetValue(m.Label, out var byL) &&
+                     used.Add(byL))
+                v = byL;
+            else
+            {
+                result.StartStructuralSkipped++;
+                LogDebug($"[IMPORT] START ADD (skipped): '{m.Label}' [{m.TicketEnumValue}] - no vanilla ticket/label match");
+                continue;
+            }
+
+            if (v.Removed) continue;
+
+            if (!string.Equals(NormalizeAiToken(v.ConditionClass), NormalizeAiToken(m.ConditionClass),
+                    StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(m.ConditionClass))
+            {
+                LogDebug($"[IMPORT] START COND SKIP: '{v.Label}' condition class change not imported ({v.ConditionClass} -> {m.ConditionClass})");
+            }
+
+            bool entryChanged = false;
+            int limit = Math.Min(v.Transitions.Count, m.Transitions.Count);
+            if (m.Transitions.Count != v.Transitions.Count)
+                LogDebug($"[IMPORT] START ROWS: '{v.Label}' {v.Transitions.Count} vanilla vs {m.Transitions.Count} modded transition(s) - diffing first {limit}");
+
+            for (int i = 0; i < limit; i++)
+            {
+                var st = v.Transitions[i];
+                var mt = m.Transitions[i];
+                if (st.Removed) continue;
+                bool changed = false;
+
+                if (Math.Abs(mt.Probability - st.OriginalProbability) > 0.001f &&
+                    Math.Abs(mt.Probability - st.Probability) > 0.001f)
+                {
+                    st.Probability = mt.Probability;
+                    changed = true;
+                }
+
+                for (int k = 0; k < mt.Keys.Count && k < st.Keys.Count; k++)
+                {
+                    if (mt.Keys[k] != st.Keys[k]) continue;
+                    int mtIdx = k < mt.KeyTargetTreeIndices.Count ? mt.KeyTargetTreeIndices[k] : -1;
+                    if (mtIdx < 0) continue;
+                    if (!modToVanilla.TryGetValue(mtIdx, out int vt)) continue;
+                    if (k < st.KeyTargetTreeIndices.Count && st.KeyTargetTreeIndices[k] == vt) continue;
+
+                    if (k < st.KeyTargetTreeIndices.Count) st.KeyTargetTreeIndices[k] = vt;
+                    var node = graph.Nodes.FirstOrDefault(n => n.TreeIndex == vt && !n.IsRedirect);
+                    if (k < st.KeyTargetNodeIds.Count) st.KeyTargetNodeIds[k] = node?.Id ?? -1;
+                    if (k < st.KeyTargetNames.Count) st.KeyTargetNames[k] = node?.Name ?? "";
+                    changed = true;
+                }
+
+                if (changed)
+                {
+                    // Primary target mirrors the first key with a resolvable tree index
+                    // (same rule the vanilla parse uses).
+                    for (int k = 0; k < st.KeyTargetTreeIndices.Count; k++)
+                    {
+                        if (st.KeyTargetTreeIndices[k] < 0) continue;
+                        st.TargetTreeIndex = st.KeyTargetTreeIndices[k];
+                        st.TargetNodeId = k < st.KeyTargetNodeIds.Count ? st.KeyTargetNodeIds[k] : -1;
+                        st.TargetName = k < st.KeyTargetNames.Count ? st.KeyTargetNames[k] : "";
+                        break;
+                    }
+                    result.StartTransitionsChanged++;
+                    entryChanged = true;
+                }
+            }
+
+            if (entryChanged)
+                result.StartEntriesChanged++;
+        }
     }
 
     /// <summary>
@@ -2417,6 +4034,19 @@ public class AnimationParser : IDisposable
                     RedirectTargetTreeIndex = m.RedirectTargetTreeIndex,
                     Kind = ComboNodeKind.ImportedNew
                 };
+                // AI-payload nodes (m_AIAttackAction / m_Event) export through the
+                // clone-from-import-source flow: point ImportComboRel at the modded
+                // combo file (harvested into CustomAssets) and keep the tree index.
+                if (!isRedirect && m.AiKind is "Action" or "Event")
+                {
+                    node.IsActionNode = m.AiKind == "Action";
+                    node.ActionClass = m.AiKind == "Action" ? m.AiClass : "";
+                    node.IsEventNode = m.AiKind == "Event";
+                    node.EventName = m.AiKind == "Event" ? m.AiClass : "";
+                    node.ImportComboRel = m.ModdedContentRel;
+                    node.ImportSourceTreeIndex = m.TreeIndex;
+                    node.ImportedDisplayName = m.AiClass;
+                }
                 graph.Nodes.Add(node);
                 createdIds.Add(node.Id);
                 surfacedNodes++;
@@ -2481,10 +4111,27 @@ public class AnimationParser : IDisposable
         }
 
         var candidateEdges = new List<ComboEdge>();
-        void AddEdgesFrom(int fromTreeIndex, List<ModdedTransitionInfo> transitions, bool sourceIsRedirect)
+        // ownerRedirectTreeIndex >= 0: fromTreeIndex is a modded redirect whose own rows
+        // continue from the attack node it plays (A' pass-through) - same rule as the
+        // vanilla parse. The edge is tagged with the redirect's graph id.
+        void AddEdgesFrom(int fromTreeIndex, List<ModdedTransitionInfo> transitions, int ownerRedirectTreeIndex)
         {
-            if (sourceIsRedirect || transitions.Count == 0) return;
-            var fromIds = IdsFor(fromTreeIndex);
+            if (transitions.Count == 0) return;
+            List<int> fromIds;
+            int ownerId = -1;
+            if (ownerRedirectTreeIndex >= 0)
+            {
+                var rId = IdsFor(fromTreeIndex).FirstOrDefault(-1);
+                var playIds = IdsFor(ownerRedirectTreeIndex);
+                if (rId < 0 || playIds.Count == 0) return;
+                if (playIds.All(id => graph.Nodes.FirstOrDefault(n => n.Id == id)?.IsRedirect == true)) return;
+                fromIds = playIds;
+                ownerId = rId;
+            }
+            else
+            {
+                fromIds = IdsFor(fromTreeIndex);
+            }
             if (fromIds.Count == 0) return;
             foreach (var t in transitions)
             {
@@ -2496,13 +4143,14 @@ public class AnimationParser : IDisposable
                         {
                             FromNodeId = f,
                             ToNodeId = to,
-                            InputName = t.InputName
+                            InputName = t.InputName,
+                            OwnerRedirectNodeId = ownerId
                         });
             }
         }
 
         foreach (var m in extras)
-            AddEdgesFrom(m.TreeIndex, m.Transitions, m.RedirectTargetTreeIndex >= 0);
+            AddEdgesFrom(m.TreeIndex, m.Transitions, m.RedirectTargetTreeIndex >= 0 ? m.RedirectTargetTreeIndex : -1);
 
         // Vanilla nodes whose modded counterpart now transitions into a surfaced node
         // (the mod re-wires an existing node into its new content - WW's core technique).
@@ -2512,7 +4160,7 @@ public class AnimationParser : IDisposable
                 .Where(t => extraIdsByTreeIndex.ContainsKey(t.TargetTreeIndex))
                 .ToList();
             if (intoExtras.Count > 0)
-                AddEdgesFrom(vanillaTreeIndex, intoExtras, false);
+                AddEdgesFrom(vanillaTreeIndex, intoExtras, -1);
         }
 
         var existingPairs = graph.Edges.Select(e => (e.FromNodeId, e.ToNodeId)).ToHashSet();
@@ -2522,6 +4170,11 @@ public class AnimationParser : IDisposable
             if (e.FromNodeId == e.ToNodeId) continue;
             if (!existingPairs.Add((e.FromNodeId, e.ToNodeId))) continue;
             graph.Edges.Add(e);
+            if (e.OwnerRedirectNodeId >= 0)
+            {
+                var owner = graph.Nodes.FirstOrDefault(n => n.Id == e.OwnerRedirectNodeId);
+                if (owner != null) owner.OwnedContinuation = true;
+            }
             addedEdges++;
         }
 
@@ -2535,6 +4188,140 @@ public class AnimationParser : IDisposable
         if (inputProp?.Tag is EnumProperty inputEnum)
             return InputNameFromEnumRaw(inputEnum.Value.Text);
         return "";
+    }
+
+    private static string ResolveConditionClass(FStructFallback rowData)
+    {
+        if (rowData.Properties.FirstOrDefault(p => p.Name.Text == "m_ConditionInstance")?.Tag is not ObjectProperty cond
+            || cond.Value == null)
+            return "";
+        var resolved = cond.Value.ResolvedObject;
+        if (resolved == null) return "";
+        return resolved.Class?.Name.Text ?? resolved.Name.Text ?? "";
+    }
+
+    private static int ResolveConditionInstanceIndex(FStructFallback rowData)
+    {
+        if (rowData.Properties.FirstOrDefault(p => p.Name.Text == "m_ConditionInstance")?.Tag is not ObjectProperty cond
+            || cond.Value == null)
+            return 0;
+        return cond.Value.Index;
+    }
+
+    private static List<ConditionParamInfo> ResolveConditionParams(FStructFallback rowData)
+    {
+        var result = new List<ConditionParamInfo>();
+        if (rowData.Properties.FirstOrDefault(p => p.Name.Text == "m_ConditionInstance")?.Tag is not ObjectProperty cond
+            || cond.Value == null)
+            return result;
+        var resolved = cond.Value.ResolvedObject;
+        if (resolved?.Object == null)
+            return result;
+        UObject? conditionExport = null;
+        try
+        {
+            conditionExport = resolved.Object.Value;
+        }
+        catch
+        {
+            return result;
+        }
+        if (conditionExport?.Properties == null)
+            return result;
+        CollectConditionParams(conditionExport, "", result, new HashSet<UObject>(), 0);
+        return result;
+    }
+
+    private static void CollectConditionParams(UObject ex, string prefix, List<ConditionParamInfo> result,
+        HashSet<UObject> seen, int depth)
+    {
+        if (depth > 3 || !seen.Add(ex) || ex.Properties == null) return;
+        CollectFromTags(ex.Properties, prefix, result, seen, depth);
+    }
+
+    private static void CollectFromTags(List<FPropertyTag> props, string prefix, List<ConditionParamInfo> result,
+        HashSet<UObject> seen, int depth)
+    {
+        foreach (var p in props)
+        {
+            string raw = p.Name.Text;
+            if (raw is "m_ConditionID" or "m_PerConditionValueToNodeMap" or "m_iSerializeVersion")
+                continue;
+            if (p.Tag is ObjectProperty op && op.Value != null && op.Value.ResolvedObject is { Object: { } nestedLazy })
+            {
+                UObject? nested = null;
+                try
+                {
+                    nested = nestedLazy.Value;
+                }
+                catch
+                {
+                    nested = null;
+                }
+                if (nested != null && nested.Properties is { Count: > 0 })
+                {
+                    CollectConditionParams(nested, prefix + raw + ".", result, seen, depth + 1);
+                    continue;
+                }
+            }
+            if (p.Tag is StructProperty sp && sp.Value?.StructType is FStructFallback sf)
+            {
+                CollectFromTags(sf.Properties, prefix + raw + ".", result, seen, depth + 1);
+                continue;
+            }
+            string v = FormatConditionParam(p.Tag);
+            if (v.Length > 0)
+                result.Add(new ConditionParamInfo { Path = prefix + raw, Kind = ParamKindOf(p.Tag), Value = v });
+        }
+    }
+
+    private static string ParamKindOf(FPropertyTagType? t)
+    {
+        return t switch
+        {
+            EnumProperty => "Enum",
+            IntProperty or Int8Property or Int16Property or Int64Property => "Int",
+            UInt16Property or UInt32Property or UInt64Property => "Int",
+            FloatProperty or DoubleProperty => "Float",
+            BoolProperty => "Bool",
+            NameProperty => "Name",
+            StrProperty => "Str",
+            ByteProperty => "Byte",
+            _ => "ReadOnly"
+        };
+    }
+
+    private static string FormatConditionParam(FPropertyTagType? t)
+    {
+        switch (t)
+        {
+            case EnumProperty ep: return ep.Value.Text;
+            case IntProperty ip: return ip.Value.ToString();
+            case Int8Property i8: return i8.Value.ToString();
+            case Int16Property i16: return i16.Value.ToString();
+            case Int64Property i6: return i6.Value.ToString();
+            case UInt16Property u16: return u16.Value.ToString();
+            case UInt32Property u: return u.Value.ToString();
+            case UInt64Property u64: return u64.Value.ToString();
+            case FloatProperty f: return f.Value.ToString("0.###");
+            case DoubleProperty d: return d.Value.ToString("0.###");
+            case BoolProperty b: return b.Value.ToString();
+            case NameProperty n: return n.Value.Text;
+            case StrProperty s: return s.Value?.ToString() ?? "";
+            case ByteProperty by: return by.Value.ToString();
+            case ObjectProperty o:
+                if (o.Value == null) return "null";
+                return o.Value.ResolvedObject?.Class?.Name.Text
+                    ?? o.Value.ResolvedObject?.Name.Text
+                    ?? ("idx " + o.Value.Index);
+            case ArrayProperty a: return (a.Value?.Properties?.Count ?? 0) + " entries";
+            case MapProperty m: return ((m.Value?.Properties?.Count) ?? 0) + " pairs";
+            case StructProperty st:
+                if (st.Value?.StructType is FGameplayTagContainer gtc)
+                    return string.Join(", ", gtc.GameplayTags.Select(gt => gt.TagName.Text));
+                return "<" + (st.Value?.StructType?.GetType().Name ?? "struct") + ">";
+            default: return "";
+        }
     }
 
     internal static string InputNameFromEnumRaw(string? raw)
@@ -2657,13 +4444,6 @@ public class AnimationParser : IDisposable
                 LogDebug($"[ANIM] Skeleton load failed for {gamePath}");
                 return null;
             }
-
-            var csType = obj.CompressedDataStructure?.GetType().Name ?? "null";
-            var hasRaw = obj.RawAnimationData is { Length: > 0 };
-            var boneSettingsPath = obj.BoneCompressionSettings?.GetPathName() ?? "null";
-            var codecHandle = obj.BoneCodecDDCHandle ?? "null";
-            var debugMsg = $"[{DateTime.Now:HH:mm:ss}] [DEBUG] Anim={gamePath}, CompressedType={csType}, HasRaw={hasRaw}, NumFrames={obj.NumFrames}, BoneSettings={boneSettingsPath}, CodecHandle={codecHandle}";
-            try { File.AppendAllText(Path.Combine(Directory.GetCurrentDirectory(), "error.log"), debugMsg + "\n"); } catch { }
 
             var animSet = skeletonObj.ConvertAnims(obj);
             if (animSet.Sequences.Count == 0) return null;
@@ -2815,6 +4595,49 @@ public class AnimationParser : IDisposable
             return null;
         }
 
+        // Preview meshes skip texture/material resolution entirely (flat-grey fallback in
+        // the viewer); callers that need textures (thumbnail baking) pass includeMaterials.
+        return LoadMeshFromPath(meshPath, includeMaterials: false);
+    }
+
+    public MeshJsonData? LoadMeshFromPath(string meshPath, bool includeMaterials)
+    {
+        if (_provider == null) return null;
+
+        // Separate cache entries per variant: the preview must never receive a textured
+        // entry and thumbnail baking must never receive a texture-less one.
+        string cacheKey = includeMaterials ? meshPath + "|mat" : meshPath;
+
+        lock (_meshCacheSync)
+        {
+            if (_meshCache.TryGetValue(cacheKey, out var entry))
+            {
+                _meshCacheOrder.Remove(entry.node);
+                _meshCacheOrder.AddFirst(entry.node);
+                return entry.data;
+            }
+        }
+
+        var result = BuildMesh(meshPath, includeMaterials);
+        if (result == null) return null;
+
+        lock (_meshCacheSync)
+        {
+            var node = _meshCacheOrder.AddFirst(cacheKey);
+            _meshCache[cacheKey] = (node, result);
+            while (_meshCache.Count > MeshCacheMax && _meshCacheOrder.Last != null)
+            {
+                _meshCache.Remove(_meshCacheOrder.Last.Value);
+                _meshCacheOrder.RemoveLast();
+            }
+        }
+        return result;
+    }
+
+    private MeshJsonData? BuildMesh(string meshPath, bool includeMaterials)
+    {
+        if (_provider == null) return null;
+
         try
         {
             var obj = _provider.SafeLoadPackageObject<USkeletalMesh>(meshPath);
@@ -2898,7 +4721,7 @@ public class AnimationParser : IDisposable
                 bindPoseArr[i * 7 + 6] = bone.Orientation.W;
             }
 
-            LogDebug($"[MESH] Loaded '{character}' from {meshPath} ({vertexCount} verts, {skeleton.Count} bones)");
+            LogDebug($"[MESH] Loaded from {meshPath} ({vertexCount} verts, {skeleton.Count} bones)");
             return new MeshJsonData
             {
                 positions = positions,
@@ -2909,17 +4732,55 @@ public class AnimationParser : IDisposable
                 skinWeights = skinWeightsArr,
                 boneNames = boneNames,
                 bindPose = bindPoseArr,
-                boneParents = boneParents
+                boneParents = boneParents,
+                materials = includeMaterials ? ResolveMaterials(skelLod) : null
             };
         }
         catch (Exception ex)
         {
-            LogDebug($"[MESH] Error loading mesh for {character}: {ex.Message}");
+            LogDebug($"[MESH] Error loading mesh from {meshPath}: {ex.Message}");
+            return null;
+        }
+    }
+
+    private List<MeshMaterialGroup>? ResolveMaterials(CSkelMeshLod skelLod)
+    {
+        try
+        {
+            var resolver = _texResolver;
+            if (resolver == null) return null;
+
+            var sections = skelLod.Sections?.Value;
+            if (sections == null || sections.Length == 0) return null;
+
+            var input = new List<(string material, int firstIndex, int numFaces)>(sections.Length);
+            foreach (var s in sections)
+                input.Add((s.Material?.ToString() ?? "", s.FirstIndex, s.NumFaces));
+
+            return resolver.ResolveTextureGroups(input);
+        }
+        catch (Exception ex)
+        {
+            LogDebug($"[MESH] texture resolve failed: {ex.Message}");
             return null;
         }
     }
 
     private string? FindMeshPath(string character)
+    {
+        lock (_findMeshPathSync)
+        {
+            if (_findMeshPathMemo.TryGetValue(character, out var cached)) return cached;
+        }
+        var result = FindMeshPathUncached(character);
+        lock (_findMeshPathSync)
+        {
+            _findMeshPathMemo[character] = result;
+        }
+        return result;
+    }
+
+    private string? FindMeshPathUncached(string character)
     {
         try
         {

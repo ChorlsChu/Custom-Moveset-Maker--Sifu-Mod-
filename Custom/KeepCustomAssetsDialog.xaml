@@ -1,0 +1,93 @@
+<Window x:Class="SifuMovesetEditor.Custom.KeepCustomAssetsDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Sifu Moveset Editor — Custom Section"
+        Width="460" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#1e1e2e"
+        Foreground="#cdd6f4">
+
+    <Window.Resources>
+        <Style x:Key="DarkButton" TargetType="Button">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#45475a"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#585b70"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource DarkButton}">
+            <Setter Property="Background" Value="#89b4fa"/>
+            <Setter Property="Foreground" Value="#1e1e2e"/>
+        </Style>
+    </Window.Resources>
+
+    <DockPanel Margin="16">
+        <Border DockPanel.Dock="Top" Background="#11111b" Padding="12,8" Margin="-16,-16,-16,12">
+            <TextBlock Text="Custom Section" FontWeight="Bold"
+                       Foreground="#89b4fa" FontSize="15"/>
+        </Border>
+
+        <StackPanel x:Name="footerPanel" DockPanel.Dock="Bottom" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="btnNo" Content="No" Style="{StaticResource DarkButton}"
+                    Click="No_Click" Padding="16,8" MinHeight="30" MinWidth="90"
+                    IsCancel="True"/>
+            <Button x:Name="btnYes" Content="Yes" Style="{StaticResource AccentButton}"
+                    Click="Yes_Click" Padding="16,8" MinHeight="30" MinWidth="90"
+                    IsDefault="True"/>
+        </StackPanel>
+
+        <StackPanel>
+            <StackPanel x:Name="questionPanel">
+                <TextBlock x:Name="txtQuestion" TextWrapping="Wrap" Foreground="#cdd6f4"
+                           FontSize="12" LineHeight="18"/>
+                <TextBlock x:Name="txtDetail" TextWrapping="Wrap" Foreground="#6c7086"
+                           FontSize="11" LineHeight="16" Margin="0,6,0,0"/>
+                <ListBox x:Name="listFiles" Margin="0,10,0,0" MaxHeight="160"
+                         Background="#11111b" Foreground="#a6adc8"
+                         BorderBrush="#313244" BorderThickness="1"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         FontFamily="Consolas" FontSize="12">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis"/>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </StackPanel>
+
+            <StackPanel x:Name="deletingPanel" Visibility="Collapsed" Margin="0,24,0,8">
+                <ProgressBar IsIndeterminate="True" Width="260" Height="4"
+                             HorizontalAlignment="Center"
+                             Foreground="#89b4fa" Background="#313244"/>
+                <TextBlock x:Name="txtDeletingTitle"
+                           Text="Deleting files from CustomAssets…"
+                           Foreground="#cdd6f4" FontSize="14" FontWeight="SemiBold"
+                           HorizontalAlignment="Center" Margin="0,12,0,0"/>
+                <TextBlock x:Name="txtProgress" Text=""
+                           Foreground="#6c7086" FontSize="11"
+                           HorizontalAlignment="Center" Margin="0,4,0,0"/>
+            </StackPanel>
+        </StackPanel>
+    </DockPanel>
+</Window>

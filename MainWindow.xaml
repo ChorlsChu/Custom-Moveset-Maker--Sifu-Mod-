@@ -42,6 +42,31 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource DarkButton}">
+            <Setter Property="Background" Value="#89b4fa"/>
+            <Setter Property="Foreground" Value="#1e1e2e"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#b4d0fb"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#74a8f7"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="DarkTextBox" TargetType="TextBox">
             <Setter Property="Background" Value="#313244"/>
             <Setter Property="Foreground" Value="#cdd6f4"/>
@@ -241,10 +266,51 @@
             </Border>
         </DataTemplate>
 
+        <DataTemplate x:Key="AiCardTemplate">
+            <Border Style="{StaticResource MoveCard}"
+                    MouseLeftButtonDown="MoveCard_Click"
+                    MouseMove="MoveCard_MouseMove"
+                    Tag="{Binding}"
+                    Margin="32,1,4,1">
+                <DockPanel>
+                    <Border Width="3" CornerRadius="2" DockPanel.Dock="Left" Margin="0,0,10,0"
+                            Background="#f9e2af"/>
+                    <TextBlock Text="&#x2630;" DockPanel.Dock="Left"
+                               Foreground="#585b70" FontSize="13"
+                               VerticalAlignment="Center" Margin="0,0,10,0"
+                               IsHitTestVisible="False"/>
+                    <StackPanel>
+                        <TextBlock Text="{Binding DisplayNameClean}"
+                                   Foreground="#cdd6f4" FontSize="12"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding SourceFile}"
+                                   Foreground="#6c7086" FontSize="9"
+                                   TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                            <Border Style="{StaticResource TagBadge}">
+                                <TextBlock Text="{Binding Character}"
+                                           Foreground="#a6adc8" FontSize="9"/>
+                            </Border>
+                            <Border Style="{StaticResource TagBadge}">
+                                <TextBlock Text="{Binding WeaponType}"
+                                           Foreground="#a6adc8" FontSize="9"/>
+                            </Border>
+                            <Border Style="{StaticResource TagBadge}">
+                                <TextBlock Text="{Binding Category}"
+                                           Foreground="#a6adc8" FontSize="9"/>
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+        </DataTemplate>
+
         <local:MoveGroupTemplateSelector x:Key="MoveGroupSelector"
             EnemyHeaderTemplate="{StaticResource EnemyHeaderTemplate}"
             WeaponHeaderTemplate="{StaticResource WeaponHeaderTemplate}"
-            MoveCardTemplate="{StaticResource MoveCardTemplate}"/>
+            MoveCardTemplate="{StaticResource MoveCardTemplate}"
+            AiCardTemplate="{StaticResource AiCardTemplate}"/>
 
     </Window.Resources>
 
@@ -256,6 +322,7 @@
                            Foreground="#89b4fa" VerticalAlignment="Center"/>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
                     <Button Content="New" Style="{StaticResource DarkButton}" Click="NewProject_Click"/>
+                    <Button Content="New Moveset" Style="{StaticResource DarkButton}" Click="NewMoveset_Click"/>
                     <Button Content="Import Mod" Style="{StaticResource DarkButton}" Click="ImportMod_Click"/>
                     <Button Content="Save" Style="{StaticResource DarkButton}" Click="SaveProject_Click"/>
                     <Button Content="Load" Style="{StaticResource DarkButton}" Click="LoadProject_Click"/>
@@ -347,12 +414,19 @@
                                 <Button Name="btnUnitProperties" Content="Unit Properties" Style="{StaticResource DarkButton}"
                                         Click="BtnUnitProperties_Click" FontSize="11" Padding="8,3" Margin="8,0,0,0"
                                         Visibility="Collapsed" ToolTip="Edit health, structure, and defense behavior"/>
+                                <Button Name="btnStartEntries" Content="Start Entries" Style="{StaticResource DarkButton}"
+                                        Click="BtnStartEntries_Click" FontSize="11" Padding="8,3" Margin="8,0,0,0"
+                                        Visibility="Collapsed"
+                                        ToolTip="Edit AI combo start tickets: which move begins each ticket, with probabilities"/>
                                 <Button Name="btnResetMode" Content="Reset Node Mode" Style="{StaticResource DarkButton}"
                                         Click="ToggleResetMode_Click" FontSize="11" Padding="8,3" Margin="8,0,0,0"
                                         Visibility="Collapsed"/>
                                 <Button Name="btnResetAll" Content="Reset All to Vanilla" Style="{StaticResource DarkButton}"
                                         Click="ResetAllToVanilla_Click" FontSize="11" Padding="8,3" Margin="8,0,0,0"
                                         Visibility="Collapsed"/>
+                                <Button Name="btnAutoArrange" Content="Auto-arrange" Style="{StaticResource DarkButton}"
+                                        Click="AutoArrange_Click" FontSize="11" Padding="8,3" Margin="8,0,0,0"
+                                        ToolTip="Discard hand-placed node positions and lay the graph out as a tree (undoable)"/>
                                 <Button Content="&#x21bb;" Style="{StaticResource DarkButton}"
                                         Click="ResetComboCamera_Click" Padding="6,2" FontSize="11"
                                         VerticalAlignment="Center" Margin="8,0,0,0"
@@ -537,12 +611,23 @@
                         </DockPanel>
                     </Border>
                     <Border DockPanel.Dock="Top" Padding="6,4" Background="#11111b">
-                        <DockPanel>
-                            <TextBox Name="txtSearch" Style="{StaticResource DarkTextBox}"
-                                     TextChanged="Search_Changed"
-                                     Width="240" HorizontalAlignment="Left"/>
-                        </DockPanel>
+                        <StackPanel>
+                            <DockPanel>
+                                <TextBox Name="txtSearch" Style="{StaticResource DarkTextBox}"
+                                         TextChanged="Search_Changed"
+                                         Width="240" HorizontalAlignment="Left"/>
+                            </DockPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <Button Name="btnLibAttacks" Content="Attacks" Click="LibModeAttacks_Click"
+                                        Padding="10,4" Margin="0,0,6,0" FontSize="11"
+                                        Background="#cdd6f4" Foreground="#1e1e2e" BorderThickness="0" Cursor="Hand"/>
+                                <Button Name="btnLibAi" Content="AI Actions &amp; Events" Click="LibModeAi_Click"
+                                        Padding="10,4" FontSize="11"
+                                        Background="#181825" Foreground="#6c7086" BorderThickness="0" Cursor="Hand"/>
+                            </StackPanel>
+                        </StackPanel>
                     </Border>
+                    <Grid>
                     <TabControl Name="tabMoves" Background="Transparent" BorderThickness="0"
                                 SelectionChanged="TabChanged">
                         <TabControl.Template>
@@ -649,6 +734,12 @@
                             </ScrollViewer>
                         </TabItem>
                     </TabControl>
+                    <ScrollViewer Name="scrollAiNodes" Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto" Background="Transparent">
+                        <ItemsControl Name="listAi" Padding="4"
+                                      ItemTemplateSelector="{StaticResource MoveGroupSelector}"/>
+                    </ScrollViewer>
+                    </Grid>
                 </DockPanel>
         </Border>
     </Grid>
@@ -687,7 +778,9 @@
                     <Button Content="Browse..." DockPanel.Dock="Right" Margin="6,0,0,0" Padding="8,3" Click="BrowseOutput_Click" Style="{StaticResource DarkButton}"/>
                     <TextBox Name="txtSettingsOutputPath" Background="#313244" Foreground="#cdd6f4" Padding="6,3" FontSize="11"/>
                 </DockPanel>
-                <CheckBox Name="chkVerboseLog" Content="Verbose ErrorLog" Foreground="#6c7086" FontSize="11" Margin="0,0,0,12"/>
+                <CheckBox Name="chkVerboseLog" Content="Verbose ErrorLog" Foreground="#6c7086" FontSize="11" Margin="0,0,0,4"/>
+                <CheckBox Name="chkShowAiNodes" Content="Show AI Actions &amp; Events (advanced)" Foreground="#6c7086" FontSize="11" Margin="0,0,0,12"
+                          ToolTip="Beginner view when off: AI action/event nodes, the AI Actions &amp; Events library and AI-target start transitions are hidden from view. View-only - exports are unaffected."/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
                     <Button Content="Open Setup…" Padding="12,4" Click="OpenSetup_Click" Style="{StaticResource DarkButton}" Margin="0,0,6,0"
                             ToolTip="Re-open setup to browse folder or pak and refresh vanilla content"/>
@@ -721,6 +814,24 @@
             </StackPanel>
         </Border>
     </Border>
+    <!-- Start Entries pick mode: confirmation before a canvas-picked node becomes a target -->
+    <Border Name="pickConfirmBorder" Visibility="Collapsed" Background="#99000000"
+            VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Panel.ZIndex="100"
+            MouseLeftButtonDown="PickConfirmBackdrop_Click">
+        <Border Background="#1e1e2e" CornerRadius="6" BorderBrush="#585b70" BorderThickness="1"
+                VerticalAlignment="Center" HorizontalAlignment="Center" Padding="16" MaxWidth="440">
+            <StackPanel>
+                <TextBlock Text="Use as Start Entry target" Foreground="#89b4fa" FontWeight="Bold" FontSize="13" Margin="0,0,0,6"/>
+                <TextBlock Name="pickConfirmName" Text="" Foreground="#cdd6f4" FontSize="12" Margin="0,0,0,4" TextWrapping="Wrap"/>
+                <TextBlock Name="pickConfirmDetail" Text="" Foreground="#6c7086" FontSize="11" Margin="0,0,0,12" TextWrapping="Wrap"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="Pick another" Padding="12,4" Click="PickConfirmCancel_Click" Style="{StaticResource DarkButton}" Margin="0,0,6,0"
+                            ToolTip="Close this popup and stay in pick mode - click a different node."/>
+                    <Button Content="Use this node" Padding="12,4" Click="PickConfirmUse_Click" Style="{StaticResource AccentButton}"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Border>
     <Border Name="weaponPopupBorder" Visibility="Collapsed" Background="#99000000"
             VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Panel.ZIndex="100"
             MouseLeftButtonDown="WeaponPopupBackground_Click">
@@ -741,55 +852,94 @@
                 <TextBlock Name="unitPropsTitle" Text="Unit Properties" Foreground="#89b4fa"
                            FontWeight="Bold" FontSize="14" Margin="0,0,0,12" HorizontalAlignment="Center"/>
 
-                <TextBlock Text="ArchetypeDB" Foreground="#89b4fa" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
-                <DockPanel Margin="0,0,0,6">
-                    <TextBlock Text="Health:" Width="120" VerticalAlignment="Center" Foreground="#cdd6f4" FontSize="11"/>
-                    <TextBox Name="txtUnitHealth" Width="120" Background="#313244" Foreground="#cdd6f4" Padding="6,3" FontSize="11" BorderBrush="#585b70" BorderThickness="1"/>
-                    <Button Name="btnInfoHealth" Tag="Health" Click="UnitPropsInfo_Click" Margin="6,0,0,0" Width="16" Height="16" Padding="0" Cursor="Help">
-                        <TextBlock Text="?" FontWeight="Bold" Foreground="#89b4fa" Background="#313244" Width="16" Height="16" TextAlignment="Center" FontSize="10" VerticalAlignment="Center"/>
-                    </Button>
-                </DockPanel>
-                <DockPanel Margin="0,0,0,12">
-                    <TextBlock Text="Structure:" Width="120" VerticalAlignment="Center" Foreground="#cdd6f4" FontSize="11"/>
-                    <TextBox Name="txtUnitStructure" Width="120" Background="#313244" Foreground="#cdd6f4" Padding="6,3" FontSize="11" BorderBrush="#585b70" BorderThickness="1"/>
-                    <Button Name="btnInfoStructure" Tag="Structure" Click="UnitPropsInfo_Click" Margin="6,0,0,0" Width="16" Height="16" Padding="0" Cursor="Help">
-                        <TextBlock Text="?" FontWeight="Bold" Foreground="#89b4fa" Background="#313244" Width="16" Height="16" TextAlignment="Center" FontSize="10" VerticalAlignment="Center"/>
-                    </Button>
-                </DockPanel>
+                <StackPanel Name="unitPropsArchSection">
+                    <TextBlock Text="ArchetypeDB" Foreground="#89b4fa" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
+                    <DockPanel Margin="0,0,0,6">
+                        <TextBlock Text="Health:" Width="120" VerticalAlignment="Center" Foreground="#cdd6f4" FontSize="11"/>
+                        <TextBox Name="txtUnitHealth" Width="120" Background="#313244" Foreground="#cdd6f4" Padding="6,3" FontSize="11" BorderBrush="#585b70" BorderThickness="1"/>
+                        <Button Name="btnInfoHealth" Tag="Health" Click="UnitPropsInfo_Click" Margin="6,0,0,0" Width="16" Height="16" Padding="0" Cursor="Help">
+                            <TextBlock Text="?" FontWeight="Bold" Foreground="#89b4fa" Background="#313244" Width="16" Height="16" TextAlignment="Center" FontSize="10" VerticalAlignment="Center"/>
+                        </Button>
+                    </DockPanel>
+                    <DockPanel Margin="0,0,0,12">
+                        <TextBlock Text="Structure:" Width="120" VerticalAlignment="Center" Foreground="#cdd6f4" FontSize="11"/>
+                        <TextBox Name="txtUnitStructure" Width="120" Background="#313244" Foreground="#cdd6f4" Padding="6,3" FontSize="11" BorderBrush="#585b70" BorderThickness="1"/>
+                        <Button Name="btnInfoStructure" Tag="Structure" Click="UnitPropsInfo_Click" Margin="6,0,0,0" Width="16" Height="16" Padding="0" Cursor="Help">
+                            <TextBlock Text="?" FontWeight="Bold" Foreground="#89b4fa" Background="#313244" Width="16" Height="16" TextAlignment="Center" FontSize="10" VerticalAlignment="Center"/>
+                        </Button>
+                    </DockPanel>
+                </StackPanel>
 
-                <TextBlock Text="ContextDefense" Foreground="#89b4fa" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
-                <DockPanel Margin="0,0,0,6">
-                    <TextBlock Text="Memory Limit:" Width="120" VerticalAlignment="Center" Foreground="#cdd6f4" FontSize="11"/>
-                    <TextBox Name="txtMemoryLimit" Width="100" Background="#313244" Foreground="#cdd6f4" Padding="6,3" FontSize="11" BorderBrush="#585b70" BorderThickness="1"/>
-                    <TextBlock Text="s" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="#6c7086" FontSize="11"/>
-                    <Button Name="btnInfoMemoryLimit" Tag="MemoryLimit" Click="UnitPropsInfo_Click" Margin="6,0,0,0" Width="16" Height="16" Padding="0" Cursor="Help">
-                        <TextBlock Text="?" FontWeight="Bold" Foreground="#89b4fa" Background="#313244" Width="16" Height="16" TextAlignment="Center" FontSize="10" VerticalAlignment="Center"/>
-                    </Button>
-                </DockPanel>
-                <DockPanel Margin="0,0,0,6">
-                    <TextBlock Text="Hits Count:" Width="120" VerticalAlignment="Center" Foreground="#cdd6f4" FontSize="11"/>
-                    <TextBox Name="txtHitsCount" Width="100" Background="#313244" Foreground="#cdd6f4" Padding="6,3" FontSize="11" BorderBrush="#585b70" BorderThickness="1"/>
-                    <Button Name="btnInfoHitsCount" Tag="HitsCount" Click="UnitPropsInfo_Click" Margin="6,0,0,0" Width="16" Height="16" Padding="0" Cursor="Help">
-                        <TextBlock Text="?" FontWeight="Bold" Foreground="#89b4fa" Background="#313244" Width="16" Height="16" TextAlignment="Center" FontSize="10" VerticalAlignment="Center"/>
-                    </Button>
-                </DockPanel>
-                <DockPanel Margin="0,0,0,6">
-                    <TextBlock Text="Flush Limit:" Width="120" VerticalAlignment="Center" Foreground="#cdd6f4" FontSize="11"/>
-                    <TextBox Name="txtFlushLimit" Width="100" Background="#313244" Foreground="#cdd6f4" Padding="6,3" FontSize="11" BorderBrush="#585b70" BorderThickness="1"/>
-                    <TextBlock Text="s" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="#6c7086" FontSize="11"/>
-                    <Button Name="btnInfoFlushLimit" Tag="FlushLimit" Click="UnitPropsInfo_Click" Margin="6,0,0,0" Width="16" Height="16" Padding="0" Cursor="Help">
-                        <TextBlock Text="?" FontWeight="Bold" Foreground="#89b4fa" Background="#313244" Width="16" Height="16" TextAlignment="Center" FontSize="10" VerticalAlignment="Center"/>
-                    </Button>
-                </DockPanel>
+                <StackPanel Name="unitPropsDefenseSection">
+                    <TextBlock Text="ContextDefense" Foreground="#89b4fa" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
+                    <DockPanel Margin="0,0,0,6">
+                        <TextBlock Text="Memory Limit:" Width="120" VerticalAlignment="Center" Foreground="#cdd6f4" FontSize="11"/>
+                        <TextBox Name="txtMemoryLimit" Width="100" Background="#313244" Foreground="#cdd6f4" Padding="6,3" FontSize="11" BorderBrush="#585b70" BorderThickness="1"/>
+                        <TextBlock Text="s" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="#6c7086" FontSize="11"/>
+                        <Button Name="btnInfoMemoryLimit" Tag="MemoryLimit" Click="UnitPropsInfo_Click" Margin="6,0,0,0" Width="16" Height="16" Padding="0" Cursor="Help">
+                            <TextBlock Text="?" FontWeight="Bold" Foreground="#89b4fa" Background="#313244" Width="16" Height="16" TextAlignment="Center" FontSize="10" VerticalAlignment="Center"/>
+                        </Button>
+                    </DockPanel>
+                    <DockPanel Margin="0,0,0,6">
+                        <TextBlock Text="Hits Count:" Width="120" VerticalAlignment="Center" Foreground="#cdd6f4" FontSize="11"/>
+                        <TextBox Name="txtHitsCount" Width="100" Background="#313244" Foreground="#cdd6f4" Padding="6,3" FontSize="11" BorderBrush="#585b70" BorderThickness="1"/>
+                        <Button Name="btnInfoHitsCount" Tag="HitsCount" Click="UnitPropsInfo_Click" Margin="6,0,0,0" Width="16" Height="16" Padding="0" Cursor="Help">
+                            <TextBlock Text="?" FontWeight="Bold" Foreground="#89b4fa" Background="#313244" Width="16" Height="16" TextAlignment="Center" FontSize="10" VerticalAlignment="Center"/>
+                        </Button>
+                    </DockPanel>
+                    <DockPanel Margin="0,0,0,6">
+                        <TextBlock Text="Flush Limit:" Width="120" VerticalAlignment="Center" Foreground="#cdd6f4" FontSize="11"/>
+                        <TextBox Name="txtFlushLimit" Width="100" Background="#313244" Foreground="#cdd6f4" Padding="6,3" FontSize="11" BorderBrush="#585b70" BorderThickness="1"/>
+                        <TextBlock Text="s" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="#6c7086" FontSize="11"/>
+                        <Button Name="btnInfoFlushLimit" Tag="FlushLimit" Click="UnitPropsInfo_Click" Margin="6,0,0,0" Width="16" Height="16" Padding="0" Cursor="Help">
+                            <TextBlock Text="?" FontWeight="Bold" Foreground="#89b4fa" Background="#313244" Width="16" Height="16" TextAlignment="Center" FontSize="10" VerticalAlignment="Center"/>
+                        </Button>
+                    </DockPanel>
+                </StackPanel>
 
-                <TextBlock Text="Focus" Foreground="#89b4fa" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
+                <StackPanel Name="unitPropsFocusSection">
+                    <TextBlock Text="Focus" Foreground="#89b4fa" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
+                    <DockPanel Margin="0,0,0,12">
+                        <CheckBox Name="chkImmuneToFocus" Content="Immune to Focus Attacks"
+                                  Foreground="#cdd6f4" FontSize="11" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                        <Button Name="btnInfoImmuneToFocus" Tag="ImmuneToFocus" Click="UnitPropsInfo_Click"
+                                Margin="6,0,0,0" Width="16" Height="16" Padding="0" Cursor="Help" HorizontalAlignment="Left">
+                            <TextBlock Text="?" FontWeight="Bold" Foreground="#89b4fa" Background="#313244" Width="16" Height="16" TextAlignment="Center" FontSize="10" VerticalAlignment="Center"/>
+                        </Button>
+                    </DockPanel>
+                </StackPanel>
+
+                <StackPanel Name="unitPropsPhaseSection">
+                    <TextBlock Text="Phase Swap" Foreground="#89b4fa" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
+                    <DockPanel Margin="0,0,0,6">
+                        <CheckBox Name="chkPhaseSwap" Content="Last Man phase swap"
+                                  Foreground="#cdd6f4" FontSize="11" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                  Checked="ChkPhaseSwap_Changed" Unchecked="ChkPhaseSwap_Changed"/>
+                        <Button Name="btnInfoPhaseSwap" Tag="PhaseSwap" Click="UnitPropsInfo_Click"
+                                Margin="6,0,0,0" Width="16" Height="16" Padding="0" Cursor="Help" HorizontalAlignment="Left">
+                            <TextBlock Text="?" FontWeight="Bold" Foreground="#89b4fa" Background="#313244" Width="16" Height="16" TextAlignment="Center" FontSize="10" VerticalAlignment="Center"/>
+                        </Button>
+                    </DockPanel>
+                    <DockPanel Margin="0,0,0,12">
+                        <TextBlock Text="Moveset:" Width="120" VerticalAlignment="Center" Foreground="#cdd6f4" FontSize="11"/>
+                        <ComboBox Name="cmbPhaseSwapTarget" Style="{StaticResource DarkComboBox}"
+                                  IsTextSearchEnabled="True" IsEditable="False" IsEnabled="False"
+                                  Width="220" FontSize="11" VerticalAlignment="Center"/>
+                    </DockPanel>
+                </StackPanel>
+
+                <TextBlock Text="Model" Foreground="#89b4fa" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
                 <DockPanel Margin="0,0,0,12">
-                    <CheckBox Name="chkImmuneToFocus" Content="Immune to Focus Attacks"
-                              Foreground="#cdd6f4" FontSize="11" VerticalAlignment="Center" HorizontalAlignment="Left"/>
-                    <Button Name="btnInfoImmuneToFocus" Tag="ImmuneToFocus" Click="UnitPropsInfo_Click"
-                            Margin="6,0,0,0" Width="16" Height="16" Padding="0" Cursor="Help" HorizontalAlignment="Left">
+                    <TextBlock Text="Override:" Width="120" VerticalAlignment="Center" Foreground="#cdd6f4" FontSize="11"/>
+                    <Button Name="btnInfoModel" Tag="Model" Click="UnitPropsInfo_Click"
+                            DockPanel.Dock="Right" Margin="6,0,0,0" Width="16" Height="16" Padding="0" Cursor="Help">
                         <TextBlock Text="?" FontWeight="Bold" Foreground="#89b4fa" Background="#313244" Width="16" Height="16" TextAlignment="Center" FontSize="10" VerticalAlignment="Center"/>
                     </Button>
+                    <Button Name="btnChooseModel" Content="Choose..." Click="BtnChooseModel_Click"
+                            DockPanel.Dock="Right" Margin="6,0,0,0" Padding="10,2" FontSize="10"
+                            Style="{StaticResource DarkButton}" VerticalAlignment="Center" Cursor="Hand"/>
+                    <TextBlock Name="txtModelOverride" Text="(default)" Foreground="#6c7086" FontSize="11"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,4,0"/>
                 </DockPanel>
 
                 <Button Content="Reset to Defaults" HorizontalAlignment="Center"
@@ -814,5 +964,50 @@
             </StackPanel>
         </Border>
     </Border>
+    <Border Name="modelPopupBorder" Visibility="Collapsed" Background="#99000000"
+            VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Panel.ZIndex="101"
+            MouseLeftButtonDown="ModelPopupBackground_Click">
+        <Border Background="#1e1e2e" CornerRadius="6" BorderBrush="#585b70" BorderThickness="1"
+                VerticalAlignment="Center" HorizontalAlignment="Center" Padding="12" MaxWidth="640">
+            <StackPanel>
+                <TextBlock Name="modelPopupTitle" Text="Select Model" Foreground="#89b4fa"
+                           FontWeight="Bold" FontSize="13" Margin="0,0,0,2" HorizontalAlignment="Center"/>
+                <TextBlock Name="modelPopupHint" Text="" Foreground="#6c7086" FontSize="11"
+                           Margin="0,0,0,8" HorizontalAlignment="Center"/>
+                <DockPanel Margin="0,0,0,8">
+                    <Button Name="btnImportModel" Content="Import custom model..."
+                            DockPanel.Dock="Right" Click="BtnImportModel_Click" Margin="6,0,0,0"
+                            Padding="10,2" FontSize="10" Style="{StaticResource DarkButton}"
+                            VerticalAlignment="Center" Cursor="Hand"/>
+                    <WrapPanel Name="modelModeWrap" Orientation="Horizontal"/>
+                </DockPanel>
+                <WrapPanel Name="modelFilterWrap" Orientation="Horizontal" Margin="0,0,0,8"/>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="560">
+                    <WrapPanel Name="modelWrapPanel" Orientation="Horizontal"/>
+                </ScrollViewer>
+            </StackPanel>
+        </Border>
+    </Border>
+    <Border Name="bigModelPopupBorder" Visibility="Collapsed" Background="#99000000"
+            VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Panel.ZIndex="102"
+            MouseLeftButtonDown="BigModelPopupBackground_Click">
+        <Border Background="#1e1e2e" CornerRadius="6" BorderBrush="#585b70" BorderThickness="1"
+                VerticalAlignment="Center" HorizontalAlignment="Center" Padding="12">
+            <StackPanel>
+                <TextBlock Name="bigModelTitle" Text="" Foreground="#89b4fa"
+                           FontWeight="Bold" FontSize="13" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                <Border Background="#313244" CornerRadius="4" Width="440" Height="440">
+                    <Grid>
+                        <TextBlock Name="bigModelPlaceholder" Text="Rendering&#8230;" Foreground="#6c7086"
+                                   FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Image Name="bigModelImage" Stretch="Uniform" Margin="4"/>
+                    </Grid>
+                </Border>
+            </StackPanel>
+        </Border>
+    </Border>
+    <wv2:WebView2 x:Name="thumbWebView" Width="128" Height="128"
+                  HorizontalAlignment="Left" VerticalAlignment="Top" Margin="-3000,0,0,0"
+                  Panel.ZIndex="-100"/>
     </Grid>
 </Window>

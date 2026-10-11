@@ -8,8 +8,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Microsoft.Web.WebView2.Core;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using SifuMovesetEditor;
 using SifuMovesetEditor.Setup;
 using SifuMovesetEditor.Export;
@@ -89,6 +91,11 @@ public partial class MainWindow : Window
     private AnimationParser _parser = new();
     private List<MoveInfo> _allMoves = [];
     private List<MoveInfo> _allLocomotion = [];
+    // Library mode switch: attacks (default) vs cross-unit AI action/event nodes.
+    // The AI catalog scans combo trees lazily on first switch and is cached here.
+    private List<AiNodeInfo> _aiNodes = [];
+    private bool _aiLibraryMode;
+    private bool _aiScanStarted;
     // CustomAssets manifest last accepted at close (settings.json) - drives the
     // "save custom files?" prompt and which files an answer of No may delete.
     private List<string>? _customAssetsAccepted;
@@ -103,6 +110,12 @@ public partial class MainWindow : Window
     private string _settingsPath;
     private string _contentPath = "";
     private string _outputPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods");
+    // Source of truth for the "Show AI Actions & Events" setting (checkbox syncs from
+    // this on Settings open so Cancel discards edits; behavior reads this field).
+    private bool _showAiNodes;
+    // Node ids hidden from the combo canvas while _showAiNodes is false (rebuilt by
+    // RenderComboGraph; null = nothing hidden). Root nodes are never included.
+    private HashSet<int>? _hiddenAiNodeIds;
     private bool _initialized = false;
     private ComboGraph? _comboGraph;
     private Dictionary<int, Point> _nodePositions = new();
@@ -114,11 +127,13 @@ public partial class MainWindow : Window
     private const double INPUT_HEIGHT = 22;
     private const double H_SPACING = 80;
     private const double V_SPACING = 20;
+    private const int MaxColumnRows = 14;
 
     private bool _isPanning;
     private bool _panMoved;
     private bool _canvasHitNode;
     private Point _panStart;
+    private Point _panDownPos;
     private bool _keyW, _keyA, _keyS, _keyD;
     private DispatcherTimer _panTimer;
     private DateTime _lastPanTick = DateTime.UtcNow;
@@ -129,6 +144,7 @@ public partial class MainWindow : Window
 
     private Border? _selectedMoveBorder;
     private int _selectedNodeId = -1;
+    private readonly HashSet<int> _chainNodeIds = new();
     private int _lastClickedNodeId = -1;
     private DateTime _lastClickTime = DateTime.MinValue;
     private Popup? _dragPopup;
@@ -170,6 +186,14 @@ public partial class MainWindow : Window
     private ComboNode? _linkSourceNode = null;
     private bool _linkCreatesRedirect = false;
     private bool _linkPickCommitted = false;
+    // Start Entries pick-on-graph mode: the dialog suspended itself (closing like
+    // Cancel but carrying the live entries copy) so the user can click the target
+    // node directly on the canvas, retarget-style, with a confirmation popup.
+    private bool _isNodePickMode = false;
+    private Action<ComboNode>? _pendingPickApply = null;
+    private Action? _pendingPickResume = null;
+    private ComboGraph? _pendingPickGraph = null;
+    private int _pickCandidateNodeId = -1;
     private ComboGraph? _originalVanillaComboGraph;
     private string _activeStance = "MainChar";
     private string? _activeVariant;
@@ -178,7 +202,11 @@ public partial class MainWindow : Window
     private readonly List<string> _treeRefMisses = new();
     private Dictionary<string, UnitCacheEntry> _unitCaches = new();
     private UnitProperties? _currentUnitProps;
+    private string? _selectedModelOverride;
+    private string? _selectedModelSet;
+    private bool _modelPickerRosterMode;
     private UnitProperties? _unitPropsDefaults;
+    private CustomMovesetInfo? _customMoveset;
 
     /// <summary>
     /// Unit properties keyed by variant tag only, so they survive weapon switches (whose cache key
@@ -262,6 +290,7 @@ public partial class MainWindow : Window
         await webView.EnsureCoreWebView2Async(null);
         webView.CoreWebView2.WebMessageReceived += OnWebViewMessage;
         webView.NavigationCompleted += WebView_NavigationCompleted;
+        MapTextureHost(webView.CoreWebView2);
 
         var viewerPath = Path.Combine(
             AppDomain.CurrentDomain.BaseDirectory, "viewer", "index.html");
@@ -274,6 +303,8 @@ public partial class MainWindow : Window
         _panTimer.Start();
 
         await LoadSettingsAsync();
+        // Applies the AI visibility setting (library button) before first paint.
+        ApplyShowAiNodes();
         if (!_initInProgress)
             loadingOverlay.Visibility = Visibility.Collapsed;
         _initialized = true;
@@ -313,6 +344,10 @@ public partial class MainWindow : Window
                 if (settings != null)
                 {
                     _customAssetsAccepted = settings.CustomAssetsAccepted;
+                    // Applies on every branch below (including the repair-wizard path,
+                    // which never syncs chkShowLines).
+                    _showAiNodes = settings.ShowAiNodes;
+                    chkShowAiNodes.IsChecked = _showAiNodes;
                     if (!string.IsNullOrEmpty(settings.UnrealPakPath))
                         Setup.ContentExtractor.CustomUnrealPakPath = settings.UnrealPakPath;
                     if (!string.IsNullOrEmpty(settings.CryptoJsonPath))
@@ -377,13 +412,14 @@ public partial class MainWindow : Window
             }
         }
 
-        return await ShowSetupWizardAsync(SetupMode.FirstRun);
+        return await ShowSetupWizardAsync(SetupMode.FirstRun, quitOnCancel: true);
     }
 
     private async Task<Settings> ShowSetupWizardAsync(
         SetupMode mode = SetupMode.FirstRun,
         string? repairReason = null,
-        string? previousPath = null)
+        string? previousPath = null,
+        bool quitOnCancel = false)
     {
         var wizard = new SetupWizard
         {
@@ -391,6 +427,7 @@ public partial class MainWindow : Window
             Mode = mode,
             RepairReason = repairReason,
             PreviousContentPath = previousPath,
+            QuitOnCancel = quitOnCancel,
         };
 
         if (wizard.ShowDialog() == true && !string.IsNullOrEmpty(wizard.SelectedContentPath))
@@ -429,6 +466,7 @@ public partial class MainWindow : Window
             ContentPath = _contentPath,
             OutputPath = _outputPath,
             ShowLines = chkShowLines.IsChecked == true,
+            ShowAiNodes = _showAiNodes,
             CameraPosition = _savedCameraPos,
             CameraTarget = _savedCameraTarget,
             UnrealPakPath = Setup.ContentExtractor.CustomUnrealPakPath ?? "",
@@ -442,6 +480,36 @@ public partial class MainWindow : Window
     {
         loadingText.Text = text;
         loadingDetail.Text = detail;
+    }
+
+    // Guards Save/Load against double-clicks during the overlay's delayed-show window.
+    private bool _opInProgress;
+
+    /// <summary>
+    /// Runs a potentially slow operation behind the full-screen loading overlay. The
+    /// overlay appears only if the work is still running after 250ms, so quick saves
+    /// and loads don't flash it; hide in finally is idempotent for the fast path.
+    /// </summary>
+    private async Task RunWithLoadingAsync(string text, string detail, Func<Task> work)
+        => await RunWithLoadingAsync<object?>(text, detail, async () => { await work(); return null; });
+
+    private async Task<T> RunWithLoadingAsync<T>(string text, string detail, Func<Task<T>> work)
+    {
+        var workTask = work();
+        var delayTask = Task.Delay(250);
+        if (await Task.WhenAny(workTask, delayTask) == delayTask && !workTask.IsCompleted)
+        {
+            UpdateLoading(text, detail);
+            loadingOverlay.Visibility = Visibility.Visible;
+        }
+        try
+        {
+            return await workTask;
+        }
+        finally
+        {
+            loadingOverlay.Visibility = Visibility.Collapsed;
+        }
     }
 
     private bool _initInProgress;
@@ -534,6 +602,8 @@ public partial class MainWindow : Window
     {
         txtSettingsContentPath.Text = _contentPath;
         txtSettingsOutputPath.Text = string.IsNullOrEmpty(_outputPath) ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods") : _outputPath;
+        // Reset the checkbox to the saved value so closing with Cancel discards edits.
+        chkShowAiNodes.IsChecked = _showAiNodes;
         SetWebViewVisible(false);
         settingsOverlay.Visibility = Visibility.Visible;
     }
@@ -555,12 +625,15 @@ public partial class MainWindow : Window
 
     private async void ResetSettings_Click(object sender, RoutedEventArgs e)
     {
-        var res = MessageBox.Show(
+        var res = new ConfirmDialog(
+            "Confirm Reset",
             "Delete settings.json and vanilla game files in app directory to save space?\n\n" +
             "This will remove settings.json and folders: Vanilla, VanillaBackup, extractedPaks.\n\n" +
             "Setup will open so you can re-extract vanilla files (folder or pak).",
-            "Confirm Reset", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-        if (res != MessageBoxResult.OK) return;
+            "Reset",
+            "Cancel")
+        { Owner = this };
+        if (res.ShowDialog() != true) return;
         try {
             if (File.Exists(_settingsPath)) File.Delete(_settingsPath);
             var vanillaDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Vanilla");
@@ -670,11 +743,16 @@ public partial class MainWindow : Window
         }
         _contentPath = newContent;
         _outputPath = newOutput;
+        bool aiVisibilityChanged = _showAiNodes != (chkShowAiNodes.IsChecked == true);
+        _showAiNodes = chkShowAiNodes.IsChecked == true;
         SaveSettings();
         try { _parser?.Dispose(); var cDir = Setup.ContentDetector.ResolveContentDir(_contentPath); var fresh = new AnimationParser(); fresh.Initialize(_contentPath, cDir); fresh.MountCustomIntoProvider(CustomAssets.Root); _parser = fresh; } catch (Exception ex) { ErrorLog.Write("SETTINGS", ex); }
+        bool rearranged = ApplyShowAiNodes(aiVisibilityChanged);
         settingsOverlay.Visibility = Visibility.Collapsed;
         SetWebViewVisible(true);
-        txtStatus.Text = "Settings saved — provider re-initialized";
+        txtStatus.Text = rearranged
+            ? "Settings saved — provider re-initialized, graph re-arranged for AI visibility"
+            : "Settings saved — provider re-initialized";
     }
 
     private async void Settings_Click_OldForReference(object sender, RoutedEventArgs e)
@@ -793,8 +871,15 @@ public partial class MainWindow : Window
         tabHeaderUnused.Text = $"Other ({unusedMoves.Count})";
         tabHeaderLoco.Text = $"Stances ({filteredLoco.Count})";
         tabHeaderCustom.Text = $"Custom ({customMoves.Count})";
-        txtMoveCount.Text = $"{vanillaMoves.Count} vanilla / {unusedMoves.Count} other / {filteredLoco.Count} stances / {customMoves.Count} custom";
+        if (_aiNodes.Count > 0)
+            RefreshAiList();
+        txtMoveCount.Text = _aiLibraryMode
+            ? $"{CountAiActions()} actions / {CountAiEvents()} events"
+            : $"{vanillaMoves.Count} vanilla / {unusedMoves.Count} other / {filteredLoco.Count} stances / {customMoves.Count} custom";
     }
+
+    private int CountAiActions() => _aiNodes.Count(n => n.Kind == "Action");
+    private int CountAiEvents() => _aiNodes.Count(n => n.Kind == "Event");
 
     private static readonly string[] MainCharWeaponOrder = ["BareHands", "Bat", "Staff", "Knife", "Special", "Special Combos"];
 
@@ -1261,6 +1346,14 @@ public partial class MainWindow : Window
     private static readonly SolidColorBrush SelectedRedirectBorder = new(Color.FromArgb(0x80, 0x89, 0xb4, 0x86));
     private static readonly SolidColorBrush SelectedRedirectBg = new(Color.FromArgb(0x30, 0x89, 0xb4, 0x86));
 
+    private static readonly SolidColorBrush ChainHighlightBorder = new(Color.FromRgb(0xf9, 0xe2, 0xaf));
+    private static readonly SolidColorBrush ChainHighlightEdgeBrush = new(Color.FromRgb(0xf9, 0xe2, 0xaf));
+    private const double ChainDimOpacity = 0.3;
+    private const double ChainEdgeThickness = 3.0;
+    private const int ChainEdgeZIndex = 4;
+    private const int NodeZIndex = 10;
+    private const int NodeInputBgZIndex = 11;
+
     private static readonly Color EdgeDefaultColor = Color.FromRgb(0x89, 0xb4, 0xfa);
     private static readonly Color EdgeStanceDim = Color.FromRgb(0x58, 0x5b, 0x70);
     private static readonly Dictionary<string, Color> EdgeColorByInput = new(StringComparer.OrdinalIgnoreCase)
@@ -1289,6 +1382,8 @@ public partial class MainWindow : Window
         EdgeDefaultBrush.Freeze();
         EdgeStanceDimBrush = new SolidColorBrush(EdgeStanceDim);
         EdgeStanceDimBrush.Freeze();
+        ChainHighlightBorder.Freeze();
+        ChainHighlightEdgeBrush.Freeze();
     }
 
     private class EdgeVisuals
@@ -1329,16 +1424,11 @@ public partial class MainWindow : Window
     private void ClearNodeSelection()
     {
         CommitAttackDbPanel();
-        if (_selectedNodeId >= 0 && _comboGraph != null)
-        {
-            var prev = _comboGraph.Nodes.FirstOrDefault(n => n.Id == _selectedNodeId);
-            if (prev != null && _nodeBorders.TryGetValue(_selectedNodeId, out var prevBorder))
-            {
-                prevBorder.BorderBrush = GetNodeColor(prev);
-                prevBorder.Background = GetNodeBackground(prev);
-            }
-            _selectedNodeId = -1;
-        }
+        bool hadSelection = _selectedNodeId >= 0 || _chainNodeIds.Count > 0;
+        _selectedNodeId = -1;
+        _chainNodeIds.Clear();
+        if (hadSelection)
+            ApplySelectionStyles();
         UpdateAttackDbPanel(null);
     }
 
@@ -1360,7 +1450,7 @@ public partial class MainWindow : Window
     {
         var parts = new List<string>(2);
         if (v.HasBuildup) parts.Add($"{v.Buildup} frames");
-        if (v.HasRange) parts.Add($"range {v.Range:0.###}");
+        if (v.HasRange) parts.Add($"range {AttackDbCard.FormatRange(v.Range)}");
         return string.Join(", ", parts);
     }
 
@@ -1395,15 +1485,18 @@ public partial class MainWindow : Window
         attackDbSection.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         if (!show || node == null || vanilla == null) return;
 
-        txtAttackDbCard.Text = "Card: " + Path.GetFileNameWithoutExtension(
+        string cardName = Path.GetFileNameWithoutExtension(
             AttackDbCard.GamePathToContentRel(cardPath));
+        txtAttackDbCard.Text = $"Card: {cardName}";
         txtAttackBuildup.IsEnabled = vanilla.HasBuildup;
         txtAttackRange.IsEnabled = vanilla.HasRange;
         txtAttackBuildup.Text = vanilla.HasBuildup
             ? (node.AttackBuildupFrames?.ToString() ?? vanilla.Buildup.ToString())
             : "";
         txtAttackRange.Text = vanilla.HasRange
-            ? (node.AttackGameplayRange?.ToString("0.###") ?? vanilla.Range.ToString("0.###"))
+            ? (node.AttackGameplayRange.HasValue
+                ? AttackDbCard.FormatRange(node.AttackGameplayRange.Value)
+                : AttackDbCard.FormatRange(vanilla.Range))
             : "";
 
         bool tuned = node.AttackBuildupFrames.HasValue || node.AttackGameplayRange.HasValue;
@@ -1527,11 +1620,14 @@ public partial class MainWindow : Window
             }
 
             // A value identical to vanilla is not a change - store it as "no override".
+            // Display equality (3 decimals), not bit equality: the textbox round-trips
+            // "0.###", so a 4-decimal vanilla value reads back with rounding error that
+            // a raw tolerance check would keep as a phantom override.
             if (vanilla != null)
             {
                 if (newBuildup.HasValue && vanilla.HasBuildup && newBuildup.Value == vanilla.Buildup)
                     newBuildup = null;
-                if (newRange.HasValue && vanilla.HasRange && Math.Abs(newRange.Value - vanilla.Range) < 0.0001f)
+                if (newRange.HasValue && vanilla.HasRange && AttackDbCard.SameRange(newRange.Value, vanilla.Range))
                     newRange = null;
             }
         }
@@ -1652,24 +1748,190 @@ public partial class MainWindow : Window
     private void SelectNode(Border border, ComboNode node)
     {
         CommitAttackDbPanel();
-        if (_selectedNodeId >= 0 && _comboGraph != null)
+        _selectedNodeId = node.Id;
+        ComputeSelectionChain();
+        ApplySelectionStyles();
+        if (node.Id < 0)
+            ApplySelectedNodeStyle(border, node);
+        UpdateAttackDbPanel(node);
+    }
+
+    /// <summary>Right-panel Display line for a combo node, prefixed with its tree
+    /// index ([45]) or [new] so it matches the Start Entries dropdown format.
+    /// Redirects keep "Redirect → name" (they are not tree nodes).</summary>
+    private void UpdateNodeDisplayNameLabel(ComboNode node)
+    {
+        if (node.IsRedirect)
         {
-            var prev = _comboGraph.Nodes.FirstOrDefault(n => n.Id == _selectedNodeId);
-            if (prev != null && _nodeBorders.TryGetValue(_selectedNodeId, out var prevBorder))
+            txtDisplayName.Text =
+                $"Redirect → {(_comboGraph?.Nodes.FirstOrDefault(n => n.Id == node.ResolvedRedirectNodeId)?.DisplayName ?? "?")}";
+            return;
+        }
+        string idx = node.TreeIndex >= 0 ? $"[{node.TreeIndex}]" : "[new]";
+        txtDisplayName.Text = !string.IsNullOrEmpty(node.ImportedDisplayName) &&
+            !string.Equals(node.ImportedDisplayName, node.DisplayName, StringComparison.OrdinalIgnoreCase)
+                ? $"Display: {idx} {node.DisplayName} → Changed: {node.ImportedDisplayName}"
+                : $"Display: {idx} {node.DisplayName}";
+    }
+
+    /// <summary>Start Entries dialog jump target: selects the node on the combo canvas,
+    /// pans it to the viewport centre and updates the info panel. The dialog is modal,
+    /// so the reveal is seen around/behind it; interaction resumes after it closes.</summary>
+    internal void SelectAndRevealNode(int nodeId)
+    {
+        if (_comboGraph == null) return;
+        var node = _comboGraph.Nodes.FirstOrDefault(n => n.Id == nodeId);
+        if (node == null)
+        {
+            txtStatus.Text = "Jump target no longer exists in the graph";
+            return;
+        }
+        if (!_nodeBorders.TryGetValue(nodeId, out var border) ||
+            !_nodePositions.TryGetValue(nodeId, out var pos))
+        {
+            ShowToast("Node is not visible on the canvas (hidden AI or dead redirect) - jump ignored");
+            return;
+        }
+        double cx = comboBorder.ActualWidth / 2.0;
+        double cy = comboBorder.ActualHeight / 2.0;
+        _comboTranslate.X = cx - (pos.X + NODE_WIDTH / 2.0);
+        _comboTranslate.Y = cy - (pos.Y + NODE_HEIGHT / 2.0);
+        ClearMoveSelection();
+        SelectNode(border, node);
+        var typePath = ComboNodeTypePath(node);
+        if (node.IsActionNode)
+            SetSourceTypeDisplay("Action");
+        else if (node.IsEventNode)
+            SetSourceTypeDisplay("Event");
+        else if (!string.IsNullOrEmpty(typePath))
+            SetSourceTypeDisplay(MoveInfo.SourceTypeFromPath(typePath));
+        else
+            SetSourceTypeDisplay("Other");
+        UpdateNodeDisplayNameLabel(node);
+        string idx = node.TreeIndex >= 0 ? $"[{node.TreeIndex}]" : "[new]";
+        txtStatus.Text = $"Jumped to {idx} {node.DisplayName} - close Start Entries to interact";
+        ShowToast($"Jumped to {idx} {node.DisplayName}");
+    }
+
+    private void ComputeSelectionChain()
+    {
+        _chainNodeIds.Clear();
+        if (_selectedNodeId < 0 || _comboGraph == null) return;
+        if (_comboGraph.Nodes.All(n => n.Id != _selectedNodeId)) return;
+
+        var parents = new Dictionary<int, List<int>>();
+        var children = new Dictionary<int, List<int>>();
+        foreach (var n in _comboGraph.Nodes)
+        {
+            parents[n.Id] = new List<int>();
+            children[n.Id] = new List<int>();
+        }
+        foreach (var e in _comboGraph.Edges)
+        {
+            if (e.FromNodeId == -1) continue;
+            // The redirect -> target forward hop is stored as an edge (IsRedirect) but
+            // never drawn (RenderComboGraph skips it). The selection chain may only
+            // travel drawn links, so redirects terminate the walk both ways: the
+            // visible dashed incoming link still lights, the forward target does not.
+            if (e.IsRedirect) continue;
+            if (children.ContainsKey(e.FromNodeId) && parents.ContainsKey(e.ToNodeId))
             {
-                prevBorder.BorderBrush = GetNodeColor(prev);
-                prevBorder.Background = GetNodeBackground(prev);
+                children[e.FromNodeId].Add(e.ToNodeId);
+                parents[e.ToNodeId].Add(e.FromNodeId);
             }
         }
-        _selectedNodeId = node.Id;
-        var nodeColor = GetNodeColor(node);
-        var color = nodeColor.Color;
-        if (color.R == 0xa6 && color.G == 0xe3 && color.B == 0xa1)
+
+        _chainNodeIds.Add(_selectedNodeId);
+
+        var visitedUp = new HashSet<int> { _selectedNodeId };
+        var queue = new Queue<int>();
+        queue.Enqueue(_selectedNodeId);
+        while (queue.Count > 0)
+        {
+            int id = queue.Dequeue();
+            foreach (var nb in parents[id])
+                if (visitedUp.Add(nb)) { _chainNodeIds.Add(nb); queue.Enqueue(nb); }
+        }
+
+        var visitedDown = new HashSet<int> { _selectedNodeId };
+        queue.Enqueue(_selectedNodeId);
+        while (queue.Count > 0)
+        {
+            int id = queue.Dequeue();
+            foreach (var nb in children[id])
+                if (visitedDown.Add(nb)) { _chainNodeIds.Add(nb); queue.Enqueue(nb); }
+        }
+    }
+
+    private void ApplySelectionStyles()
+    {
+        bool active = _selectedNodeId >= 0 && _chainNodeIds.Count > 0;
+        bool mainChar = active && IsCurrentGraphMainChar();
+
+        foreach (var kvp in _nodeBorders)
+        {
+            if (kvp.Value.Tag is not ComboNode node) continue;
+            double baseOpacity = node.Removed ? 0.4 : 1.0;
+            if (active && kvp.Key == _selectedNodeId)
+            {
+                ApplySelectedNodeStyle(kvp.Value, node);
+                kvp.Value.Opacity = baseOpacity;
+            }
+            else if (active && _chainNodeIds.Contains(kvp.Key))
+            {
+                kvp.Value.BorderBrush = GetChainBorderBrush(node, mainChar);
+                kvp.Value.Background = GetNodeBackground(node);
+                kvp.Value.Opacity = baseOpacity;
+            }
+            else
+            {
+                kvp.Value.BorderBrush = GetNodeColor(node);
+                kvp.Value.Background = GetNodeBackground(node);
+                kvp.Value.Opacity = active ? ChainDimOpacity : baseOpacity;
+            }
+        }
+
+        foreach (var kvp in _nodeInputBgs)
+        {
+            bool lit = !active || _chainNodeIds.Contains(kvp.Key) || kvp.Key == _selectedNodeId;
+            kvp.Value.Opacity = lit ? 1.0 : ChainDimOpacity;
+        }
+
+        foreach (var kvp in _edgeVisuals)
+        {
+            var edge = kvp.Key;
+            var vis = kvp.Value;
+            bool chain = active && _chainNodeIds.Contains(edge.FromNodeId) && _chainNodeIds.Contains(edge.ToNodeId);
+            var brush = GetEdgeBrush(edge);
+            if (chain && (!mainChar || IsIncomingToRedirect(edge)))
+                brush = ChainHighlightEdgeBrush;
+            if (vis.Path != null)
+            {
+                vis.Path.Stroke = brush;
+                vis.Path.StrokeThickness = chain ? ChainEdgeThickness : GetEdgeThickness(edge);
+                vis.Path.Opacity = active && !chain ? ChainDimOpacity : 1.0;
+                Canvas.SetZIndex(vis.Path, chain ? ChainEdgeZIndex : 0);
+            }
+            if (vis.HitPath != null)
+                Canvas.SetZIndex(vis.HitPath, chain ? ChainEdgeZIndex : -1);
+            if (vis.Arrow != null)
+            {
+                vis.Arrow.Fill = brush;
+                vis.Arrow.Opacity = active && !chain ? ChainDimOpacity : 1.0;
+                Canvas.SetZIndex(vis.Arrow, chain ? ChainEdgeZIndex : 0);
+            }
+        }
+    }
+
+    private void ApplySelectedNodeStyle(Border border, ComboNode node)
+    {
+        var sc = GetNodeColor(node).Color;
+        if (sc.R == 0xa6 && sc.G == 0xe3 && sc.B == 0xa1)
         {
             border.BorderBrush = SelectedGreenBorder;
             border.Background = SelectedGreenBg;
         }
-        else if (color.R == 0xfa && color.G == 0xb3 && color.B == 0x87)
+        else if (sc.R == 0xfa && sc.G == 0xb3 && sc.B == 0x87)
         {
             border.BorderBrush = SelectedOrangeBorder;
             border.Background = SelectedOrangeBg;
@@ -1684,12 +1946,186 @@ public partial class MainWindow : Window
             border.BorderBrush = SelectedNodeBorderBrush;
             border.Background = SelectedNodeBg;
         }
+    }
 
-        UpdateAttackDbPanel(node);
+    private SolidColorBrush GetChainBorderBrush(ComboNode node, bool mainChar)
+    {
+        if (mainChar && node.IsRedirect)
+            return ChainHighlightBorder;
+        if (mainChar && !string.IsNullOrEmpty(node.InputLabel))
+            return GetInputColor(node.InputLabel);
+        return ChainHighlightBorder;
+    }
+
+    private void RestoreNodeVisual(Border border, ComboNode node)
+    {
+        bool active = _selectedNodeId >= 0 && _chainNodeIds.Count > 0;
+        bool isSel = active && _selectedNodeId == node.Id;
+        bool inChain = active && _chainNodeIds.Contains(node.Id);
+        if (isSel)
+        {
+            ApplySelectedNodeStyle(border, node);
+        }
+        else
+        {
+            border.BorderBrush = inChain
+                ? GetChainBorderBrush(node, IsCurrentGraphMainChar())
+                : GetNodeColor(node);
+            border.Background = GetNodeBackground(node);
+        }
+        double baseOpacity = node.Removed ? 0.4 : 1.0;
+        border.Opacity = active && !isSel && !inChain ? ChainDimOpacity : baseOpacity;
+    }
+
+    private bool IsIncomingToRedirect(ComboEdge edge) => _comboGraph != null
+        && _comboGraph.Nodes.Any(n => n.Id == edge.ToNodeId && n.IsRedirect);
+
+    private SolidColorBrush GetEdgeBrush(ComboEdge edge)
+    {
+        bool isStanceEdge = edge.FromNodeId == -1;
+        var brush = isStanceEdge
+            ? EdgeStanceDimBrush
+            : (EdgeBrushByInput.TryGetValue(edge.InputName, out var c) ? c : EdgeDefaultBrush);
+        if (IsIncomingToRedirect(edge))
+            brush = new SolidColorBrush(Color.FromArgb(0x60, 0x6c, 0x70, 0x86));
+        return brush;
+    }
+
+    private static double GetEdgeThickness(ComboEdge edge) => edge.FromNodeId == -1 ? 1.5 : 2.0;
+
+    private void LibModeAttacks_Click(object sender, RoutedEventArgs e) => SetLibraryMode(false);
+
+    private void LibModeAi_Click(object sender, RoutedEventArgs e) => SetLibraryMode(true);
+
+    private void SetLibraryMode(bool ai)
+    {
+        if (_aiLibraryMode == ai) return;
+        _aiLibraryMode = ai;
+        tabMoves.Visibility = ai ? Visibility.Collapsed : Visibility.Visible;
+        scrollAiNodes.Visibility = ai ? Visibility.Visible : Visibility.Collapsed;
+        btnLibAttacks.Background = new SolidColorBrush(ai ? Color.FromRgb(0x18, 0x18, 0x25) : Color.FromRgb(0xcd, 0xd6, 0xf4));
+        btnLibAttacks.Foreground = new SolidColorBrush(ai ? Color.FromRgb(0x6c, 0x70, 0x86) : Color.FromRgb(0x1e, 0x1e, 0x2e));
+        btnLibAi.Background = new SolidColorBrush(ai ? Color.FromRgb(0xcd, 0xd6, 0xf4) : Color.FromRgb(0x18, 0x18, 0x25));
+        btnLibAi.Foreground = new SolidColorBrush(ai ? Color.FromRgb(0x1e, 0x1e, 0x2e) : Color.FromRgb(0x6c, 0x70, 0x86));
+        if (ai)
+            _ = EnsureAiCatalogAsync();
+        else if (_allMoves.Count > 0)
+            FilterMoves();
+        else
+            RefreshAiList();
+    }
+
+    private async System.Threading.Tasks.Task EnsureAiCatalogAsync()
+    {
+        if (_aiScanStarted)
+        {
+            RefreshAiList();
+            return;
+        }
+        _aiScanStarted = true;
+        try
+        {
+            txtStatus.Text = "Scanning combo trees for AI actions/events...";
+            string contentDir = Setup.ContentDetector.ResolveContentDir(_contentPath);
+            var scanned = await System.Threading.Tasks.Task.Run(() =>
+                ActionNodeCatalog.Scan(contentDir, msg => Dispatcher.Invoke(() => txtStatus.Text = msg)));
+            _aiNodes = scanned;
+            if (scanned.Count > 0)
+            {
+                txtStatus.Text = $"AI catalog: {scanned.Count} nodes ({CountAiActions()} actions, {CountAiEvents()} events) - click a category to expand";
+            }
+            else
+            {
+                txtStatus.Text = "AI catalog: no action/event nodes found";
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("AI-CATALOG", ex);
+            _aiScanStarted = false;
+        }
+        RefreshAiList();
+    }
+
+    private void RefreshAiList()
+    {
+        if (_aiNodes.Count == 0)
+        {
+            listAi.ItemsSource = null;
+            return;
+        }
+
+        string search = txtSearch.Text.Trim();
+        // Class names in files keep the generated "_C" suffix; the catalog strips it.
+        // Tolerate either form so pasting "BP_AiAction_Dash_ES_Kuroki_C" still matches.
+        if (search.EndsWith("_C", StringComparison.OrdinalIgnoreCase))
+            search = search[..^2];
+        bool Match(AiNodeInfo n) => string.IsNullOrEmpty(search)
+            || n.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase)
+            || n.SourceUnit.Contains(search, StringComparison.OrdinalIgnoreCase)
+            || n.ClassName.Contains(search, StringComparison.OrdinalIgnoreCase)
+            || n.Kind.Contains(search, StringComparison.OrdinalIgnoreCase);
+        var filtered = _aiNodes.Where(Match).ToList();
+
+        var result = new List<object>();
+        foreach (var (kind, kindKey, subtitle) in new[]
+        {
+            ("Action", "AI Actions", "Cross-unit AI action nodes - drag a card onto the canvas"),
+            ("Event", "AI Events", "Cross-unit combo event nodes - drag a card onto the canvas")
+        })
+        {
+            var inKind = filtered.Where(n => n.Kind == kind).ToList();
+            if (inKind.Count == 0) continue;
+            bool kindExpanded = _expandedEnemies.Contains(kindKey);
+            result.Add(new GroupHeader
+            {
+                Name = kindKey,
+                Level = 1,
+                Count = inKind.Count,
+                Subtitle = subtitle,
+                IsExpanded = kindExpanded
+            });
+            if (!kindExpanded) continue;
+
+            foreach (var unitGroup in inKind.GroupBy(n => n.SourceUnit, StringComparer.OrdinalIgnoreCase)
+                         .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                bool unitExpanded = _expandedWeapons.TryGetValue(kindKey, out var set) && set.Contains(unitGroup.Key);
+                result.Add(new GroupHeader
+                {
+                    Name = unitGroup.Key,
+                    Level = 2,
+                    Count = unitGroup.Count(),
+                    ParentName = kindKey,
+                    IsExpanded = unitExpanded
+                });
+                if (!unitExpanded) continue;
+                foreach (var n in unitGroup.OrderBy(x => x.DisplayName, StringComparer.OrdinalIgnoreCase))
+                    result.Add(n);
+            }
+        }
+        listAi.ItemsSource = result;
     }
 
     private async void MoveCard_Click(object sender, MouseButtonEventArgs e)
     {
+        if (sender is Border aiBorder && aiBorder.Tag is AiNodeInfo ai)
+        {
+            ClearNodeSelection();
+            SelectMoveCard(aiBorder);
+            if (ai.PreviewAnimPath != null)
+            {
+                txtStatus.Text = $"Loading: {ai.DisplayName}...";
+                SetSourceTypeDisplay(ai.Kind);
+                await PreviewAsync(ai.Character, ai.PreviewAnimPath);
+            }
+            else
+            {
+                txtStatus.Text = $"{ai.Kind}: {ai.DisplayName} - from {ai.SourceUnit} ({ai.SourceFile})" +
+                    (ai.Kind == "Event" ? " (events have no animation)" : " (no CDO animation - preview driven by the action blueprint)");
+            }
+            return;
+        }
         if (sender is Border border && border.Tag is MoveInfo move)
         {
             ClearNodeSelection();
@@ -1698,17 +2134,29 @@ public partial class MainWindow : Window
             txtStatus.Text = $"Loading: {move.DisplayName}...";
             SetSourceTypeDisplay(move.SourceType);
             txtDisplayName.Text = "Display: -";
-            ShowPreviewOverlay();
 
-            if (!string.IsNullOrEmpty(move.Character))
-                await LoadMeshAsync(move.Character);
-
-            await LoadAnimationAsync(move.FullPath);
+            await PreviewAsync(move.Character, move.FullPath);
         }
     }
 
     private void MoveCard_MouseMove(object sender, MouseEventArgs e)
     {
+        if (e.LeftButton == MouseButtonState.Pressed &&
+            sender is Border aiBorder && aiBorder.Tag is AiNodeInfo aiNode)
+        {
+            _draggedCard = aiBorder;
+            aiBorder.Opacity = 0.15;
+            try
+            {
+                DragDrop.DoDragDrop(aiBorder, new DataObject(typeof(AiNodeInfo), aiNode), DragDropEffects.Copy);
+            }
+            finally
+            {
+                aiBorder.Opacity = 1;
+                _draggedCard = null;
+            }
+            return;
+        }
         if (e.LeftButton == MouseButtonState.Pressed &&
             sender is Border border && border.Tag is MoveInfo move)
         {
@@ -1810,6 +2258,8 @@ public partial class MainWindow : Window
             "Attack DB" => new SolidColorBrush(Color.FromRgb(0x89, 0xb4, 0xfa)),
             "Animation File" => new SolidColorBrush(Color.FromRgb(0xa6, 0xe3, 0xa1)),
             "Custom" => new SolidColorBrush(Color.FromRgb(0xcb, 0xa6, 0xf7)),
+            "Action" => new SolidColorBrush(Color.FromRgb(0xf9, 0xe2, 0xaf)),
+            "Event" => new SolidColorBrush(Color.FromRgb(0xfa, 0xb3, 0x87)),
             _ => new SolidColorBrush(Color.FromRgb(0xa6, 0xad, 0xc8)),
         };
     }
@@ -1883,18 +2333,62 @@ public partial class MainWindow : Window
         }
     }
 
-    private async System.Threading.Tasks.Task LoadAnimationAsync(string gamePath)
+    // The animation/mesh currently delivered to the preview viewer: re-clicking the node
+    // whose animation is already loaded replays instead of re-parsing. _previewGen
+    // invalidates in-flight loads when a newer preview request supersedes them (fast
+    // A -> B click sequences must not let the stale A result overwrite B).
+    private string? _previewAnimPath;
+    private string? _previewMeshCharacter;
+    private int _previewGen;
+
+    /// <summary>
+    /// Central preview entry used by every move/node click. When the requested animation
+    /// AND character are already loaded the clip is replayed from frame 0 - no overlay,
+    /// no package parse, no WebView traffic. Otherwise the mesh and the animation parse
+    /// concurrently, but the animation's delivery waits for the mesh task: the viewer
+    /// binds the clip to the mesh's bones (buildSkeleton prefers currentMesh), so the
+    /// mesh must land first. The mesh itself is not re-sent when the character is
+    /// unchanged.
+    /// </summary>
+    private async System.Threading.Tasks.Task PreviewAsync(string? character, string animPath)
+    {
+        bool sameAnim = string.Equals(animPath, _previewAnimPath, StringComparison.OrdinalIgnoreCase);
+        bool sameMesh = string.IsNullOrEmpty(character)
+            || string.Equals(character, _previewMeshCharacter, StringComparison.OrdinalIgnoreCase);
+
+        if (sameAnim && sameMesh)
+        {
+            txtStatus.Text = $"Playing (already loaded): {animPath}";
+            if (webView?.CoreWebView2 != null)
+                await webView.CoreWebView2.ExecuteScriptAsync("window.seekTo(0); window.play();");
+            return;
+        }
+
+        int gen = ++_previewGen;
+        ShowPreviewOverlay();
+
+        System.Threading.Tasks.Task meshTask =
+            sameMesh || string.IsNullOrEmpty(character)
+                ? System.Threading.Tasks.Task.CompletedTask
+                : LoadMeshAsync(character, gen);
+
+        await LoadAnimationAsync(animPath, gen, meshTask);
+    }
+
+    private async System.Threading.Tasks.Task LoadAnimationAsync(string gamePath, int gen, System.Threading.Tasks.Task? meshGate = null)
     {
         try
         {
             var data = await System.Threading.Tasks.Task.Run(() =>
                 _parser.LoadAnimation(gamePath));
+            if (gen != _previewGen) return; // superseded by a newer preview request
 
             if (data == null && Directory.Exists(CustomAssets.Root))
             {
                 try { _parser.MountCustomIntoProvider(CustomAssets.Root); } catch { }
                 data = await System.Threading.Tasks.Task.Run(() =>
                     _parser.LoadAnimation(gamePath));
+                if (gen != _previewGen) return;
             }
 
             if (data == null)
@@ -1910,11 +2404,16 @@ public partial class MainWindow : Window
                     FilterMoves();
                 }
 
+                _previewAnimPath = null; // failed - allow a re-click to retry
                 HidePreviewOverlay();
                 var escapedNull = nullMsg.Replace("'", "\\'");
                 await webView.CoreWebView2.ExecuteScriptAsync($"window.showError('{escapedNull}')");
                 return;
             }
+
+            // Parse ran concurrently with the mesh; deliver only after it landed.
+            if (meshGate != null) await meshGate;
+            if (gen != _previewGen) return;
 
             var json = _parser.ToJson(data);
 
@@ -1932,13 +2431,17 @@ public partial class MainWindow : Window
             await webView.CoreWebView2.ExecuteScriptAsync(
                 $"window.loadAnimation({json})");
 
+            if (gen != _previewGen) return; // superseded mid-delivery; the newer request owns the overlay
+            _previewAnimPath = gamePath; // re-clicks now replay instead of re-parsing
             HidePreviewOverlay();
             txtStatus.Text = $"Loaded: {data.animation.name} ({data.animation.numFrames} frames, {data.animation.tracks.Length} tracks)";
         }
         catch (Exception ex)
         {
+            if (gen != _previewGen) return;
             Console.Error.WriteLine($"[ANIMATION ERROR] {ex}");
             ErrorLog.Write("ANIMATION", ex);
+            _previewAnimPath = null; // failed - allow a re-click to retry
             HidePreviewOverlay();
             txtStatus.Text = $"Error: {ex.Message}";
             var escaped = ex.Message.Replace("'", "\\'").Replace("\\", "\\\\").Replace("\n", " ").Replace("\r", "");
@@ -2035,13 +2538,15 @@ public partial class MainWindow : Window
         }
     }
 
-    private async System.Threading.Tasks.Task LoadMeshAsync(string character)
+    private async System.Threading.Tasks.Task LoadMeshAsync(string character, int gen)
     {
         try
         {
             var meshData = await System.Threading.Tasks.Task.Run(() => _parser.LoadMesh(character));
+            if (gen != _previewGen) return; // superseded by a newer preview request
             if (meshData == null)
             {
+                _previewMeshCharacter = null; // failed - allow a re-click to retry
                 txtStatus.Text = $"No mesh found for {character}";
                 return;
             }
@@ -2049,12 +2554,16 @@ public partial class MainWindow : Window
             var json = _parser.ToJson(meshData);
             var escapedChar = character.Replace("'", "\\'");
             await webView.CoreWebView2.ExecuteScriptAsync($"window.loadMesh({json}, '{escapedChar}')");
+            if (gen != _previewGen) return;
+            _previewMeshCharacter = character; // unchanged character => no re-send on the next click
             txtStatus.Text = $"Loaded mesh for {character} ({meshData.positions.Length / 3} vertices)";
         }
         catch (Exception ex)
         {
+            if (gen != _previewGen) return;
             Console.Error.WriteLine($"[MESH ERROR] {ex}");
             ErrorLog.Write("MESH", ex);
+            _previewMeshCharacter = null;
             txtStatus.Text = $"Error loading mesh: {ex.Message}";
         }
     }
@@ -2062,7 +2571,7 @@ public partial class MainWindow : Window
     private static bool IsBarehandsWeaponTag(string? weaponTag) =>
         !string.IsNullOrEmpty(weaponTag) && weaponTag.EndsWith("Barehands", StringComparison.OrdinalIgnoreCase);
 
-    private static string? NormalizeWeaponForCache(string arch, string? weaponTag)
+    internal static string? NormalizeWeaponForCache(string arch, string? weaponTag)
     {
         if (string.IsNullOrEmpty(weaponTag)) return null;
         if (string.Equals(arch, "MainChar", StringComparison.OrdinalIgnoreCase)) return weaponTag;
@@ -2134,6 +2643,26 @@ public partial class MainWindow : Window
             if (parts.Length < 2 || string.IsNullOrEmpty(parts[1])) continue;
 
             UnitPropertiesManager.SetPendingFocus(_contentPath, parts[1], want);
+        }
+    }
+
+    private void SeedPendingModelFromCaches()
+    {
+        if (string.IsNullOrEmpty(_contentPath)) return;
+
+        foreach (var kvp in _unitCaches)
+        {
+            var modelPath = kvp.Value?.Props?.ModelOverride;
+            var modelSet = kvp.Value?.Props?.ModelSet;
+            if (string.IsNullOrEmpty(modelPath) && string.IsNullOrEmpty(modelSet)) continue;
+
+            var parts = kvp.Key.Split('|');
+            if (parts.Length < 2 || string.IsNullOrEmpty(parts[1])) continue;
+
+            if (!string.IsNullOrEmpty(modelPath))
+                UnitPropertiesManager.SetPendingModel(_contentPath, parts[1], modelPath);
+            if (!string.IsNullOrEmpty(modelSet))
+                UnitPropertiesManager.SetPendingModelSet(_contentPath, parts[1], modelSet);
         }
     }
 
@@ -2244,9 +2773,10 @@ public partial class MainWindow : Window
         bool graphIsEnemy = _comboGraph.Nodes.Any(n =>
             !string.IsNullOrEmpty(n.DefaultDBPath) &&
             n.DefaultDBPath.Contains("/AI/Archetypes/", StringComparison.OrdinalIgnoreCase));
-        bool graphIsMainCharWeapon = !keyIsMainChar && _comboGraph.Nodes.Any(n =>
-            !string.IsNullOrEmpty(n.DefaultDBPath) &&
-            n.DefaultDBPath.Contains("/_MainChar/", StringComparison.OrdinalIgnoreCase));
+        // Graph-level identity only: a MainChar card dropped onto an enemy graph must
+        // not make the enemy graph read as MainChar (it used to, skipping the cache
+        // and losing the unit's edits on the next unit switch).
+        bool graphIsMainCharWeapon = !keyIsMainChar && GraphIsMainChar(_comboGraph);
 
         if (keyIsMainChar && graphIsEnemy) return;
         if (!keyIsMainChar && (graphHasStance || graphIsMainCharWeapon)) return;
@@ -2274,7 +2804,7 @@ public partial class MainWindow : Window
             cached.ActiveWeapon);
         _currentUnitProps = cached.Props;
         _activeStance = key.Contains('|') ? key.Split('|')[0] : key;
-        txtComboInfo.Text = $"{key} - {_comboGraph.WeaponName} ({_comboGraph.Nodes.Count} nodes, {_comboGraph.Edges.Count} edges)";
+        SetComboInfo($"{key} - {_comboGraph.WeaponName} ({_comboGraph.Nodes.Count} nodes, {_comboGraph.Edges.Count} edges)");
         UpdateUnitPropertiesButtonVisibility();
         if (_comboGraph.Nodes.Count > 0 &&
             _comboGraph.Nodes.Any(n => !_nodePositions.ContainsKey(n.Id)))
@@ -2286,13 +2816,14 @@ public partial class MainWindow : Window
         return true;
     }
 
-    private void SaveProject_Click(object sender, RoutedEventArgs e)
+    private async void SaveProject_Click(object sender, RoutedEventArgs e)
     {
         if (_comboGraph == null)
         {
             txtStatus.Text = "No combo graph loaded";
             return;
         }
+        if (_opInProgress) return;
 
         SaveCurrentUnitToCache();
 
@@ -2305,18 +2836,31 @@ public partial class MainWindow : Window
 
         if (dialog.ShowDialog() == true)
         {
+            _opInProgress = true;
             try
             {
-                var project = new EditorProject { Name = Path.GetFileNameWithoutExtension(dialog.FileName) };
+                var project = new EditorProject { Name = Path.GetFileNameWithoutExtension(dialog.FileName), CustomMoveset = _customMoveset };
                 string saveArch = _activeStance?.Split('|')[0] ?? "MainChar";
-                ProjectManager.SaveWithCaches(project, _unitCaches, _activeStance, _activeVariant,
-                    NormalizeWeaponForCache(saveArch, _activeWeapon), dialog.FileName);
-                txtStatus.Text = $"Saved project: {dialog.FileName} ({_unitCaches.Count} units)";
-                ShowProjectFeedbackDialog(true, dialog.FileName, project.Name);
+                var stance = _activeStance;
+                var variant = _activeVariant;
+                var weapon = NormalizeWeaponForCache(saveArch, _activeWeapon);
+                int unitCount = _unitCaches.Count;
+                string filePath = dialog.FileName;
+                // Serialization runs off-thread behind the overlay; it blocks input, so
+                // the caches can't mutate while the background save walks them.
+                await RunWithLoadingAsync("Saving project...", Path.GetFileName(filePath),
+                    () => Task.Run(() => ProjectManager.SaveWithCaches(
+                        project, _unitCaches, stance, variant, weapon, filePath)));
+                txtStatus.Text = $"Saved project: {filePath} ({unitCount} units)";
+                ShowProjectFeedbackDialog(true, filePath, project.Name);
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Failed to save project:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                _opInProgress = false;
             }
         }
     }
@@ -2332,187 +2876,237 @@ public partial class MainWindow : Window
 
         if (dialog.ShowDialog() == true)
         {
+            _opInProgress = true;
             try
             {
-                ClearUndoHistory();
-                var (project, swaps, savedEdges, savedPositions, customNodes, redirectMods) = ProjectManager.Load(dialog.FileName);
-
-                var loadedCaches = ProjectManager.LoadUnitCaches(project);
-                if (loadedCaches != null)
-                {
-                    _unitCaches = loadedCaches;
-                    _propsByVariant.Clear();
-                    SeedPropsByVariantFromCaches();
-                    SeedPendingFocusFromCaches();
-                }
-
-                string savedStance = project.ActiveStance ?? "MainChar";
-                string? savedVariant = project.ActiveVariant;
-                string? savedWeapon = project.ActiveWeapon;
-
-                bool restoredFromCache = false;
-                string? restoredKey = null;
-                if (loadedCaches != null && _unitCaches.Count > 0)
-                {
-                    string? targetKey = ResolveProjectUnitCacheKey(_unitCaches, savedStance, savedVariant, savedWeapon);
-                    if (targetKey != null && TryRestoreUnitFromCache(targetKey))
-                    {
-                        restoredFromCache = true;
-                        restoredKey = targetKey;
-                        _comboTranslate.X = 0;
-                        _comboTranslate.Y = 0;
-                        SetStanceSelection(_activeStance);
-                        UpdateVariantButtonVisibility();
-                        UpdateWeaponButtonVisibility();
-                        UpdateUnitPropertiesButtonVisibility();
-                    }
-                }
-
-                if (!restoredFromCache)
-                {
-                    bool stanceMatches = string.Equals(_activeStance, savedStance, StringComparison.OrdinalIgnoreCase);
-                    bool variantMatches = string.Equals(_activeVariant, savedVariant, StringComparison.OrdinalIgnoreCase);
-
-                    if (!stanceMatches || (!variantMatches && savedVariant != null))
-                    {
-                        if (string.Equals(savedStance, "MainChar", StringComparison.OrdinalIgnoreCase))
-                        {
-                            await SwitchStanceAsync(savedStance);
-                        }
-                        else
-                        {
-                            SetStanceSelection(savedStance);
-                            _activeStance = savedStance;
-                            _activeVariant = savedVariant;
-                            _activeWeapon = savedWeapon;
-                            UpdateVariantButtonVisibility();
-                            UpdateWeaponButtonVisibility();
-                            UpdateUnitPropertiesButtonVisibility();
-                            if (!string.IsNullOrEmpty(savedVariant))
-                            {
-                                await LoadVariantComboGraphAsync(savedVariant, saveCurrent: false);
-                            }
-                            else
-                            {
-                                await LoadArchetypeGraphAsync(savedStance);
-                            }
-                        }
-                    }
-                }
-
-                if (_comboGraph == null)
-                {
-                    txtStatus.Text = "Failed to load graph for project";
-                    return;
-                }
-
-                foreach (var sc in customNodes)
-                {
-                    if (_comboGraph.Nodes.Any(n => n.Id == sc.Id)) continue;
-                    var newNode = new ComboNode
-                    {
-                        Id = sc.Id,
-                        TreeIndex = -1,
-                        Name = "",
-                        AnimPath = sc.AnimPath,
-                        DefaultAnimPath = "",
-                        DefaultDBPath = "",
-                        DisplayName = sc.DisplayName,
-                        IsRoot = false,
-                        Depth = 0,
-                        InputLabel = "",
-                        DirectionLabel = "",
-                        VanillaAnimPath = "",
-                        Kind = ComboNodeKind.UserCreated
-                    };
-                    _comboGraph.Nodes.Add(newNode);
-                }
-
-                int maxId = _comboGraph.Nodes.Count > 0 ? _comboGraph.Nodes.Max(n => n.Id) : -1;
-                foreach (var edge in savedEdges)
-                {
-                    if (_comboGraph.Edges.Any(e => e.FromNodeId == edge.FromNodeId && e.ToNodeId == edge.ToNodeId && e.InputName == edge.InputName))
-                        continue;
-                    var realEdge = new ComboEdge
-                    {
-                        FromNodeId = edge.FromNodeId,
-                        ToNodeId = edge.ToNodeId,
-                        InputName = edge.InputName
-                    };
-                    _comboGraph.Edges.Add(realEdge);
-                }
-
-                foreach (var node in _comboGraph.Nodes)
-                {
-                    if (swaps.TryGetValue(node.Id.ToString(), out string? animPath) && !string.IsNullOrEmpty(animPath))
-                    {
-                        node.AnimPath = animPath;
-                        if (_parser.AnimToDbPath.TryGetValue(animPath, out var srcDb))
-                            node.SourceDBPath = srcDb;
-                        var matchedMove = _allMoves.FirstOrDefault(m => m.FullPath == animPath);
-                        if (matchedMove != null)
-                        {
-                            node.ImportedDisplayName = matchedMove.DisplayName;
-                            var vanillaPath = !string.IsNullOrEmpty(node.VanillaAnimPath)
-                                ? node.VanillaAnimPath
-                                : node.DefaultAnimPath;
-                            if (!string.IsNullOrEmpty(vanillaPath) &&
-                                !string.Equals(animPath, vanillaPath, StringComparison.OrdinalIgnoreCase))
-                                node.IsImportedFromMod = true;
-                        }
-                    }
-                }
-
-                foreach (var kvp in redirectMods)
-                {
-                    if (int.TryParse(kvp.Key, out int nodeId))
-                    {
-                        var redirectNode = _comboGraph.Nodes.FirstOrDefault(n => n.Id == nodeId && n.IsRedirect);
-                        var targetNode = _comboGraph.Nodes.FirstOrDefault(n => n.Id == kvp.Value);
-                        if (redirectNode != null && targetNode != null)
-                        {
-                            var oldEdge = _comboGraph.Edges.FirstOrDefault(e => e.FromNodeId == nodeId && e.IsRedirect);
-                            if (oldEdge != null) _comboGraph.Edges.Remove(oldEdge);
-                            _comboGraph.Edges.Add(new ComboEdge
-                            {
-                                FromNodeId = nodeId,
-                                ToNodeId = kvp.Value,
-                                InputName = oldEdge?.InputName ?? "",
-                                IsRedirect = true
-                            });
-                            redirectNode.ResolvedRedirectNodeId = kvp.Value;
-                        }
-                    }
-                }
-
-
-                if (savedPositions.Count > 0)
-                {
-                    foreach (var kvp in savedPositions)
-                        _nodePositions[kvp.Key] = kvp.Value;
-                }
-
-                // Old projects can hold two different values for one shared card - unify them
-                // (live graph first, then caches) so the panel and export agree.
-                int unifiedTuning = NormalizeSharedCardTuning();
-
-                LayoutComboGraph();
-                RenderComboGraph();
-                string restoredNote = restoredKey != null ? $", restored {restoredKey}" : "";
-                if (unifiedTuning > 0)
-                {
-                    restoredNote += $", unified {unifiedTuning} shared AttackDB value(s)";
-                    ErrorLog.Write("PROJECT", new Exception($"Load unified {unifiedTuning} diverged AttackDB value(s)"));
-                }
-                txtStatus.Text = $"Loaded project: {project.Name} ({_unitCaches.Count} units{restoredNote}, {swaps.Count} swaps, {savedEdges.Count} edges, {customNodes.Count} custom nodes)";
-                ShowProjectFeedbackDialog(false, dialog.FileName, project.Name, restoredKey);
+                string filePath = dialog.FileName;
+                var (project, restoredKey, ok) = await RunWithLoadingAsync(
+                    "Loading project...", Path.GetFileName(filePath),
+                    () => LoadProjectCoreAsync(filePath));
+                if (ok && project != null)
+                    ShowProjectFeedbackDialog(false, filePath, project.Name, restoredKey);
             }
             catch (Exception ex)
             {
                 ErrorLog.Write("PROJECT", ex);
                 MessageBox.Show($"Failed to load project:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+            finally
+            {
+                _opInProgress = false;
+            }
         }
+    }
+
+    // Core of LoadProject_Click: runs behind the loading overlay (via
+    // RunWithLoadingAsync) with staged UpdateLoading texts; the overlay is still
+    // visible until this returns, so the feedback dialog must stay in the handler.
+    private async Task<(EditorProject? project, string? restoredKey, bool ok)> LoadProjectCoreAsync(string filePath)
+    {
+        ClearUndoHistory();
+        UpdateLoading("Loading project file...", Path.GetFileName(filePath));
+        var (project, swaps, savedEdges, savedPositions, customNodes, redirectMods) =
+            await Task.Run(() => ProjectManager.Load(filePath));
+
+        _customMoveset = project.CustomMoveset;
+        if (_customMoveset != null)
+        {
+            UpdateLoading("Restoring custom moveset...", _customMoveset.DisplayName);
+            btnExport.IsEnabled = true;
+        }
+
+        UpdateLoading("Restoring unit caches...", project.Name);
+        var loadedCaches = await Task.Run(() => ProjectManager.LoadUnitCaches(project));
+        string? migrateNote = null;
+        if (loadedCaches != null)
+        {
+            _unitCaches = loadedCaches;
+            _propsByVariant.Clear();
+            SeedPropsByVariantFromCaches();
+            SeedPendingFocusFromCaches();
+            SeedPendingModelFromCaches();
+            migrateNote = await MigrateLegacyCachesAsync();
+            await BackfillEdgeOwnersAsync();
+        }
+
+        string savedStance = project.ActiveStance ?? "MainChar";
+        string? savedVariant = project.ActiveVariant;
+        string? savedWeapon = project.ActiveWeapon;
+        UpdateLoading("Loading combo graph...", savedStance);
+
+        bool restoredFromCache = false;
+        string? restoredKey = null;
+        if (loadedCaches != null && _unitCaches.Count > 0)
+        {
+            string? targetKey = ResolveProjectUnitCacheKey(_unitCaches, savedStance, savedVariant, savedWeapon);
+            if (targetKey != null && TryRestoreUnitFromCache(targetKey))
+            {
+                restoredFromCache = true;
+                restoredKey = targetKey;
+                _comboTranslate.X = 0;
+                _comboTranslate.Y = 0;
+                SetStanceSelection(_activeStance);
+                UpdateVariantButtonVisibility();
+                UpdateWeaponButtonVisibility();
+                UpdateUnitPropertiesButtonVisibility();
+            }
+        }
+
+        if (!restoredFromCache)
+        {
+            bool stanceMatches = string.Equals(_activeStance, savedStance, StringComparison.OrdinalIgnoreCase);
+            bool variantMatches = string.Equals(_activeVariant, savedVariant, StringComparison.OrdinalIgnoreCase);
+
+            if (!stanceMatches || (!variantMatches && savedVariant != null))
+            {
+                if (string.Equals(savedStance, "MainChar", StringComparison.OrdinalIgnoreCase))
+                {
+                    await SwitchStanceAsync(savedStance);
+                }
+                else
+                {
+                    SetStanceSelection(savedStance);
+                    _activeStance = savedStance;
+                    _activeVariant = savedVariant;
+                    _activeWeapon = savedWeapon;
+                    UpdateVariantButtonVisibility();
+                    UpdateWeaponButtonVisibility();
+                    UpdateUnitPropertiesButtonVisibility();
+                    if (!string.IsNullOrEmpty(savedVariant))
+                    {
+                        await LoadVariantComboGraphAsync(savedVariant, saveCurrent: false);
+                    }
+                    else
+                    {
+                        await LoadArchetypeGraphAsync(savedStance);
+                    }
+                }
+            }
+        }
+
+        if (_comboGraph == null)
+        {
+            txtStatus.Text = "Failed to load graph for project";
+            return (null, null, false);
+        }
+
+        UpdateLoading("Applying project changes...", "custom nodes, links, swaps, redirects");
+        foreach (var sc in customNodes)
+        {
+            if (_comboGraph.Nodes.Any(n => n.Id == sc.Id)) continue;
+            var newNode = new ComboNode
+            {
+                Id = sc.Id,
+                TreeIndex = -1,
+                Name = "",
+                AnimPath = sc.AnimPath,
+                DefaultAnimPath = "",
+                DefaultDBPath = "",
+                DisplayName = sc.DisplayName,
+                IsRoot = false,
+                Depth = 0,
+                InputLabel = "",
+                DirectionLabel = "",
+                VanillaAnimPath = "",
+                Kind = ComboNodeKind.UserCreated
+            };
+            _comboGraph.Nodes.Add(newNode);
+        }
+
+        if (project.RemovedNodes != null && project.RemovedNodes.Count > 0)
+        {
+            var removedIds = new HashSet<int>(project.RemovedNodes);
+            foreach (var n in _comboGraph.Nodes)
+                if (removedIds.Contains(n.Id)) n.Removed = true;
+        }
+
+        int maxId = _comboGraph.Nodes.Count > 0 ? _comboGraph.Nodes.Max(n => n.Id) : -1;
+        foreach (var edge in savedEdges)
+        {
+            if (_comboGraph.Edges.Any(e => e.FromNodeId == edge.FromNodeId && e.ToNodeId == edge.ToNodeId && e.InputName == edge.InputName))
+                continue;
+            var realEdge = new ComboEdge
+            {
+                FromNodeId = edge.FromNodeId,
+                ToNodeId = edge.ToNodeId,
+                InputName = edge.InputName
+            };
+            _comboGraph.Edges.Add(realEdge);
+        }
+
+        foreach (var node in _comboGraph.Nodes)
+        {
+            if (swaps.TryGetValue(node.Id.ToString(), out string? animPath) && !string.IsNullOrEmpty(animPath))
+            {
+                node.AnimPath = animPath;
+                if (_parser.AnimToDbPath.TryGetValue(animPath, out var srcDb))
+                    node.SourceDBPath = srcDb;
+                var matchedMove = _allMoves.FirstOrDefault(m => m.FullPath == animPath);
+                if (matchedMove != null)
+                {
+                    node.ImportedDisplayName = matchedMove.DisplayName;
+                    var vanillaPath = !string.IsNullOrEmpty(node.VanillaAnimPath)
+                        ? node.VanillaAnimPath
+                        : node.DefaultAnimPath;
+                    if (!string.IsNullOrEmpty(vanillaPath) &&
+                        !string.Equals(animPath, vanillaPath, StringComparison.OrdinalIgnoreCase))
+                        node.IsImportedFromMod = true;
+                }
+            }
+        }
+
+        foreach (var kvp in redirectMods)
+        {
+            if (int.TryParse(kvp.Key, out int nodeId))
+            {
+                var redirectNode = _comboGraph.Nodes.FirstOrDefault(n => n.Id == nodeId && n.IsRedirect);
+                var targetNode = _comboGraph.Nodes.FirstOrDefault(n => n.Id == kvp.Value);
+                if (redirectNode != null && targetNode != null)
+                {
+                    var oldEdge = _comboGraph.Edges.FirstOrDefault(e => e.FromNodeId == nodeId && e.IsRedirect);
+                    if (oldEdge != null) _comboGraph.Edges.Remove(oldEdge);
+                    _comboGraph.Edges.Add(new ComboEdge
+                    {
+                        FromNodeId = nodeId,
+                        ToNodeId = kvp.Value,
+                        InputName = oldEdge?.InputName ?? "",
+                        IsRedirect = true
+                    });
+                    redirectNode.ResolvedRedirectNodeId = kvp.Value;
+                }
+            }
+        }
+
+
+        if (savedPositions.Count > 0)
+        {
+            foreach (var kvp in savedPositions)
+                _nodePositions[kvp.Key] = kvp.Value;
+        }
+
+        // Old projects can hold two different values for one shared card - unify them
+        // (live graph first, then caches) so the panel and export agree.
+        int unifiedTuning = NormalizeSharedCardTuning();
+        // After unify: drop overrides that display-identically match their card's vanilla
+        // value (phantoms stamped by the old 0.0001 round-trip check).
+        int clearedVanillaTuning = NormalizeVanillaEqualTuning();
+
+        LayoutComboGraph();
+        RenderComboGraph();
+        string restoredNote = restoredKey != null ? $", restored {restoredKey}" : "";
+        if (!string.IsNullOrEmpty(migrateNote)) restoredNote += ", " + migrateNote;
+        if (unifiedTuning > 0)
+        {
+            restoredNote += $", unified {unifiedTuning} shared AttackDB value(s)";
+            ErrorLog.Write("PROJECT", new Exception($"Load unified {unifiedTuning} diverged AttackDB value(s)"));
+        }
+        if (clearedVanillaTuning > 0)
+        {
+            restoredNote += $", cleared {clearedVanillaTuning} AttackDB value(s) identical to vanilla";
+            ErrorLog.Write("PROJECT", new Exception($"Load cleared {clearedVanillaTuning} AttackDB value(s) identical to vanilla"));
+        }
+        txtStatus.Text = $"Loaded project: {project.Name} ({_unitCaches.Count} units{restoredNote}, {swaps.Count} swaps, {savedEdges.Count} edges, {customNodes.Count} custom nodes)";
+        return (project, restoredKey, true);
     }
 
     private void ShowProjectFeedbackDialog(bool isSave, string filePath, string projectName, string? restoredKey = null)
@@ -2588,7 +3182,21 @@ public partial class MainWindow : Window
         CommitAttackDbPanel();
         SaveCurrentUnitToCache();
 
-        bool hasMultiUnitChanges = _unitCaches.Count > 1 && _unitCaches.Values.Any(c =>
+        if (_customMoveset != null)
+        {
+            if (!string.Equals(GetUnitCacheKey(), _customMoveset.CacheKey, StringComparison.OrdinalIgnoreCase))
+            {
+                txtStatus.Text = "Switch back to the custom moveset before exporting it.";
+                return;
+            }
+            if (_comboGraph.Nodes.Count == 0)
+            {
+                txtStatus.Text = "The custom moveset has no nodes yet - add some before exporting.";
+                return;
+            }
+        }
+
+        bool hasMultiUnitChanges = _customMoveset == null && _unitCaches.Count > 1 && _unitCaches.Values.Any(c =>
             {
                 var modified = c.Graph.Nodes.Any(ProjectChangeSummary.IsModifiedNode);
                 var hasRetargets = c.Graph.RedirectOriginalTargets.Any(rd =>
@@ -2599,7 +3207,12 @@ public partial class MainWindow : Window
                 bool hasUnitProps = c.Props != null && UnitPropertiesManager.HasChanges(_contentPath, c.ActiveVariant ?? "", c.Props);
                 bool hasAttackTuning = ProjectChangeSummary.GraphHasAttackDbTuning(c.Graph);
                 bool hasNewContent = c.Graph.Edges.Any(ed => ed.IsNewLink);
-                return modified || hasRetargets || hasUnitProps || hasAttackTuning || hasNewContent;
+                bool hasStartEntries = ProjectChangeSummary.GraphHasStartEntryChanges(c.Graph);
+                bool hasChanceOrConditionEdits = c.Graph.TreeRowProbabilityOverrides.Count > 0
+                    || c.Graph.TreeConditionParamOverrides.Count > 0
+                    || c.Graph.TreeRowConditionOverrides.Count > 0;
+                return modified || hasRetargets || hasUnitProps || hasAttackTuning || hasNewContent
+                    || hasStartEntries || hasChanceOrConditionEdits;
             });
 
         if (hasMultiUnitChanges)
@@ -2652,14 +3265,26 @@ public partial class MainWindow : Window
             return node != null && node.ResolvedRedirectNodeId >= 0 && node.ResolvedRedirectNodeId != kvp.Value;
         });
 
-        bool hasUnitProps = _currentUnitProps != null && _activeVariant != null
-            && UnitPropertiesManager.HasChanges(_contentPath, _activeVariant, _currentUnitProps);
+        // MainChar has no variant popup, so _activeVariant stays null - its props still live
+        // under the synthetic variant tag and must reach the export dialog for gating/staging.
+        string? propsVariant = _activeVariant ?? (IsMainCharStance() ? CurrentVariantTag() : null);
+
+        bool hasUnitProps = _currentUnitProps != null && propsVariant != null
+            && UnitPropertiesManager.HasChanges(_contentPath, propsVariant, _currentUnitProps);
 
         bool hasAttackTuning = ProjectChangeSummary.GraphHasAttackDbTuning(_comboGraph);
 
         bool hasNewLinks = _comboGraph.Edges.Any(ed => ed.IsNewLink);
 
-        if (modified.Count == 0 && !stanceChanged && !hasRetargets && !hasUnitProps && !hasAttackTuning && !hasNewLinks)
+        bool hasStartEntries = ProjectChangeSummary.GraphHasStartEntryChanges(_comboGraph);
+
+        // Chance/condition edits mutate the combo asset without touching nodes, so they
+        // must open the export path on their own (chance-only was a latent gap).
+        bool hasChanceOrConditionEdits = _comboGraph.TreeRowProbabilityOverrides.Count > 0
+            || _comboGraph.TreeConditionParamOverrides.Count > 0
+            || _comboGraph.TreeRowConditionOverrides.Count > 0;
+
+        if (_customMoveset == null && modified.Count == 0 && !stanceChanged && !hasRetargets && !hasUnitProps && !hasAttackTuning && !hasNewLinks && !hasStartEntries && !hasChanceOrConditionEdits)
         {
             txtStatus.Text = "No changes to export. Drag animations onto combo nodes first, or connect existing nodes.";
             return;
@@ -2677,7 +3302,9 @@ public partial class MainWindow : Window
         var referenceModDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Template");
 
         string? enemyComboPath = null;
-        if (_activeVariant != null && !string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase))
+        if (_customMoveset != null)
+            enemyComboPath = _customMoveset.DonorComboRel;
+        else if (_activeVariant != null && !string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase))
             enemyComboPath = ResolveComboFilePath(_activeVariant);
 
         string? mainCharComboPath = null;
@@ -2702,8 +3329,9 @@ public partial class MainWindow : Window
             enemyComboPath,
             _parser.AnimToTiming,
             _currentUnitProps,
-            _activeVariant,
-            mainCharComboPath)
+            propsVariant,
+            mainCharComboPath,
+            _customMoveset)
         {
             Owner = this,
         };
@@ -3066,22 +3694,33 @@ public partial class MainWindow : Window
 
                 if (hasComboTree)
                 {
+                    // Content root up front: the readers need it for content-relative
+                    // ImportComboRel provenance, and the overlay provider must be live
+                    // before any vanilla resolution runs.
+                    string? overlayContentRoot = FindContentRootUnder(importTempRoot);
+                    if (overlayContentRoot != null)
+                        _parser.SetOverlayProvider(_parser.CreateOverlayProvider(overlayContentRoot));
+
                     // Step 4: Parse modded combo nodes (UAssetAPI)
                     UI(() => { importDialog.UpdateStep(4, "active"); importDialog.SetCurrentAction("Parsing modded animations..."); importDialog.SetProgress(45); });
                     var moddedByUnit = new Dictionary<string, List<ModdedComboNodeInfo>>(StringComparer.OrdinalIgnoreCase);
+                    var moddedStartByUnit = new Dictionary<string, List<ModdedStartEntryInfo>>(StringComparer.OrdinalIgnoreCase);
                     int parseIdx = 0;
                     foreach (var (path, entry) in discoveredTrees)
                     {
                         parseIdx++;
                         var pct = 45 + (int)(25.0 * parseIdx / discoveredTrees.Count);
                         UI(() => importDialog.SetCurrentAction($"Parsing {Path.GetFileName(path)}..."));
-                        var nodes = _parser.ReadModdedComboNodes(path);
+                        var nodes = _parser.ReadModdedComboNodes(path, overlayContentRoot);
                         if (nodes.Count == 0)
                         {
                             ErrorLog.Write("IMPORT", new Exception($"No nodes parsed from {path}"));
                             continue;
                         }
                         moddedByUnit[entry.UnitKey] = nodes;
+                        var startEntries = _parser.ReadModdedStartEntries(path);
+                        if (startEntries.Count > 0)
+                            moddedStartByUnit[entry.UnitKey] = startEntries;
                         UI(() => importDialog.SetProgress(pct));
                     }
                     if (hasComboTree && moddedByUnit.Count == 0)
@@ -3095,10 +3734,6 @@ public partial class MainWindow : Window
 
                     // Step 5: Compare with vanilla graphs
                     UI(() => { importDialog.UpdateStep(5, "active"); importDialog.SetCurrentAction("Comparing with vanilla..."); importDialog.SetProgress(75); });
-
-                    string? overlayContentRoot = FindContentRootUnder(importTempRoot);
-                    if (overlayContentRoot != null)
-                        _parser.SetOverlayProvider(_parser.CreateOverlayProvider(overlayContentRoot));
 
                     // Pre-scan: flag DB references that exist in neither the mod nor vanilla —
                     // these cannot resolve and will keep their vanilla anims.
@@ -3144,9 +3779,11 @@ public partial class MainWindow : Window
                             continue;
                         }
 
-                        var (moves, retargets, unmatched, surfaced) = _parser.ApplyModdedComboToVanilla(vanilla, moddedNodes, entry.WeaponName);
+                        var applyResult = _parser.ApplyModdedComboToVanilla(
+                            vanilla, moddedNodes, entry.WeaponName,
+                            moddedStartByUnit.TryGetValue(entry.UnitKey, out var mStarts) ? mStarts : null);
                         int attackTuning = ApplyAttackDbImport(vanilla, overlayContentRoot);
-                        importedUnits.Add((entry.UnitKey, vanilla, moves, retargets, entry));
+                        importedUnits.Add((entry.UnitKey, vanilla, applyResult.MoveChanges, applyResult.RetargetChanges, entry));
                         int vanillaRawCount = vanilla.RawNodeCount > 0
                             ? vanilla.RawNodeCount
                             : vanilla.Nodes
@@ -3154,7 +3791,9 @@ public partial class MainWindow : Window
                                 .Select(n => n.TreeIndex)
                                 .Distinct()
                                 .Count();
-                        ErrorLog.Write("IMPORT", new Exception($"Applied {entry.UnitKey}: {moves} move(s), {retargets} retarget(s), {unmatched} unmatched, {surfaced} new node(s) surfaced, {attackTuning} attackDb tune(s) (mod={moddedNodes.Count} vanillaRaw={vanillaRawCount})"));
+                        ErrorLog.Write("IMPORT", new Exception($"Applied {entry.UnitKey}: {applyResult.MoveChanges} move(s), {applyResult.RetargetChanges} retarget(s), {applyResult.Unmatched} unmatched, {applyResult.Surfaced} new node(s) surfaced, {applyResult.AiChanges} AI payload(s), {applyResult.ChanceOverrides} chance override(s), {applyResult.CondClears + applyResult.CondInstances} cond rewire(s), {applyResult.CondParamWrites} cond param(s), {applyResult.CondSkipped} cond skip(s), {applyResult.StartTransitionsChanged} start row(s), {applyResult.StartStructuralSkipped} start add(s) skipped, {attackTuning} attackDb tune(s) (mod={moddedNodes.Count} vanillaRaw={vanillaRawCount})"));
+                        if (applyResult.AiRemovalsSkipped > 0)
+                            ErrorLog.Write("IMPORT", new Exception($"{entry.UnitKey}: {applyResult.AiRemovalsSkipped} AI payload removal(s) kept vanilla"));
                         if (moddedNodes.Count != vanillaRawCount)
                             treeMismatches.Add($"{entry.UnitKey}: {moddedNodes.Count} mod node(s) vs {vanillaRawCount} vanilla");
                         UI(() => importDialog.SetProgress(pct));
@@ -3229,6 +3868,7 @@ public partial class MainWindow : Window
                         }
                         SeedPropsByVariantFromCaches();
                         SeedPendingFocusFromCaches();
+                        SeedPendingModelFromCaches();
                     }
 
                     foreach (var (unitKey, graph, _, _, entry) in finalImported)
@@ -3322,10 +3962,11 @@ public partial class MainWindow : Window
                     // at the cache-restore step runs before this merge, so a restored Immune-to-Focus
                     // flag would never reach _propsByVariant / FocusPending - and PopulateUnitProperties
                     // would then overwrite it with the on-disk value the first time the unit is opened.
-                    SeedPropsByVariantFromCaches();
-                    SeedPendingFocusFromCaches();
+                SeedPropsByVariantFromCaches();
+                SeedPendingFocusFromCaches();
+                SeedPendingModelFromCaches();
 
-                    if (finalImported.Count > 0)
+                if (finalImported.Count > 0)
                     {
                         var preferred = finalImported.FirstOrDefault(u => u.unitKey.StartsWith("MainChar", StringComparison.OrdinalIgnoreCase));
                         if (preferred.unitKey == null)
@@ -3531,7 +4172,7 @@ public partial class MainWindow : Window
             if (modVals.HasBuildup && (vanilla == null || !vanilla.HasBuildup || vanilla.Buildup != modVals.Buildup))
                 buildup = modVals.Buildup;
             if (modVals.HasRange && (vanilla == null || !vanilla.HasRange
-                || Math.Abs(vanilla.Range - modVals.Range) > 0.0001f))
+                || !AttackDbCard.SameRange(vanilla.Range, modVals.Range)))
                 range = modVals.Range;
             if (buildup == null && range == null) continue;
 
@@ -3780,7 +4421,7 @@ public partial class MainWindow : Window
             if (_originalVanillaComboGraph == null)
                 _originalVanillaComboGraph = _comboGraph;
 
-            txtComboInfo.Text = $"MainChar - {_comboGraph.WeaponName} ({_comboGraph.Nodes.Count} nodes, {_comboGraph.Edges.Count} edges)";
+            SetComboInfo($"MainChar - {_comboGraph.WeaponName} ({_comboGraph.Nodes.Count} nodes, {_comboGraph.Edges.Count} edges)");
             _comboTranslate.X = 0;
             _comboTranslate.Y = 0;
             _activeWeapon = "MainChar_Barehands";
@@ -3805,6 +4446,35 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>Node ids targeted by start entries (TargetNodeId + KeyTargetNodeIds)
+    /// that are redirect nodes resolving to an existing target. These stay visible on
+    /// the canvas even without edges - vanilla routes some AI tickets through a
+    /// redirect nothing else links to (e.g. FD Base tree 16), and hiding those made
+    /// the Start Entries jump button fail while the target combo rendered blank.
+    /// Dead redirects (destination deleted) are excluded - they stay hidden.</summary>
+    private HashSet<int> ComputeLiveStartEntryRedirectIds()
+    {
+        var ids = new HashSet<int>();
+        if (_comboGraph?.StartEntries == null) return ids;
+        foreach (var entry in _comboGraph.StartEntries)
+            foreach (var t in entry.Transitions)
+            {
+                AddIfLiveRedirect(t.TargetNodeId);
+                if (t.KeyTargetNodeIds == null) continue;
+                foreach (var id in t.KeyTargetNodeIds) AddIfLiveRedirect(id);
+            }
+        return ids;
+
+        void AddIfLiveRedirect(int id)
+        {
+            if (id < 0) return;
+            var n = _comboGraph.Nodes.FirstOrDefault(x => x.Id == id);
+            if (n?.IsRedirect == true && n.ResolvedRedirectNodeId >= 0
+                && _comboGraph.Nodes.Any(x => x.Id == n.ResolvedRedirectNodeId))
+                ids.Add(id);
+        }
+    }
+
     private void LayoutComboGraph()
     {
         if (_comboGraph == null) return;
@@ -3817,21 +4487,72 @@ public partial class MainWindow : Window
 
         LayoutComboGraph_Topological();
 
+        var graphIds = new HashSet<int>(_comboGraph.Nodes.Select(n => n.Id));
         var orphanIds = new HashSet<int>(_comboGraph.Nodes
             .Where(n => n.IsRedirect && (n.ResolvedRedirectNodeId < 0
                 || !_comboGraph.Nodes.Any(x => x.Id == n.ResolvedRedirectNodeId)))
             .Select(n => n.Id));
 
+        // Saved positions restore AFTER ResolveNodeOverlaps ran inside the topological
+        // pass, so restored and computed nodes were never checked against each other -
+        // re-home the computed ones around them instead (saved/hand-placed never move).
+        // Beginner view: a hidden AI node's saved position is dropped here instead -
+        // it must not anchor nor obstacle anything while invisible (the next arrange
+        // with AI shown recomputes it fresh).
+        var hiddenIds = new HashSet<int>(_comboGraph.Nodes.Where(IsBeginnerHiddenAi).Select(n => n.Id));
+        var anchors = new HashSet<int>();
         foreach (var kvp in savedPositions)
         {
-            if (!orphanIds.Contains(kvp.Key))
+            if (graphIds.Contains(kvp.Key) && !orphanIds.Contains(kvp.Key) && !hiddenIds.Contains(kvp.Key))
+            {
                 _nodePositions[kvp.Key] = kvp.Value;
+                anchors.Add(kvp.Key);
+            }
+        }
+        PushComputedNodesOffAnchors(_nodePositions, anchors);
+    }
+
+    /// <summary>Final overlap pass: nodes in <paramref name="anchorIds"/> (restored
+    /// saved positions) are immovable; every other node is pushed down past whatever
+    /// it overlaps until its slot is clear of the whole set. Deterministic order
+    /// (X then Y) and each push clears all current overlaps at once.</summary>
+    public static void PushComputedNodesOffAnchors(Dictionary<int, Point> positions, ISet<int> anchorIds)
+    {
+        if (positions.Count < 2) return;
+        double rowHeight = NODE_HEIGHT + V_SPACING;
+        var movable = positions.Keys.Where(id => !anchorIds.Contains(id))
+            .OrderBy(id => positions[id].X).ThenBy(id => positions[id].Y).ToList();
+        foreach (var id in movable)
+        {
+            var pos = positions[id];
+            for (int guard = 0; guard < 10000; guard++)
+            {
+                bool any = false;
+                double lowest = double.NegativeInfinity;
+                foreach (var kv in positions)
+                {
+                    if (kv.Key == id) continue;
+                    if (Math.Abs(kv.Value.X - pos.X) < NODE_WIDTH && Math.Abs(kv.Value.Y - pos.Y) < rowHeight)
+                    {
+                        if (!any || kv.Value.Y > lowest) lowest = kv.Value.Y;
+                        any = true;
+                    }
+                }
+                if (!any) break;
+                // Push below the lowest overlapping node: clears every current overlap
+                // in one step (lowest >= each hit's Y) and strictly increases Y.
+                pos = new Point(pos.X, lowest + rowHeight);
+            }
+            positions[id] = pos;
         }
     }
 
     private void LayoutComboGraph_Topological()
     {
-        var layoutNodes = _comboGraph!.Nodes.Where(n => !n.IsRedirect).ToList();
+        // Beginner view: hidden AI nodes take no column, no depth and no position -
+        // every edge loop below already guards on layoutIds/parentsById, so chains
+        // simply route around them and no slot is reserved for an invisible box.
+        var layoutNodes = _comboGraph!.Nodes.Where(n => !n.IsRedirect && !IsBeginnerHiddenAi(n)).ToList();
         var layoutIds = new HashSet<int>(layoutNodes.Select(n => n.Id));
 
         var incoming = new Dictionary<int, int>();
@@ -3974,6 +4695,70 @@ public partial class MainWindow : Window
             columns.Add(col);
         }
 
+        // ---- crossing reduction: order each column by the average position of its
+        // parents (down sweep) then its children (up sweep), re-stacking rows as we
+        // go. OrderBy is stable, so the TreeIndex/forwardDepth seed order survives
+        // wherever the barycenter keys tie - edges fan out tree-style instead of
+        // crossing whenever the asset order disagrees with the graph shape.
+        double sweepRowHeight = NODE_HEIGHT + V_SPACING;
+        var sweepY = new Dictionary<int, double>();
+        void RestackColumn(int d)
+        {
+            for (int i = 0; i < columns[d].Count; i++)
+                sweepY[columns[d][i].Id] = 30 + i * sweepRowHeight;
+        }
+        for (int d = 0; d < columns.Count; d++) RestackColumn(d);
+
+        var parentsById = new Dictionary<int, List<int>>();
+        foreach (var node in layoutNodes) parentsById[node.Id] = new List<int>();
+        foreach (var edge in _comboGraph.Edges)
+            if (parentsById.ContainsKey(edge.ToNodeId))
+                parentsById[edge.ToNodeId].Add(edge.FromNodeId);
+
+        double Bary(ComboNode n, Dictionary<int, List<int>> neighbors)
+        {
+            if (!neighbors.TryGetValue(n.Id, out var list) || list.Count == 0) return sweepY[n.Id];
+            double sum = 0;
+            int count = 0;
+            foreach (var nb in list)
+            {
+                if (sweepY.TryGetValue(nb, out var y)) { sum += y; count++; }
+            }
+            return count > 0 ? sum / count : sweepY[n.Id];
+        }
+
+        for (int d = 1; d < columns.Count; d++)
+        {
+            columns[d] = columns[d].OrderBy(n => Bary(n, parentsById)).ToList();
+            RestackColumn(d);
+        }
+        for (int d = columns.Count - 2; d >= 0; d--)
+        {
+            columns[d] = columns[d].OrderBy(n => Bary(n, outgoing)).ToList();
+            RestackColumn(d);
+        }
+
+        // ---- column wrap: split overlong columns into balanced sub-columns so a
+        // huge second column (boss graphs) doesn't run off the canvas. Empty depth
+        // gaps keep their slot; each sub-column consumes one cumulative X slot.
+        if (columns.Any(c => c.Count > MaxColumnRows))
+        {
+            var wrapped = new List<List<ComboNode>>();
+            foreach (var col in columns)
+            {
+                if (col.Count == 0 || col.Count <= MaxColumnRows)
+                {
+                    wrapped.Add(col);
+                    continue;
+                }
+                int sub = (col.Count + MaxColumnRows - 1) / MaxColumnRows;
+                int per = (col.Count + sub - 1) / sub;
+                for (int s = 0; s < sub; s++)
+                    wrapped.Add(col.Skip(s * per).Take(per).ToList());
+            }
+            columns = wrapped;
+        }
+
         double colWidth = NODE_WIDTH + H_SPACING;
         double rowHeight = NODE_HEIGHT + V_SPACING;
 
@@ -3997,7 +4782,16 @@ public partial class MainWindow : Window
             connectedNodeIds.Add(edge.FromNodeId);
             connectedNodeIds.Add(edge.ToNodeId);
         }
-        var validRedirects = _comboGraph.Nodes.Where(n => n.IsRedirect && n.ResolvedRedirectNodeId >= 0 && connectedNodeIds.Contains(n.Id)).ToList();
+        // AI-flagged redirects go unpositioned while hidden (they reposition on the
+        // next arrange with AI shown); non-AI redirects whose only source is hidden
+        // are skipped by the source lookup below - their incoming link is hidden too.
+        // Start-entry redirects qualify even without edges (no incoming link to hang
+        // them off - they are placed off their resolved target below instead).
+        var startEntryRedirectIds = ComputeLiveStartEntryRedirectIds();
+        var validRedirects = _comboGraph.Nodes
+            .Where(n => n.IsRedirect && n.ResolvedRedirectNodeId >= 0
+                && (connectedNodeIds.Contains(n.Id) || startEntryRedirectIds.Contains(n.Id))
+                && !IsBeginnerHiddenAi(n)).ToList();
 
         // Build redirect → source (non-redirect parent) map
         var redirectSources = new Dictionary<int, int>();
@@ -4056,6 +4850,34 @@ public partial class MainWindow : Window
 
                 _nodePositions[redirects[i].Id] = new Point(x, y);
             }
+        }
+
+        // Start-entry redirects with no incoming edge: hang them off their resolved
+        // target (col+1, same overlap resolution) so they get a canvas home and the
+        // Start Entries jump button has a box to reveal.
+        foreach (var r in validRedirects)
+        {
+            if (_nodePositions.ContainsKey(r.Id)) continue; // already placed by source
+            if (!_nodePositions.TryGetValue(r.ResolvedRedirectNodeId, out var tgtPos)) continue;
+            double x = tgtPos.X + colWidth;
+            double y = tgtPos.Y;
+            var existingAtX = _nodePositions.Where(p => Math.Abs(p.Value.X - x) < 1)
+                .OrderBy(p => p.Value.Y).ToList();
+            bool overlaps = true;
+            while (overlaps)
+            {
+                overlaps = false;
+                foreach (var kv in existingAtX)
+                {
+                    if (Math.Abs(kv.Value.Y - y) < rowHeight - 1)
+                    {
+                        y = kv.Value.Y + rowHeight;
+                        overlaps = true;
+                        break;
+                    }
+                }
+            }
+            _nodePositions[r.Id] = new Point(x, y);
         }
     }
 
@@ -4117,10 +4939,12 @@ public partial class MainWindow : Window
                 {
                     var pos = _nodePositions[nodeId];
                     double targetY = parentYSum / parentCount;
-                    double currentY = pos.Y;
-                    // Pull 60% toward parent center, keep minimum of current Y (don't move up past initial)
-                    double newY = currentY + (targetY - currentY) * 0.6;
-                    _nodePositions[nodeId] = new Point(pos.X, Math.Max(currentY, newY));
+                    // Symmetric 60% pull toward the parent center - children sit on their
+                    // parent's vertical line instead of only ever being dragged down
+                    // (was Math.Max-clamped). The push-down pass below re-spaces anything
+                    // this tightens or re-orders.
+                    double newY = pos.Y + (targetY - pos.Y) * 0.6;
+                    _nodePositions[nodeId] = new Point(pos.X, newY);
                 }
             }
 
@@ -4141,6 +4965,79 @@ public partial class MainWindow : Window
         }
     }
 
+    // Single source of truth for beginner-view hiding (render set builder, layout,
+    // redirect placement, anchor restore). Reads the flag directly - the render-only
+    // _hiddenAiNodeIds set is stale whenever layout runs before RenderComboGraph.
+    private bool IsBeginnerHiddenAi(ComboNode n)
+        => !_showAiNodes && !n.IsRoot && (n.IsActionNode || n.IsEventNode);
+
+    // True when the node is hidden from the canvas by the beginner view setting.
+    private bool TouchesHiddenAi(int nodeId)
+        => _hiddenAiNodeIds != null && _hiddenAiNodeIds.Contains(nodeId);
+
+    // How many AI action/event nodes the current graph is hiding (root excluded).
+    private int CountHiddenAiNodes()
+        => _showAiNodes || _comboGraph == null ? 0
+            : _comboGraph.Nodes.Count(IsBeginnerHiddenAi);
+
+    // Info-bar suffix so "N nodes" matches what is actually on screen.
+    private string AiHiddenSuffix()
+    {
+        int n = CountHiddenAiNodes();
+        return n > 0 ? $" (+{n} AI hidden)" : "";
+    }
+
+    private string _comboInfoBase = "";
+
+    // Sets the info bar to baseText + the current AI-hidden suffix and remembers the
+    // base so ApplyShowAiNodes can refresh the suffix without knowing the context.
+    private void SetComboInfo(string baseText)
+    {
+        _comboInfoBase = baseText;
+        txtComboInfo.Text = baseText + AiHiddenSuffix();
+    }
+
+    private void RefreshComboInfoBar()
+    {
+        if (_comboInfoBase.Length > 0)
+            txtComboInfo.Text = _comboInfoBase + AiHiddenSuffix();
+    }
+
+    /// <summary>
+    /// Applies the "Show AI Actions & Events" setting to surfaces other than the
+    /// canvas: library button visibility (with a fallback out of AI library mode),
+    /// retarget/link cancellation (their nodes may now be hidden) and a re-render.
+    /// When <paramref name="aiVisibilityChanged"/> is true with a graph open, runs the
+    /// full Auto-arrange pattern (undoable) so the arrangement matches the visible set
+    /// - hidden AI nodes take no column, shown AI nodes get re-integrated.
+    /// Returns true when a re-arrange actually ran (drives the status message).
+    /// </summary>
+    private bool ApplyShowAiNodes(bool aiVisibilityChanged = false)
+    {
+        btnLibAi.Visibility = _showAiNodes ? Visibility.Visible : Visibility.Collapsed;
+        if (!_showAiNodes)
+        {
+            if (_aiLibraryMode)
+                SetLibraryMode(false);
+            if (_isRetargetMode)
+                ExitRetargetMode();
+            if (_linkSourceNode != null)
+                ExitLinkMode();
+        }
+        bool rearranged = aiVisibilityChanged && _comboGraph != null && !_opInProgress;
+        if (rearranged)
+        {
+            // Same pattern as AutoArrange_Click: PushUndo captures the old arrangement
+            // first, then the empty table makes LayoutComboGraph lay out from scratch.
+            PushUndo("AI visibility toggle");
+            _nodePositions.Clear();
+            LayoutComboGraph();
+        }
+        RefreshComboInfoBar();
+        RenderComboGraph();
+        return rearranged;
+    }
+
     private void RenderComboGraph()
     {
         comboCanvas.Children.Clear();
@@ -4150,9 +5047,17 @@ public partial class MainWindow : Window
         _nodeInputBgs.Clear();
         if (_comboGraph == null)
         {
+            _hiddenAiNodeIds = null;
             UpdateComboCanvasSize();
             return;
         }
+
+        // Beginner view: rebuild the hidden AI node set each render (null = show all).
+        // Root nodes are never hidden so the graph always keeps its anchor.
+        _hiddenAiNodeIds = _showAiNodes ? null
+            : new HashSet<int>(_comboGraph.Nodes.Where(IsBeginnerHiddenAi).Select(n => n.Id));
+        if (TouchesHiddenAi(_selectedNodeId))
+            _selectedNodeId = -1;
 
         var existingNodeIds = new HashSet<int>(_comboGraph.Nodes.Select(n => n.Id));
         var nodeIdsWithEdges = new HashSet<int>();
@@ -4161,8 +5066,13 @@ public partial class MainWindow : Window
             nodeIdsWithEdges.Add(edge.FromNodeId);
             nodeIdsWithEdges.Add(edge.ToNodeId);
         }
+        // Start-entry redirects (live target) are exempt from the orphan hide: vanilla
+        // routes some AI tickets through a redirect nothing else links to - hiding it
+        // blanked the Start Entries combo and broke the jump button.
+        var startEntryRedirectIds = ComputeLiveStartEntryRedirectIds();
         var orphanRedirectIds = new HashSet<int>(_comboGraph.Nodes
-            .Where(n => n.IsRedirect && (n.ResolvedRedirectNodeId < 0
+            .Where(n => n.IsRedirect && !startEntryRedirectIds.Contains(n.Id)
+                && (n.ResolvedRedirectNodeId < 0
                 || !existingNodeIds.Contains(n.ResolvedRedirectNodeId)
                 || !nodeIdsWithEdges.Contains(n.Id)))
             .Select(n => n.Id));
@@ -4171,6 +5081,10 @@ public partial class MainWindow : Window
         foreach (var edge in _comboGraph.Edges)
         {
             if (orphanRedirectIds.Contains(edge.FromNodeId) || orphanRedirectIds.Contains(edge.ToNodeId))
+                continue;
+            // Hidden AI links are excluded here so fan-out sibling indices, the
+            // conflict scan below and the render loop all see the same edge set.
+            if (TouchesHiddenAi(edge.FromNodeId) || TouchesHiddenAi(edge.ToNodeId))
                 continue;
             if (!edgesBySource.TryGetValue(edge.FromNodeId, out var list))
             {
@@ -4190,6 +5104,9 @@ public partial class MainWindow : Window
                 foreach (var e in kvp.Value)
                 {
                     if (string.IsNullOrEmpty(e.InputName)) continue;
+                    // Literal "None" rows (imported auto-continue) are not real inputs -
+                    // several of them on one node is normal branching, not a conflict.
+                    if (string.Equals(e.InputName, "None", StringComparison.OrdinalIgnoreCase)) continue;
                     if (!byInput.TryGetValue(e.InputName, out var list))
                     {
                         list = new List<ComboEdge>();
@@ -4211,10 +5128,13 @@ public partial class MainWindow : Window
 
         foreach (var edge in _comboGraph.Edges)
         {
+            if (edge.FromNodeId == -1) continue;
             if (!_nodePositions.TryGetValue(edge.FromNodeId, out var fromPos)) continue;
             if (!_nodePositions.TryGetValue(edge.ToNodeId, out var toPos)) continue;
 
             if (orphanRedirectIds.Contains(edge.FromNodeId) || orphanRedirectIds.Contains(edge.ToNodeId))
+                continue;
+            if (TouchesHiddenAi(edge.FromNodeId) || TouchesHiddenAi(edge.ToNodeId))
                 continue;
 
             if (_isRetargetMode && edge.IsRedirect && _retargetSourceNode != null && edge.FromNodeId == _retargetSourceNode.Id)
@@ -4223,13 +5143,8 @@ public partial class MainWindow : Window
             if (edge.IsRedirect)
                 continue;
 
-            bool isStanceEdge = edge.FromNodeId == -1;
             bool isIncomingToRedirect = _comboGraph.Nodes.Any(n => n.Id == edge.ToNodeId && n.IsRedirect);
-            var color = isStanceEdge
-                ? EdgeStanceDimBrush
-                : (EdgeBrushByInput.TryGetValue(edge.InputName, out var c) ? c : EdgeDefaultBrush);
-            if (isIncomingToRedirect)
-                color = new SolidColorBrush(Color.FromArgb(0x60, 0x6c, 0x70, 0x86));
+            var color = GetEdgeBrush(edge);
 
             var siblings = edgesBySource[edge.FromNodeId];
             int siblingIndex = siblings.IndexOf(edge);
@@ -4252,8 +5167,7 @@ public partial class MainWindow : Window
             figure.Segments.Add(new BezierSegment(cp1, cp2, toPoint, isStroked: true));
             pathGeom.Figures.Add(figure);
 
-            bool hasMultipleBranches = siblingCount > 1;
-            double thickness = isStanceEdge ? 1.5 : (hasMultipleBranches ? 2 : 2);
+            double thickness = GetEdgeThickness(edge);
 
             var path = new System.Windows.Shapes.Path
             {
@@ -4282,6 +5196,8 @@ public partial class MainWindow : Window
                 hitPath.ContextMenu = edgeMenu;
                 path.ContextMenu = edgeMenu;
             }
+            path.MouseLeftButtonDown += Edge_ResetMode_MouseLeftButtonDown;
+            hitPath.MouseLeftButtonDown += Edge_ResetMode_MouseLeftButtonDown;
             Canvas.SetZIndex(hitPath, -1);
             comboCanvas.Children.Add(hitPath);
 
@@ -4325,6 +5241,7 @@ public partial class MainWindow : Window
         foreach (var node in _comboGraph.Nodes)
         {
             if (orphanRedirectIds.Contains(node.Id)) continue;
+            if (TouchesHiddenAi(node.Id)) continue;
             if (!_nodePositions.TryGetValue(node.Id, out var pos)) continue;
 
             var nodeColor = GetNodeColor(node);
@@ -4338,6 +5255,7 @@ public partial class MainWindow : Window
                 BorderThickness = new Thickness(2),
                 Background = nodeBg,
                 CornerRadius = new CornerRadius(4),
+                Opacity = node.Removed ? 0.4 : 1.0,
                 Tag = node
             };
             border.MouseLeftButtonDown += ComboNode_Click;
@@ -4356,31 +5274,49 @@ public partial class MainWindow : Window
             if (!node.IsRoot)
             {
                 var ctxMenu = new ContextMenu();
-                var resetItem = new MenuItem { Header = "Reset to Vanilla", Tag = node };
-                resetItem.Click += ResetNodeToVanilla_Click;
-                ctxMenu.Items.Add(resetItem);
-
-                if (!node.IsRedirect)
+                bool isCustomNode = node.TreeIndex < 0 && node.Kind == ComboNodeKind.UserCreated;
+                if (node.Removed)
                 {
-                    var connectItem = new MenuItem { Header = "Connect to…", Tag = node };
-                    connectItem.Click += ConnectTo_Click;
-                    ctxMenu.Items.Add(connectItem);
-
-                    var redirectViaItem = new MenuItem { Header = "Add Redirect via new node…", Tag = node };
-                    redirectViaItem.Click += RedirectVia_Click;
-                    ctxMenu.Items.Add(redirectViaItem);
+                    var restoreItem = new MenuItem { Header = "Restore Node", Tag = node };
+                    restoreItem.Click += RestoreNodeMenuItem_Click;
+                    ctxMenu.Items.Add(restoreItem);
                 }
-
-                if (node.IsRedirect)
+                else
                 {
-                    var retargetItem = new MenuItem { Header = "Retarget", Tag = node };
-                    retargetItem.Click += RetargetRedirect_Click;
-                    ctxMenu.Items.Add(retargetItem);
-                }
+                    if (!isCustomNode)
+                    {
+                        var resetItem = new MenuItem { Header = "Reset to Vanilla", Tag = node };
+                        resetItem.Click += ResetNodeToVanilla_Click;
+                        ctxMenu.Items.Add(resetItem);
+                    }
 
-                if (node.TreeIndex < 0 && node.Kind == ComboNodeKind.UserCreated)
-                {
-                    var deleteItem = new MenuItem { Header = "Delete Node", Tag = node };
+                    if (!IsCurrentGraphMainChar()
+                        && (HasBranchChanceData(node) || HasConditionData(node) || CanBackfillBranchRows(node)))
+                    {
+                        var chancesItem = new MenuItem { Header = "Conditions & Chances…", Tag = node };
+                        chancesItem.Click += BranchChancesMenuItem_Click;
+                        ctxMenu.Items.Add(chancesItem);
+                    }
+
+                    if (!node.IsRedirect)
+                    {
+                        var connectItem = new MenuItem { Header = "Connect to…", Tag = node };
+                        connectItem.Click += ConnectTo_Click;
+                        ctxMenu.Items.Add(connectItem);
+
+                        var redirectViaItem = new MenuItem { Header = "Add Redirect via new node…", Tag = node };
+                        redirectViaItem.Click += RedirectVia_Click;
+                        ctxMenu.Items.Add(redirectViaItem);
+                    }
+
+                    if (node.IsRedirect)
+                    {
+                        var retargetItem = new MenuItem { Header = "Retarget", Tag = node };
+                        retargetItem.Click += RetargetRedirect_Click;
+                        ctxMenu.Items.Add(retargetItem);
+                    }
+
+                    var deleteItem = new MenuItem { Header = isCustomNode ? "Delete Node" : "Remove Node", Tag = node };
                     deleteItem.Click += DeleteNodeMenuItem_Click;
                     ctxMenu.Items.Add(deleteItem);
                 }
@@ -4391,6 +5327,7 @@ public partial class MainWindow : Window
             Canvas.SetLeft(border, pos.X);
             Canvas.SetTop(border, pos.Y);
             comboCanvas.Children.Add(border);
+            Canvas.SetZIndex(border, NodeZIndex);
             _nodeBorders[node.Id] = border;
 
             if (!string.IsNullOrEmpty(node.InputLabel) && !node.IsRoot)
@@ -4416,10 +5353,12 @@ public partial class MainWindow : Window
                 Canvas.SetLeft(inputBg, pos.X + 2);
                 Canvas.SetTop(inputBg, pos.Y - 10);
                 comboCanvas.Children.Add(inputBg);
+                Canvas.SetZIndex(inputBg, NodeInputBgZIndex);
                 _nodeInputBgs[node.Id] = inputBg;
             }
 
             var labelText = node.DisplayName.Length > 14 ? node.DisplayName[..14] + ".." : node.DisplayName;
+            if (node.Removed) labelText = "✕ " + labelText;
             if (node.IsRedirect && node.ResolvedRedirectNodeId >= 0 && _comboGraph != null)
             {
                 var targetNode = _comboGraph.Nodes.FirstOrDefault(n => n.Id == node.ResolvedRedirectNodeId);
@@ -4439,42 +5378,74 @@ public partial class MainWindow : Window
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
+                TextDecorations = node.Removed ? TextDecorations.Strikethrough : null,
                 Tag = node.Id
             };
             var contentGrid = new Grid();
-            contentGrid.Children.Add(label);
-
-
-            border.Child = contentGrid;
-            _nodeLabels[node.Id] = label;
-
-            if (node.Id == _selectedNodeId)
+            string? badgeLine = null;
+            if (node.ReplacedByAiNode)
             {
-                var selColor = GetNodeColor(node);
-                var sc = selColor.Color;
-                if (sc.R == 0xa6 && sc.G == 0xe3 && sc.B == 0xa1)
+                badgeLine = node.ReplacedAiKind == "Attack"
+                    ? $"REPLACE> attack {node.ReplacedAiClass}"
+                    : $"REPLACE> {node.ReplacedAiKind}: {node.ReplacedAiClass}";
+                if (badgeLine.Length > 26) badgeLine = badgeLine[..26] + "..";
+            }
+            else if (node.IsActionNode || node.IsEventNode)
+            {
+                badgeLine = node.IsActionNode
+                    ? string.IsNullOrEmpty(node.ActionClass) ? "ACTION" : "ACTION: " + node.ActionClass
+                    : string.IsNullOrEmpty(node.EventName) ? "EVENT" : "EVENT: " + node.EventName;
+                if (badgeLine.Length > 24) badgeLine = badgeLine[..24] + "..";
+            }
+            if (badgeLine != null)
+            {
+                var kindBadge = new TextBlock
                 {
-                    border.BorderBrush = SelectedGreenBorder;
-                    border.Background = SelectedGreenBg;
-                }
-                else if (sc.R == 0xfa && sc.G == 0xb3 && sc.B == 0x87)
+                    Text = badgeLine,
+                    Foreground = node.ReplacedByAiNode
+                        ? new SolidColorBrush(Color.FromArgb(0xCC, 0xa6, 0xe3, 0xa1))
+                        : new SolidColorBrush(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF)),
+                    FontSize = 7,
+                    FontWeight = FontWeights.Bold,
+                    TextAlignment = TextAlignment.Center,
+                    Width = NODE_WIDTH,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    HorizontalAlignment = HorizontalAlignment.Center
+                };
+                contentGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+                contentGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                Grid.SetRow(label, 0);
+                Grid.SetRow(kindBadge, 1);
+                contentGrid.Children.Add(label);
+                contentGrid.Children.Add(kindBadge);
+                if (node.ReplacedByAiNode)
                 {
-                    border.BorderBrush = SelectedOrangeBorder;
-                    border.Background = SelectedOrangeBg;
-                }
-                else if (node.IsRedirect)
-                {
-                    border.BorderBrush = SelectedRedirectBorder;
-                    border.Background = SelectedRedirectBg;
+                    string origPayload = node.IsActionNode ? $"action {node.ActionClass}"
+                        : node.IsEventNode ? $"event {node.EventName}"
+                        : "attack";
+                    string nextPayload = node.ReplacedAiKind == "Attack"
+                        ? $"attack card {node.ReplacedAiClass}"
+                        : $"{node.ReplacedAiKind.ToLowerInvariant()} {node.ReplacedAiClass}";
+                    border.ToolTip = $"Payload replaced on export\n{origPayload} -> {nextPayload}";
                 }
                 else
                 {
-                    border.BorderBrush = SelectedNodeBorderBrush;
-                    border.Background = SelectedNodeBg;
+                    border.ToolTip = node.IsActionNode
+                        ? $"AI action node\n{node.ActionClass}"
+                        : $"Combo event node\n{node.EventName}";
                 }
             }
+            else
+            {
+                contentGrid.Children.Add(label);
+            }
+
+            border.Child = contentGrid;
+            _nodeLabels[node.Id] = label;
         }
 
+        ComputeSelectionChain();
+        ApplySelectionStyles();
         RefreshAttackDbPanel();
         UpdateComboCanvasSize();
     }
@@ -4489,7 +5460,10 @@ public partial class MainWindow : Window
             if (!_nodePositions.TryGetValue(edge.FromNodeId, out var fromPos)) continue;
             if (!_nodePositions.TryGetValue(edge.ToNodeId, out var toPos)) continue;
             var vis = kvp.Value;
-            var siblings = _comboGraph.Edges.Where(e => e.FromNodeId == edge.FromNodeId).ToList();
+            // Same visible-only filter as RenderComboGraph's edgesBySource build,
+            // otherwise fan geometry shifts when a hidden sibling exists.
+            var siblings = _comboGraph.Edges.Where(e => e.FromNodeId == edge.FromNodeId
+                && !TouchesHiddenAi(e.FromNodeId) && !TouchesHiddenAi(e.ToNodeId)).ToList();
             int siblingIndex = siblings.IndexOf(edge);
             int siblingCount = siblings.Count;
             double fanY = siblingCount > 1
@@ -4545,6 +5519,18 @@ public partial class MainWindow : Window
 
     private void ComboBorder_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && _isNodePickMode)
+        {
+            var resume = _pendingPickResume;
+            var graphAtPick = _pendingPickGraph;
+            ExitNodePickMode();
+            txtStatus.Text = "Target pick cancelled";
+            e.Handled = true;
+            if (_comboGraph != null && graphAtPick != null && ReferenceEquals(_comboGraph, graphAtPick))
+                resume?.Invoke();
+            return;
+        }
+
         if (e.Key == Key.Escape && _isRetargetMode)
         {
             ExitRetargetMode();
@@ -4629,6 +5615,7 @@ public partial class MainWindow : Window
         _isPanning = true;
         _panMoved = false;
         _panStart = e.GetPosition(this);
+        _panDownPos = _panStart;
         var hwnd = new WindowInteropHelper(this).Handle;
         SetCapture(hwnd);
         comboBorder.CaptureMouse();
@@ -4641,7 +5628,12 @@ public partial class MainWindow : Window
     {
         if (_dragCandidate && !_isDraggingNode && _dragNodeId >= 0)
         {
-            if ((DateTime.UtcNow - _dragStartTime).TotalMilliseconds > 150)
+            if (Mouse.LeftButton != MouseButtonState.Pressed)
+            {
+                _dragCandidate = false;
+                _dragNodeId = -1;
+            }
+            else if ((DateTime.UtcNow - _dragStartTime).TotalMilliseconds > 150)
             {
                 PushUndo("Move node");
                 _isDraggingNode = true;
@@ -4673,9 +5665,11 @@ public partial class MainWindow : Window
         if (!comboBorder.IsMouseCaptured)
             comboBorder.CaptureMouse();
         var panPos = e.GetPosition(this);
-        var dx = panPos.X - _panStart.X;
-        var dy = panPos.Y - _panStart.Y;
-        if (Math.Abs(dx) > 2 || Math.Abs(dy) > 2) _panMoved = true;
+        double dx = panPos.X - _panStart.X;
+        double dy = panPos.Y - _panStart.Y;
+        if (Math.Abs(panPos.X - _panDownPos.X) > SystemParameters.MinimumHorizontalDragDistance
+            || Math.Abs(panPos.Y - _panDownPos.Y) > SystemParameters.MinimumVerticalDragDistance)
+            _panMoved = true;
         _panStart = panPos;
         _comboTranslate.X += dx;
         _comboTranslate.Y += dy;
@@ -4700,18 +5694,6 @@ public partial class MainWindow : Window
         }
         if (!_isPanning) return;
         StopPanning();
-
-        if (_selectedNodeId >= 0 && _nodeBorders.TryGetValue(_selectedNodeId, out var selBorder))
-        {
-            var upPos = e.GetPosition(comboCanvas);
-            double left = Canvas.GetLeft(selBorder);
-            double top = Canvas.GetTop(selBorder);
-            if (left <= upPos.X && upPos.X <= left + selBorder.ActualWidth
-                && top <= upPos.Y && upPos.Y <= top + selBorder.ActualHeight)
-                return;
-        }
-        if (_selectedNodeId >= 0)
-            ClearNodeSelection();
     }
 
     private void ComboBorder_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -4723,8 +5705,11 @@ public partial class MainWindow : Window
     {
         double maxRight = 0;
         double maxBottom = 0;
-        foreach (var pos in _nodePositions.Values)
+        foreach (var kvp in _nodePositions)
         {
+            // Hidden AI nodes must not pad the canvas with empty scroll space.
+            if (TouchesHiddenAi(kvp.Key)) continue;
+            var pos = kvp.Value;
             maxRight = Math.Max(maxRight, pos.X + NODE_WIDTH);
             maxBottom = Math.Max(maxBottom, pos.Y + NODE_HEIGHT);
             maxBottom = Math.Max(maxBottom, pos.Y - 10 + INPUT_HEIGHT);
@@ -4785,7 +5770,20 @@ public partial class MainWindow : Window
 
     private void ComboPan_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (_isPanning) StopPanning();
+        if (!_isPanning) return;
+        bool wasClick = !_panMoved;
+        StopPanning();
+        if (!wasClick || e.ChangedButton != MouseButton.Left || _selectedNodeId < 0) return;
+        if (_nodeBorders.TryGetValue(_selectedNodeId, out var selBorder))
+        {
+            var upPos = e.GetPosition(comboCanvas);
+            double left = Canvas.GetLeft(selBorder);
+            double top = Canvas.GetTop(selBorder);
+            if (left <= upPos.X && upPos.X <= left + selBorder.ActualWidth
+                && top <= upPos.Y && upPos.Y <= top + selBorder.ActualHeight)
+                return;
+        }
+        ClearNodeSelection();
     }
 
     private void StopPanning()
@@ -4836,9 +5834,11 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Close-time gate for the persistent CustomAssets library. Files that are new or
-    /// modified against the last accepted manifest trigger one prompt: Yes keeps them
-    /// (manifest saved into settings, so the same files are never re-asked), No
-    /// deletes only those unaccepted files - everything previously accepted stays.
+    /// modified against the last accepted manifest trigger the styled prompt: Yes keeps
+    /// them (manifest saved into settings, so the same files are never re-asked), No -
+    /// button, Esc, or window X - swaps the dialog into a "Deleting files…" progress
+    /// state and removes only those unaccepted files (everything previously accepted
+    /// stays). The deletion runs off the UI thread, so close never stalls.
     /// </summary>
     private void PromptKeepCustomAssets()
     {
@@ -4859,24 +5859,22 @@ public partial class MainWindow : Window
             string text = firstTime
                 ? "Want to save the custom files in the Custom Section?"
                 : "Want to save the new custom files added?";
-            var result = MessageBox.Show(this, text, "Custom Section",
-                MessageBoxButton.YesNo, MessageBoxImage.Question);
+            var unaccepted = CustomAssets.NewOrChanged(current, _customAssetsAccepted);
 
-            if (result == MessageBoxResult.Yes)
+            var dlg = new KeepCustomAssetsDialog(text, unaccepted) { Owner = this };
+            if (dlg.ShowDialog() == true)
             {
                 _customAssetsAccepted = current;
+                return;
             }
-            else
-            {
-                var unaccepted = CustomAssets.NewOrChanged(current, _customAssetsAccepted);
-                int removed = CustomAssets.DeleteEntries(unaccepted);
-                var unacceptedSet = new HashSet<string>(unaccepted, StringComparer.OrdinalIgnoreCase);
-                var survivors = current.Where(e => !unacceptedSet.Contains(e)).ToList();
-                _customAssetsAccepted = survivors.Count > 0 ? survivors : null;
-                if (removed > 0)
-                    ErrorLog.Write("CUSTOM", new Exception(
-                        $"Close prompt: discarded {removed} unaccepted custom file(s)"));
-            }
+
+            int removed = dlg.RemovedCount;
+            var unacceptedSet = new HashSet<string>(unaccepted, StringComparer.OrdinalIgnoreCase);
+            var survivors = current.Where(e => !unacceptedSet.Contains(e)).ToList();
+            _customAssetsAccepted = survivors.Count > 0 ? survivors : null;
+            if (removed > 0)
+                ErrorLog.Write("CUSTOM", new Exception(
+                    $"Close prompt: discarded {removed} unaccepted custom file(s)"));
         }
         catch (Exception ex)
         {
@@ -5134,6 +6132,10 @@ public partial class MainWindow : Window
     {
         if (node.IsRedirect)
             return new SolidColorBrush(Color.FromArgb(0x60, 0x6c, 0x70, 0x86));
+        if (node.IsActionNode)
+            return new SolidColorBrush(Color.FromRgb(0xf2, 0xcd, 0xcd));
+        if (node.IsEventNode)
+            return new SolidColorBrush(Color.FromRgb(0xf5, 0xc2, 0xe7));
         if (node.Kind == ComboNodeKind.ImportedNew)
             return new SolidColorBrush(Color.FromRgb(0xcb, 0xa6, 0xf7));
         if (node.Kind == ComboNodeKind.UserCreated)
@@ -5151,6 +6153,10 @@ public partial class MainWindow : Window
     {
         if (node.IsRedirect)
             return new SolidColorBrush(Color.FromArgb(0x15, 0x6c, 0x70, 0x86));
+        if (node.IsActionNode)
+            return new SolidColorBrush(Color.FromArgb(0x40, 0xf2, 0xcd, 0xcd));
+        if (node.IsEventNode)
+            return new SolidColorBrush(Color.FromArgb(0x40, 0xf5, 0xc2, 0xe7));
         if (node.Kind == ComboNodeKind.ImportedNew)
             return new SolidColorBrush(Color.FromArgb(0x40, 0xcb, 0xa6, 0xf7));
         if (node.Kind == ComboNodeKind.UserCreated)
@@ -5634,10 +6640,23 @@ public partial class MainWindow : Window
     {
         if (sender is Border border && border.Tag is ComboNode node)
         {
+            if (_isNodePickMode)
+            {
+                HandleNodePickClick(node);
+                return;
+            }
+
             if (_isRetargetMode)
             {
-                if (node.Id != _retargetSourceNode?.Id && !node.IsRoot && !node.IsRedirect)
-                    ApplyRetarget(_retargetSourceNode!, node);
+                if (_retargetSourceNode == null || _comboGraph == null
+                    || _comboGraph.Nodes.All(n => n.Id != _retargetSourceNode.Id))
+                {
+                    ExitRetargetMode();
+                    txtStatus.Text = "Retarget cancelled (moveset changed)";
+                    return;
+                }
+                if (node.Id != _retargetSourceNode.Id && !node.IsRoot && !node.IsRedirect && !node.Removed)
+                    ApplyRetarget(_retargetSourceNode, node);
                 ExitRetargetMode();
                 RenderComboGraph();
                 return;
@@ -5672,31 +6691,41 @@ public partial class MainWindow : Window
                             _comboTranslate.Y = viewportH / 2 - targetPos.Y - NODE_HEIGHT / 2;
                         }
                         txtStatus.Text = $"Jumped to redirect target: {targetNode.DisplayName}";
-                        if (!string.IsNullOrEmpty(targetNode.AnimPath) || !string.IsNullOrEmpty(targetNode.DefaultDBPath))
+                        if (targetNode.IsActionNode)
+                            SetSourceTypeDisplay("Action");
+                        else if (targetNode.IsEventNode)
+                            SetSourceTypeDisplay("Event");
+                        else if (!string.IsNullOrEmpty(targetNode.AnimPath) || !string.IsNullOrEmpty(targetNode.DefaultDBPath))
                             SetSourceTypeDisplay(MoveInfo.SourceTypeFromPath(ComboNodeTypePath(targetNode)));
-                        if (!string.IsNullOrEmpty(targetNode.AnimPath))
-                        {
-                            txtStatus.Text = $"Loading: {targetNode.DisplayName} ({targetNode.AnimPath})...";
-                            ShowPreviewOverlay();
-                            try
-                            {
-                                string previewChar = "MainChar";
-                                if (!string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase))
-                                    previewChar = _activeStance.Split('|')[0];
-                                else if (targetNode.AnimPath.Contains("/"))
+                                if (!string.IsNullOrEmpty(targetNode.AnimPath))
                                 {
-                                    var segs = targetNode.AnimPath.Split('/');
-                                    var idx = Array.FindIndex(segs, s => s.Equals("Animations", StringComparison.OrdinalIgnoreCase));
-                                    if (idx >= 0 && idx + 1 < segs.Length) previewChar = segs[idx + 1];
-                                }
-                                await LoadMeshAsync(previewChar);
-                                await LoadAnimationAsync(targetNode.AnimPath);
-                            }
+                                    txtStatus.Text = $"Loading: {targetNode.DisplayName} ({targetNode.AnimPath})...";
+                                    try
+                                    {
+                                        string previewChar = "MainChar";
+                                        if (!string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase))
+                                            previewChar = _activeStance.Split('|')[0];
+                                        else if (targetNode.AnimPath.Contains("/"))
+                                        {
+                                            var segs = targetNode.AnimPath.Split('/');
+                                            var idx = Array.FindIndex(segs, s => s.Equals("Animations", StringComparison.OrdinalIgnoreCase));
+                                            if (idx >= 0 && idx + 1 < segs.Length) previewChar = segs[idx + 1];
+                                        }
+                                        await PreviewAsync(previewChar, targetNode.AnimPath);
+                                    }
                             catch (Exception ex)
                             {
                                 ErrorLog.Write("REDIRECT_DBLCLK", new Exception($"Node '{targetNode.DisplayName}' (Path={targetNode.AnimPath}): {ex.Message}"));
                                 txtStatus.Text = $"Error loading {targetNode.DisplayName}: {ex.Message}";
                             }
+                        }
+                        else if (targetNode.IsEventNode)
+                        {
+                            txtStatus.Text = $"Event: {targetNode.DisplayName} - events fire gameplay logic and have no animation";
+                        }
+                        else if (targetNode.IsActionNode)
+                        {
+                            await HandleActionNodeClickAsync(targetNode);
                         }
                         else
                         {
@@ -5704,13 +6733,17 @@ public partial class MainWindow : Window
                         }
                         if (targetNode.Name == "MainChar_Stance")
                             ShowToast("Combat Stance — not in library");
-                        else
+                        else if (!targetNode.IsActionNode && !targetNode.IsEventNode)
                             await FindCardInLibrary(targetNode.AnimPath, targetNode);
                         return;
                     }
                 }
                 if (node.Name == "MainChar_Stance")
                     ShowToast("Combat Stance — not in library");
+                else if (node.IsActionNode)
+                    await HandleActionNodeClickAsync(node);
+                else if (node.IsEventNode)
+                    txtStatus.Text = $"Event: {node.DisplayName} - events fire gameplay logic and have no animation";
                 else
                     await FindCardInLibrary(node.AnimPath, node);
                 return;
@@ -5726,22 +6759,20 @@ public partial class MainWindow : Window
             SelectNode(border, node);
 
             var typePath = ComboNodeTypePath(node);
-            if (!string.IsNullOrEmpty(typePath))
+            if (node.IsActionNode)
+                SetSourceTypeDisplay("Action");
+            else if (node.IsEventNode)
+                SetSourceTypeDisplay("Event");
+            else if (!string.IsNullOrEmpty(typePath))
                 SetSourceTypeDisplay(MoveInfo.SourceTypeFromPath(typePath));
             else
                 SetSourceTypeDisplay("Other");
 
-            txtDisplayName.Text = node.IsRedirect
-                ? $"Redirect → {(_comboGraph?.Nodes.FirstOrDefault(n => n.Id == node.ResolvedRedirectNodeId)?.DisplayName ?? "?")}"
-                : !string.IsNullOrEmpty(node.ImportedDisplayName) &&
-                  !string.Equals(node.ImportedDisplayName, node.DisplayName, StringComparison.OrdinalIgnoreCase)
-                    ? $"Display: {node.DisplayName} → Changed: {node.ImportedDisplayName}"
-                    : $"Display: {node.DisplayName}";
+            UpdateNodeDisplayNameLabel(node);
 
             if (!string.IsNullOrEmpty(node.AnimPath))
             {
                 txtStatus.Text = $"Loading: {node.DisplayName} ({node.AnimPath})...";
-                ShowPreviewOverlay();
                 try
                 {
                     string previewChar = "MainChar";
@@ -5754,8 +6785,7 @@ public partial class MainWindow : Window
                         var idx = Array.FindIndex(segs, s=> s.Equals("Animations", StringComparison.OrdinalIgnoreCase));
                         if (idx>=0 && idx+1 < segs.Length) previewChar = segs[idx+1];
                     }
-                    await LoadMeshAsync(previewChar);
-                    await LoadAnimationAsync(node.AnimPath);
+                    await PreviewAsync(previewChar, node.AnimPath);
                 }
                 catch (Exception ex)
                 {
@@ -5763,12 +6793,65 @@ public partial class MainWindow : Window
                     txtStatus.Text = $"Error loading {node.DisplayName}: {ex.Message}";
                 }
             }
+            else if (node.IsEventNode)
+            {
+                txtStatus.Text = $"Event: {node.DisplayName} - events fire gameplay logic and have no animation";
+            }
+            else if (node.IsActionNode)
+            {
+                await HandleActionNodeClickAsync(node);
+            }
             else
             {
                 txtStatus.Text = $"Node '{node.DisplayName}' has no animation path";
-                ErrorLog.Write("COMBO_CLICK", new Exception($"Node '{node.DisplayName}' (Name={node.Name}): no AnimPath"));
             }
         }
+    }
+
+    /// <summary>
+    /// Action nodes store no animation themselves - the animation belongs to the action
+    /// blueprint (its CDO m_Animation). Resolve it through the cached AI catalog so the
+    /// node previews exactly like its library card; otherwise report honestly why not.
+    /// </summary>
+    private async System.Threading.Tasks.Task HandleActionNodeClickAsync(ComboNode node)
+    {
+        if (!_aiScanStarted)
+        {
+            txtStatus.Text = $"Resolving action '{node.ActionClass}'...";
+            await EnsureAiCatalogAsync();
+        }
+        string className = string.IsNullOrEmpty(node.ActionClass) ? node.DisplayName : node.ActionClass;
+        var info = _aiNodes.FirstOrDefault(n =>
+            n.Kind == "Action" &&
+            (string.Equals(n.ClassName, className, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(n.DisplayName, className, StringComparison.OrdinalIgnoreCase)));
+
+        if (info?.PreviewAnimPath != null)
+        {
+            txtStatus.Text = $"Action: {node.DisplayName} ({info.SourceUnit}) - anim: {info.PreviewAnimPath}";
+            try
+            {
+                string previewChar = "MainChar";
+                if (info.PreviewAnimPath.Contains("/"))
+                {
+                    var segs = info.PreviewAnimPath.Split('/');
+                    int idx = Array.FindIndex(segs, s => s.Equals("Animations", StringComparison.OrdinalIgnoreCase));
+                    if (idx >= 0 && idx + 1 < segs.Length) previewChar = segs[idx + 1];
+                }
+                await PreviewAsync(previewChar, info.PreviewAnimPath);
+                return;
+            }
+            catch (Exception ex)
+            {
+                ErrorLog.Write("ACTION_CLICK", new Exception($"Node '{node.DisplayName}' (anim={info.PreviewAnimPath}): {ex.Message}"));
+                txtStatus.Text = $"Action: {node.DisplayName} - preview failed ({ex.Message})";
+                return;
+            }
+        }
+
+        txtStatus.Text = info != null
+            ? $"Action: {node.DisplayName} - animation driven by the action BP (no CDO animation to preview)"
+            : $"Action: {node.DisplayName} - animation driven by the action BP ({className})";
     }
 
     private void RetargetRedirect_Click(object sender, RoutedEventArgs e)
@@ -5798,10 +6881,49 @@ public partial class MainWindow : Window
             IsRedirect = true
         });
 
+        int oldTargetId = redirectNode.ResolvedRedirectNodeId;
         redirectNode.ResolvedRedirectNodeId = newTarget.Id;
+        MoveOwnedRedirectRows(redirectNode, oldTargetId, newTarget.Id);
 
         RenderComboGraph();
         txtStatus.Text = $"Retargeted '{redirectNode.DisplayName}' → '{newTarget.DisplayName}'";
+    }
+
+    /// <summary>
+    /// A' pass-through: a redirect's re-sourced rows live on the attack node it plays,
+    /// so a retarget has to carry them from the old play target to the new one or
+    /// export's owner-writeback would append to the wrong struct.
+    /// </summary>
+    private void MoveOwnedRedirectRows(ComboNode redirectNode, int oldTargetId, int newTargetId)
+    {
+        if (_comboGraph == null || oldTargetId < 0 || newTargetId < 0 || oldTargetId == newTargetId)
+            return;
+        var owned = _comboGraph.Edges
+            .Where(e => e.OwnerRedirectNodeId == redirectNode.Id && e.FromNodeId == oldTargetId)
+            .ToList();
+        if (owned.Count == 0) return;
+        foreach (var o in owned) _comboGraph.Edges.Remove(o);
+        foreach (var o in owned)
+        {
+            var existing = _comboGraph.Edges.FirstOrDefault(e =>
+                e.FromNodeId == newTargetId && e.ToNodeId == o.ToNodeId);
+            if (existing != null)
+            {
+                if (existing.OwnerRedirectNodeId < 0 && !existing.IsNewLink)
+                    existing.OwnerRedirectNodeId = redirectNode.Id;
+            }
+            else
+            {
+                _comboGraph.Edges.Add(new ComboEdge
+                {
+                    FromNodeId = newTargetId,
+                    ToNodeId = o.ToNodeId,
+                    InputName = o.InputName,
+                    OwnerRedirectNodeId = redirectNode.Id,
+                    IsNewLink = o.IsNewLink
+                });
+            }
+        }
     }
 
     private void ExitRetargetMode()
@@ -5844,10 +6966,21 @@ public partial class MainWindow : Window
     {
         var source = _linkSourceNode;
         if (source == null) return;
+        if (_comboGraph == null || _comboGraph.Nodes.All(n => n.Id != source.Id))
+        {
+            ExitLinkMode();
+            txtStatus.Text = "Link cancelled (moveset changed)";
+            return;
+        }
 
         if (target.Id == source.Id || target.IsRoot)
         {
             txtStatus.Text = "Pick a different node as the target (Escape cancels)";
+            return;
+        }
+        if (target.Removed)
+        {
+            txtStatus.Text = $"'{target.DisplayName}' is marked removed - pick a live node (Escape cancels)";
             return;
         }
         if (_linkCreatesRedirect && target.IsRedirect)
@@ -5892,16 +7025,27 @@ public partial class MainWindow : Window
                 || string.Equals(w, "BareHands", StringComparison.OrdinalIgnoreCase)
                 || w.StartsWith("MainChar_", StringComparison.OrdinalIgnoreCase))
                 return true;
-            if (_comboGraph.Nodes.Any(n => !string.IsNullOrEmpty(n.DefaultDBPath)
-                && n.DefaultDBPath.Contains("/_MainChar/", StringComparison.OrdinalIgnoreCase)))
+            if (GraphIsMainChar(_comboGraph))
                 return true;
         }
         return false;
     }
 
+    /// <summary>Graph-level MainChar identity: the combo tree's own source path (stable),
+    /// never the cards sitting on the canvas - a MainChar card dropped onto an enemy
+    /// graph must not flip the graph's identity (it used to, via a node DefaultDBPath
+    /// sniff, which switched the link picker to player inputs and skipped the unit
+    /// cache). MainChar graphs of every flavor (barehands + weapon variants) carry a
+    /// DB/_MainChar SourceGamePath; enemy graphs carry DB/AI/Archetypes/....</summary>
+    private static bool GraphIsMainChar(ComboGraph? graph)
+        => graph?.SourceGamePath != null
+           && graph.SourceGamePath.Contains("DB/_MainChar", StringComparison.OrdinalIgnoreCase);
+
     private void ShowLinkInputPicker(ComboNode target, Border? targetBorder)
     {
         _linkPickCommitted = false;
+        _dragCandidate = false;
+        _dragNodeId = -1;
         var menu = new ContextMenu
         {
             PlacementTarget = targetBorder,
@@ -6024,12 +7168,90 @@ public partial class MainWindow : Window
             DeleteAuthoredNode(node);
     }
 
+    private void RestoreNodeMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem mi && mi.Tag is ComboNode node && _comboGraph != null)
+        {
+            PushUndo("Restore node");
+            node.Removed = false;
+            RenderComboGraph();
+            txtStatus.Text = $"Restored node: {node.DisplayName}";
+        }
+    }
+
     private void DeleteAuthoredNode(ComboNode node)
     {
-        if (_comboGraph == null || node.IsRoot || node.TreeIndex >= 0) return;
+        if (_comboGraph == null || node.IsRoot || node.Removed) return;
+
+        // Start entries (AI combo entry points) target nodes by id - deleting the target
+        // would leave the entry pointing at a ghost. Offer to clean the entries first.
+        var startBlockers = (_comboGraph.StartEntries ?? new List<StartEntry>())
+            .Where(en => !en.Removed
+                && en.Transitions.Any(t => !t.Removed && StartTransitionTargetsNode(t, node.Id)))
+            .ToList();
+        if (startBlockers.Count > 0)
+        {
+            var blockDlg = new StartEntryBlockDialog(node.DisplayName, startBlockers) { Owner = this };
+            blockDlg.ShowDialog();
+            if (blockDlg.Choice != StartEntryBlockChoice.DeleteAnyway)
+            {
+                if (blockDlg.Choice == StartEntryBlockChoice.OpenStartEntries)
+                {
+                    txtStatus.Text = $"Delete cancelled: {node.DisplayName} - opened Start Entries "
+                        + $"({startBlockers.Count} entr{(startBlockers.Count == 1 ? "y" : "ies")} target it)";
+                    ShowStartEntriesDialog(null);
+                }
+                else
+                {
+                    txtStatus.Text = $"Delete cancelled: {node.DisplayName} (targeted by "
+                        + $"{startBlockers.Count} start entr{(startBlockers.Count == 1 ? "y" : "ies")})";
+                }
+                return;
+            }
+        }
+
+        // Event nodes fire gameplay logic (combo role changes, triggers). Removing one that
+        // is still routed into silently drops those transitions at export - warn first.
+        if (node.IsEventNode)
+        {
+            int incomingCount = _comboGraph.Edges.Count(ed => ed.ToNodeId == node.Id);
+            if (incomingCount > 0)
+            {
+                var answer = MessageBox.Show(
+                    $"Event node '{node.DisplayName}' still has {incomingCount} incoming link(s).\n\n"
+                    + "Removing it disables its gameplay event and, on export, drops every "
+                    + "transition row left without a target (their probabilities are renormalized).\n\n"
+                    + "Delete anyway?",
+                    "Delete event node",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning);
+                if (answer != MessageBoxResult.Yes)
+                {
+                    txtStatus.Text = $"Delete cancelled: {node.DisplayName} ({incomingCount} incoming link(s))";
+                    return;
+                }
+            }
+        }
 
         PushUndo("Delete node");
-        _comboGraph.Edges.RemoveAll(ed => ed.FromNodeId == node.Id || ed.ToNodeId == node.Id);
+
+        // Delete Anyway: clear the offending start targets with the Start Entries dialog's
+        // semantics - vanilla rows/entries marked Removed (export drops them), new ones
+        // hard-removed - so the delete never leaves a ghost target behind.
+        foreach (var en in startBlockers)
+        {
+            foreach (var t in en.Transitions
+                .Where(t => !t.Removed && StartTransitionTargetsNode(t, node.Id)).ToList())
+            {
+                if (t.OriginalIndex >= 0) t.Removed = true;
+                else en.Transitions.Remove(t);
+            }
+            if (en.Transitions.Count(t => !t.Removed) == 0)
+            {
+                if (en.VanillaIndex >= 0) en.Removed = true;
+                else _comboGraph.StartEntries.Remove(en);
+            }
+        }
 
         // Authored redirects pointing at the deleted node would render as orphans (hidden),
         // so remove them with their incoming links; vanilla redirects keep existing behavior.
@@ -6038,6 +7260,9 @@ public partial class MainWindow : Window
             .ToList();
         foreach (var br in brokenRedirects)
         {
+            foreach (var ed in _comboGraph.Edges
+                .Where(ed => ed.FromNodeId == br.Id || ed.ToNodeId == br.Id).ToList())
+                ClearEdgeMerge(ed);
             _comboGraph.Edges.RemoveAll(ed => ed.FromNodeId == br.Id || ed.ToNodeId == br.Id);
             _comboGraph.Nodes.Remove(br);
             _nodePositions.Remove(br.Id);
@@ -6050,14 +7275,87 @@ public partial class MainWindow : Window
             if (n.IsRedirect && n.ResolvedRedirectNodeId == node.Id)
                 n.ResolvedRedirectNodeId = -1;
         }
+
+        if (node.TreeIndex >= 0)
+        {
+            node.Removed = true;
+            ClearNodeSelection();
+            RenderComboGraph();
+            txtStatus.Text = $"Marked removed: {node.DisplayName} (export drops it from the tree; "
+                + "Restore Node brings it back)"
+                + (brokenRedirects.Count > 0 ? $" (+{brokenRedirects.Count} linked redirect)" : "");
+            return;
+        }
+
+        foreach (var ed in _comboGraph.Edges
+            .Where(ed => ed.FromNodeId == node.Id || ed.ToNodeId == node.Id).ToList())
+            ClearEdgeMerge(ed);
+        _comboGraph.Edges.RemoveAll(ed => ed.FromNodeId == node.Id || ed.ToNodeId == node.Id);
         _comboGraph.Nodes.Remove(node);
         _nodePositions.Remove(node.Id);
         _nodeBorders.Remove(node.Id);
         _comboGraph.RedirectOriginalTargets.Remove(node.Id);
+        PurgeConditionOverridesForNode(node.Id);
         ClearNodeSelection();
         RenderComboGraph();
         txtStatus.Text = $"Deleted node: {node.DisplayName}"
-            + (brokenRedirects.Count > 0 ? $" (+{brokenRedirects.Count} linked redirect)" : "");
+            + (brokenRedirects.Count > 0 ? $" (+{brokenRedirects.Count} linked redirect)" : "")
+            + (startBlockers.Count > 0 ? $" (+{startBlockers.Count} start entr{(startBlockers.Count == 1 ? "y" : "ies")} cleaned)" : "");
+    }
+
+    /// <summary>Drops a link's merge: the AddedKeys entry the link owns leaves the row
+    /// edit and the edge's MergedInto* fields reset - the link survives as its own
+    /// appended chance row. Call before removing a merged edge so the row edit never
+    /// keeps a key pointing at a dead link.</summary>
+    private void ClearEdgeMerge(ComboEdge edge)
+    {
+        if (_comboGraph == null || edge.MergedIntoStruct < 0) return;
+        if (_comboGraph.TreeRowConditionOverrides.TryGetValue(edge.MergedIntoStruct, out var rows)
+            && rows.TryGetValue(edge.MergedIntoRow, out var edit))
+            edit.AddedKeys.Remove((byte)edge.MergedIntoKey);
+        edge.MergedIntoStruct = -1;
+        edge.MergedIntoRow = -1;
+        edge.MergedIntoKey = -1;
+    }
+
+    /// <summary>True when a start transition (or one of its condition keys) targets
+    /// the given graph node id.</summary>
+    private static bool StartTransitionTargetsNode(StartTransition t, int nodeId)
+        => t.TargetNodeId == nodeId
+           || (t.KeyTargetNodeIds?.Count > 0 && t.KeyTargetNodeIds.Contains(nodeId));
+
+    /// <summary>Drops condition-override entries that still reference a deleted node id,
+    /// so a later export never resolves a ghost id. Edge overrides keyed
+    /// "FromId>ToId|Input" vanish with the node's edges; row overrides keep their
+    /// other outcome keys and only lose the ones routed to the deleted node.</summary>
+    private void PurgeConditionOverridesForNode(int nodeId)
+    {
+        if (_comboGraph == null) return;
+
+        foreach (var key in _comboGraph.TreeEdgeConditionOverrides.Keys.ToList())
+        {
+            var ends = key.Split('|')[0].Split('>');
+            if (ends.Length == 2
+                && ((int.TryParse(ends[0], out int from) && from == nodeId)
+                 || (int.TryParse(ends[1], out int to) && to == nodeId)))
+                _comboGraph.TreeEdgeConditionOverrides.Remove(key);
+        }
+
+        void CleanEdit(TreeRowConditionEdit edit)
+        {
+            foreach (var k in edit.RetargetNodeIds
+                .Where(kv => kv.Value == nodeId).Select(kv => kv.Key).ToList())
+                edit.RetargetNodeIds.Remove(k);
+            foreach (var k in edit.AddedKeys
+                .Where(kv => kv.Value == nodeId).Select(kv => kv.Key).ToList())
+                edit.AddedKeys.Remove(k);
+        }
+
+        foreach (var edit in _comboGraph.TreeEdgeConditionOverrides.Values)
+            CleanEdit(edit);
+        foreach (var rowMap in _comboGraph.TreeRowConditionOverrides.Values)
+            foreach (var edit in rowMap.Values)
+                CleanEdit(edit);
     }
 
     private void DeleteEdgeMenuItem_Click(object sender, RoutedEventArgs e)
@@ -6065,10 +7363,30 @@ public partial class MainWindow : Window
         if (sender is MenuItem mi && mi.Tag is ComboEdge edge && _comboGraph != null)
         {
             PushUndo("Delete link");
+            ClearEdgeMerge(edge);
             _comboGraph.Edges.Remove(edge);
             RenderComboGraph();
             txtStatus.Text = "Link removed";
         }
+    }
+
+    private void Edge_ResetMode_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!_isResetMode || _comboGraph == null) return;
+        if (sender is not System.Windows.Shapes.Path path || path.Tag is not ComboEdge edge) return;
+        if (edge.IsNewLink)
+        {
+            PushUndo("Delete link");
+            ClearEdgeMerge(edge);
+            _comboGraph.Edges.Remove(edge);
+            RenderComboGraph();
+            txtStatus.Text = "Removed new link (reset to vanilla)";
+        }
+        else
+        {
+            txtStatus.Text = "Link is already vanilla";
+        }
+        e.Handled = true;
     }
 
 
@@ -6082,6 +7400,7 @@ public partial class MainWindow : Window
             if (!valid) return;
             border.BorderBrush = new SolidColorBrush(Color.FromRgb(0xa6, 0xe3, 0xa1));
             border.Background = new SolidColorBrush(Color.FromArgb(0x40, 0xa6, 0xe3, 0xa1));
+            border.Opacity = 1;
             return;
         }
         if (_isRetargetMode)
@@ -6089,21 +7408,21 @@ public partial class MainWindow : Window
             if (node.Id == _retargetSourceNode?.Id || node.IsRedirect) return;
             border.BorderBrush = new SolidColorBrush(Color.FromRgb(0xa6, 0xe3, 0xa1));
             border.Background = new SolidColorBrush(Color.FromArgb(0x40, 0xa6, 0xe3, 0xa1));
+            border.Opacity = 1;
+        }
+        else if (_isNodePickMode)
+        {
+            if (node.IsRoot || node.IsRedirect || node.Removed) return;
+            border.BorderBrush = new SolidColorBrush(Color.FromRgb(0xa6, 0xe3, 0xa1));
+            border.Background = new SolidColorBrush(Color.FromArgb(0x40, 0xa6, 0xe3, 0xa1));
+            border.Opacity = 1;
         }
     }
 
     private void RetargetNode_MouseLeave(object sender, MouseEventArgs e)
     {
-        if (sender is not Border border || border.Tag is not ComboNode node) return;
-        if (_selectedNodeId == node.Id)
-        {
-            SelectNode(border, node);
-        }
-        else
-        {
-            border.BorderBrush = GetNodeColor(node);
-            border.Background = GetNodeBackground(node);
-        }
+        if (sender is Border border && border.Tag is ComboNode node)
+            RestoreNodeVisual(border, node);
     }
 
     private async void CmbStance_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -6236,9 +7555,490 @@ public partial class MainWindow : Window
 
     private void UpdateUnitPropertiesButtonVisibility()
     {
+        bool isMainChar = IsMainCharStance();
+        btnUnitProperties.Visibility = Visibility.Visible;
+        // AI start tickets only exist on enemy archetype combo trees.
+        btnStartEntries.Visibility = isMainChar ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>True when the currently loaded combo graph belongs to the player character.</summary>
+    private bool IsMainCharStance()
+    {
         var arch = _activeStance?.Split('|')[0] ?? "";
-        bool isMainChar = string.Equals(arch, "MainChar", StringComparison.OrdinalIgnoreCase);
-        btnUnitProperties.Visibility = isMainChar ? Visibility.Collapsed : Visibility.Visible;
+        return string.Equals(arch, "MainChar", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async void BtnStartEntries_Click(object sender, RoutedEventArgs e)
+    {
+        if (_comboGraph == null)
+        {
+            txtStatus.Text = "No combo graph loaded";
+            return;
+        }
+        if (IsCurrentGraphMainChar())
+        {
+            txtStatus.Text = "Main character trees don't use AI start entries";
+            return;
+        }
+        if (_customMoveset == null &&
+            (_comboGraph.StartEntries == null || _comboGraph.StartEntries.Count == 0))
+        {
+            txtStatus.Text = "Start entries not in save - recovering from vanilla tree...";
+            btnStartEntries.IsEnabled = false;
+            bool recovered = await BackfillStartEntriesAsync();
+            btnStartEntries.IsEnabled = true;
+            if (!recovered || _comboGraph.StartEntries == null || _comboGraph.StartEntries.Count == 0)
+            {
+                txtStatus.Text = "This combo tree has no start entries (m_ComboStartNodesContainer)";
+                return;
+            }
+            txtStatus.Text = $"Recovered {_comboGraph.StartEntries.Count} start entries from vanilla tree";
+        }
+
+        ShowStartEntriesDialog(null);
+    }
+
+    /// <summary>Shows the Start Entries dialog (fresh, or resumed after a pick-on-graph
+    /// suspend with the carried entries copy). OK commits; a pick-suspend reopens pick
+    /// mode on the canvas instead; Cancel just closes.</summary>
+    private void ShowStartEntriesDialog(List<StartEntry>? resume)
+    {
+        if (_comboGraph == null) return;
+        var dlg = new StartEntriesDialog(_comboGraph, _showAiNodes, SelectAndRevealNode, resume) { Owner = this };
+        if (dlg.ShowDialog() == true && dlg.Result != null)
+        {
+            PushUndo("Edit start entries");
+            _comboGraph.StartEntries = dlg.Result;
+            txtStatus.Text = $"Start entries updated ({dlg.Result.Count} tickets)";
+            return;
+        }
+        if (dlg.SuspendedEntries == null || dlg.PickTransition == null) return; // plain Cancel
+        var suspendedEntries = dlg.SuspendedEntries;
+        var suspendedT = dlg.PickTransition;
+        int suspendedKi = dlg.PickKeyIndex;
+        BeginNodePick(
+            node => StartEntriesDialog.ApplyPickedTarget(suspendedT, suspendedKi, node),
+            () => ShowStartEntriesDialog(suspendedEntries));
+    }
+
+    /// <summary>Enters pick mode for a suspended dialog edit (Start Entries, Conditions
+    /// &amp; Chances, ...): the user clicks a node on the canvas, confirms, and apply
+    /// routes the pick back into the carried working state; Escape (or the
+    /// confirmation's backdrop/"Pick another") resumes the dialog with every edit
+    /// intact via resume.</summary>
+    private void BeginNodePick(Action<ComboNode> apply, Action resume)
+    {
+        if (_comboGraph == null) return;
+        ExitRetargetMode();
+        ExitLinkMode();
+        _isNodePickMode = true;
+        _pendingPickApply = apply;
+        _pendingPickResume = resume;
+        _pendingPickGraph = _comboGraph;
+        _pickCandidateNodeId = -1;
+        txtStatus.Text = "Pick target: click a node on the graph, Escape to cancel";
+        ShowToast("Click a node to set the target (Esc cancels)");
+    }
+
+    /// <summary>Clears pick mode and hides the confirmation popup. Callers keep their
+    /// own apply/resume closures when they intend to resume the suspended dialog.</summary>
+    private void ExitNodePickMode()
+    {
+        _isNodePickMode = false;
+        _pendingPickApply = null;
+        _pendingPickResume = null;
+        _pendingPickGraph = null;
+        _pickCandidateNodeId = -1;
+        pickConfirmBorder.Visibility = Visibility.Collapsed;
+    }
+
+    private void HandleNodePickClick(ComboNode node)
+    {
+        if (_pendingPickGraph == null || !ReferenceEquals(_comboGraph, _pendingPickGraph))
+        {
+            ExitNodePickMode();
+            txtStatus.Text = "Graph changed - dialog edits discarded";
+            ShowToast("Graph changed - dialog edits discarded");
+            return;
+        }
+        if (node.IsRoot || node.IsRedirect || node.Removed)
+        {
+            ShowToast("That node can't be a target - click an attack, action or event node");
+            return;
+        }
+        _pickCandidateNodeId = node.Id;
+        string idx = node.TreeIndex >= 0 ? $"[{node.TreeIndex}]" : "[new]";
+        string name = !string.IsNullOrEmpty(node.DisplayName) ? node.DisplayName
+            : !string.IsNullOrEmpty(node.Name) ? node.Name : $"#{node.Id}";
+        string type = node.IsActionNode ? "AI action" : node.IsEventNode ? "AI event" : "Attack / animation";
+        pickConfirmName.Text = $"{idx} {name}";
+        pickConfirmDetail.Text = $"Type: {type} - will become the target of this outcome.";
+        pickConfirmBorder.Visibility = Visibility.Visible;
+    }
+
+    private void PickConfirmBackdrop_Click(object sender, MouseButtonEventArgs e)
+        => pickConfirmBorder.Visibility = Visibility.Collapsed; // stay in pick mode
+
+    private void PickConfirmCancel_Click(object sender, RoutedEventArgs e)
+        => pickConfirmBorder.Visibility = Visibility.Collapsed; // stay in pick mode
+
+    private void PickConfirmUse_Click(object sender, RoutedEventArgs e)
+    {
+        var apply = _pendingPickApply;
+        var resume = _pendingPickResume;
+        int candidateId = _pickCandidateNodeId;
+        var graphAtPick = _pendingPickGraph;
+        ExitNodePickMode();
+        if (apply == null || resume == null) return;
+        if (_comboGraph == null || graphAtPick == null || !ReferenceEquals(_comboGraph, graphAtPick))
+        {
+            txtStatus.Text = "Graph changed - dialog edits discarded";
+            ShowToast("Graph changed - dialog edits discarded");
+            return;
+        }
+        var node = _comboGraph.Nodes.FirstOrDefault(n => n.Id == candidateId);
+        if (node == null || node.IsRoot || node.IsRedirect || node.Removed)
+        {
+            ShowToast("Pick failed - node no longer available");
+            resume();
+            return;
+        }
+        apply(node);
+        txtStatus.Text = $"Target set by pick: {node.DisplayName}";
+        resume();
+    }
+
+    /// <summary>Relevance gate for the Conditions & Chances entry points: the node's struct has
+    /// vanilla rows, or the node has new links (whose chances also live in the dialog).
+    /// HasConditionData covers node-level conditions (m_ConditionalAttacks /
+    /// m_RequiredTags) and rows carrying a condition class.</summary>
+    private bool HasBranchChanceData(ComboNode node)
+    {
+        if (_comboGraph == null) return false;
+        if (node.TreeIndex >= 0)
+        {
+            int structIdx = TreeChanceMath.ResolveWriteStruct(_comboGraph, node);
+            if (structIdx >= 0 && _comboGraph.TreeRows.ContainsKey(structIdx)) return true;
+        }
+        return _comboGraph.Edges.Any(e => e.IsNewLink && e.FromNodeId == node.Id);
+    }
+
+    private bool HasConditionData(ComboNode node)
+    {
+        if (_comboGraph == null) return false;
+        if (node.TreeIndex >= 0 && _comboGraph.TreeNodeConditions.ContainsKey(node.TreeIndex))
+            return true;
+        if (node.TreeIndex >= 0)
+        {
+            int structIdx = TreeChanceMath.ResolveWriteStruct(_comboGraph, node);
+            if (structIdx >= 0 && _comboGraph.TreeRows.TryGetValue(structIdx, out var rows)
+                && rows.Any(r => !string.IsNullOrEmpty(r.ConditionClass)))
+                return true;
+        }
+        return false;
+    }
+
+    private void BranchChancesMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem menuItem && menuItem.Parent is ContextMenu ctxMenu &&
+            ctxMenu.PlacementTarget is Border border && border.Tag is ComboNode node)
+        {
+            OpenBranchChances(node);
+        }
+    }
+
+    private void OpenBranchChances(ComboNode node)
+    {
+        // MainChar (any variant) has no editable conditions/chances - the menu entry is
+        // hidden there too; this guard covers any future caller.
+        if (_comboGraph == null || IsCurrentGraphMainChar()) return;
+        if (CanBackfillBranchRows(node))
+            BackfillTreeRows();
+        if (!HasBranchChanceData(node) && !HasConditionData(node))
+        {
+            txtStatus.Text = $"'{node.DisplayName}' has no transition rows yet - add a new link first";
+            return;
+        }
+        ShowBranchChancesDialog(node);
+    }
+
+    /// <summary>Shows the Conditions &amp; Chances dialog (fresh, or resumed after a
+    /// pick-on-graph suspend with the carried working state). OK commits; a pick-suspend
+    /// reopens pick mode on the canvas instead; Cancel just closes.</summary>
+    private void ShowBranchChancesDialog(ComboNode node,
+        BranchChancesDialog.PickSuspendState? resumeState = null)
+    {
+        if (_comboGraph == null) return;
+        var dlg = new BranchChancesDialog(_comboGraph, node, !IsCurrentGraphMainChar(),
+            Setup.ContentDetector.ResolveContentDir(_contentPath), resumeState) { Owner = this };
+        if (dlg.ShowDialog() == true && dlg.ResultOverrides != null)
+        {
+            PushUndo("Edit branch chances");
+            _comboGraph.TreeRowProbabilityOverrides = dlg.ResultOverrides;
+            int edgeChanged = 0;
+            if (dlg.ResultEdgeProbabilities != null)
+            {
+                foreach (var (edge, prob) in dlg.ResultEdgeProbabilities)
+                {
+                    if (edge.NewLinkProbability != prob) edgeChanged++;
+                    edge.NewLinkProbability = prob;
+                }
+            }
+            // Mixup links the clear/restore sync staged - dropped ones first so a
+            // remove+re-add cycle in one session can't duplicate an edge.
+            int mixupRemoved = 0;
+            if (dlg.ResultRemovedEdges is { Count: > 0 })
+            {
+                foreach (var edge in dlg.ResultRemovedEdges)
+                    if (_comboGraph.Edges.Remove(edge)) mixupRemoved++;
+            }
+            int mixupAdded = 0;
+            if (dlg.ResultNewEdges is { Count: > 0 })
+            {
+                _comboGraph.Edges.AddRange(dlg.ResultNewEdges);
+                mixupAdded = dlg.ResultNewEdges.Count;
+            }
+            int condParamEdits = 0, condRowEdits = 0;
+            if (dlg.ResultConditionParams != null)
+            {
+                _comboGraph.TreeConditionParamOverrides = dlg.ResultConditionParams;
+                condParamEdits = dlg.ResultConditionParams.Values.Sum(m => m.Count);
+            }
+            if (dlg.ResultRowConditions != null)
+            {
+                _comboGraph.TreeRowConditionOverrides = dlg.ResultRowConditions;
+                condRowEdits = dlg.ResultRowConditions.Values.Sum(m => m.Count);
+            }
+            int edgeCondEdits = 0;
+            if (dlg.ResultEdgeConditions != null)
+            {
+                _comboGraph.TreeEdgeConditionOverrides = dlg.ResultEdgeConditions;
+                edgeCondEdits = dlg.ResultEdgeConditions.Count;
+            }
+            // Link merges: staged on the edges only at OK (Cancel leaves them alone).
+            // The AddedKeys side already landed through ResultRowConditions above.
+            int mergedLinks = 0, unmergedLinks = 0;
+            if (dlg.ResultMergedEdges is { Count: > 0 })
+            {
+                foreach (var (edge, sIdx, rIdx, key) in dlg.ResultMergedEdges)
+                {
+                    edge.MergedIntoStruct = sIdx;
+                    edge.MergedIntoRow = rIdx;
+                    edge.MergedIntoKey = key;
+                    mergedLinks++;
+                }
+            }
+            if (dlg.ResultUnmergedEdges is { Count: > 0 })
+            {
+                foreach (var edge in dlg.ResultUnmergedEdges)
+                {
+                    edge.MergedIntoStruct = -1;
+                    edge.MergedIntoRow = -1;
+                    edge.MergedIntoKey = -1;
+                    unmergedLinks++;
+                }
+            }
+            if (mixupAdded > 0 || mixupRemoved > 0 || mergedLinks > 0 || unmergedLinks > 0)
+                RenderComboGraph();
+            int typedRows = dlg.ResultOverrides.Values.Sum(m => m.Count);
+            var parts = new List<string>();
+            if (typedRows > 0) parts.Add($"{typedRows} typed chance row(s)");
+            if (edgeChanged > 0) parts.Add($"{edgeChanged} new-link chance(s)");
+            if (mixupAdded > 0) parts.Add($"{mixupAdded} mixup link(s)");
+            if (mixupRemoved > 0) parts.Add($"{mixupRemoved} mixup link(s) dropped");
+            if (condParamEdits > 0) parts.Add($"{condParamEdits} condition param(s)");
+            if (condRowEdits > 0) parts.Add($"{condRowEdits} condition row(s)");
+            if (edgeCondEdits > 0) parts.Add($"{edgeCondEdits} new-link condition(s)");
+            if (mergedLinks > 0) parts.Add($"{mergedLinks} merged link(s)");
+            if (unmergedLinks > 0) parts.Add($"{unmergedLinks} merge(s) undone");
+            txtStatus.Text = parts.Count > 0
+                ? "Updated: " + string.Join(", ", parts)
+                : "No changes";
+            return;
+        }
+        if (dlg.SuspendedForPick && dlg.PickSuspend != null) // ⌖ suspend → pick on canvas
+        {
+            var state = dlg.PickSuspend;
+            BeginNodePick(
+                n => BranchChancesDialog.ApplyPickedTarget(state, n),
+                () => ShowBranchChancesDialog(node, state));
+        }
+    }
+
+    /// <summary>Old saves persist no TreeRows snapshot (empty dictionary), so both the
+    /// menu gate and the dialog gate would hide vanilla rows the source combo still has.
+    /// True while that one re-parse remains possible for this graph - the menu shows so
+    /// the click path can backfill instead of being gated out.</summary>
+    private bool CanBackfillBranchRows(ComboNode node)
+    {
+        if (_comboGraph == null || _comboGraph.TreeRowsBackfillAttempted) return false;
+        if (_comboGraph.TreeRows.Count > 0) return false;
+        if (string.IsNullOrEmpty(_comboGraph.SourceGamePath) || node.TreeIndex < 0) return false;
+        return TreeChanceMath.ResolveWriteStruct(_comboGraph, node) >= 0;
+    }
+
+    /// <summary>Old saves predate the TreeRows parse snapshot, so the Conditions &amp;
+    /// Chances gate and dialog can't see vanilla transition rows even though the tree
+    /// has them. Re-parse the graph's source combo once and merge only missing keys -
+    /// rows are a read-only snapshot and user edits live in override maps, so nothing
+    /// is clobbered. A struct still absent afterwards is genuinely row-less.</summary>
+    private void BackfillTreeRows()
+    {
+        var graph = _comboGraph;
+        if (graph == null) return;
+        graph.TreeRowsBackfillAttempted = true;
+        if (string.IsNullOrEmpty(graph.SourceGamePath)) return;
+        try
+        {
+            var fresh = _parser.LoadComboTreeFromPath(graph.SourceGamePath, graph.WeaponName);
+            if (fresh == null) return;
+            foreach (var kv in fresh.TreeRows)
+                if (!graph.TreeRows.ContainsKey(kv.Key)) graph.TreeRows[kv.Key] = kv.Value;
+            foreach (var kv in fresh.TreeNodeConditions)
+                if (!graph.TreeNodeConditions.ContainsKey(kv.Key))
+                    graph.TreeNodeConditions[kv.Key] = kv.Value;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("BRANCHROWS", ex);
+        }
+    }
+
+    /// <summary>
+    /// Old saves predate StartEntries in the .sifu-edit format, so the restored cache
+    /// graph has none even though the tree does. Re-parse the vanilla tree for the
+    /// current unit (the import catalog lookup handles variants and weapon combos) and
+    /// adopt its container, remapping targets by TreeIndex against the saved graph so
+    /// stale parse ids can't mislink.
+    /// </summary>
+    private async Task<bool> BackfillStartEntriesAsync()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(_activeVariant)) return false;
+            var entry = BuildImportComboCatalog().Values.FirstOrDefault(e =>
+                string.Equals(e.UnitKey, GetUnitCacheKey(), StringComparison.OrdinalIgnoreCase));
+            if (entry == null) return false;
+
+            var target = _comboGraph;
+            if (target == null) return false;
+            var fresh = await Task.Run(() => _parser.LoadComboTreeFromPath(entry.GamePath, entry.WeaponName));
+            var recovered = fresh?.StartEntries;
+            if (recovered == null || recovered.Count == 0) return false;
+            if (!ReferenceEquals(_comboGraph, target)) return false;
+
+            target.RemapStartEntryTargets(recovered);
+            target.StartEntries = recovered;
+            return target.StartEntries.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("START", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// v1.2-era saves predate the Phase-2 combo graph, so their unit caches hold only
+    /// the condensed moveset graph (no action/event nodes, TreeRows, StartEntries or
+    /// edge owners) and restoring from cache alone renders a graph missing every
+    /// event / BP_AiAction node. For each flagged cache this re-parses the source
+    /// combo and overlays the saved edits onto it (see ProjectMigrator), then clears
+    /// the backfill flag - the BackfillEdgeOwners pass below then skips migrated units.
+    /// Returns the status-note suffix, or null when nothing was migrated.
+    /// </summary>
+    private async Task<string?> MigrateLegacyCachesAsync()
+    {
+        if (!_unitCaches.Values.Any(c => c.NeedsEdgeOwnerBackfill)) return null;
+        try
+        {
+            IProgress<string> progress = new Progress<string>(p => UpdateLoading("Upgrading legacy unit graphs...", p));
+            var report = await Task.Run(() =>
+                ProjectMigrator.MigrateLegacyCaches(_unitCaches, _parser, progress.Report));
+            if (report.MigratedCount == 0 && report.FailureCount == 0) return null;
+            var note = report.Summary();
+            ErrorLog.Write("MIGRATE",
+                $"{note} | warnings={report.WarningCount} failures={report.FailureCount}");
+            foreach (var u in report.Units.Where(u => u.Warnings.Count > 0))
+                ErrorLog.Write("MIGRATE", $"{u.UnitKey}: {string.Join("; ", u.Warnings)}");
+            return note;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("MIGRATE", ex);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Old saves predate edge-owner persistence (A' pass-through), so their cache graphs
+    /// are missing both the re-sourced redirect rows and the owner tags export's
+    /// owner-writeback needs. Re-parse each flagged unit's vanilla tree and merge only
+    /// owner-tagged edges, mapping endpoints by TreeIndex so stale parse ids can't
+    /// mislink and user-deleted display edges stay deleted.
+    /// </summary>
+    private async Task BackfillEdgeOwnersAsync()
+    {
+        try
+        {
+            var flagged = _unitCaches.Where(kv => kv.Value.NeedsEdgeOwnerBackfill).ToList();
+            if (flagged.Count == 0) return;
+            var catalog = BuildImportComboCatalog().Values.ToList();
+            foreach (var (key, entry) in flagged)
+            {
+                var catEntry = catalog.FirstOrDefault(e =>
+                    string.Equals(e.UnitKey, key, StringComparison.OrdinalIgnoreCase));
+                if (catEntry == null) continue;
+                var fresh = await Task.Run(() => _parser.LoadComboTreeFromPath(catEntry.GamePath, catEntry.WeaponName));
+                if (fresh != null) MergeVanillaEdgeOwners(entry.Graph, fresh);
+                entry.NeedsEdgeOwnerBackfill = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("EDGEBF", ex);
+        }
+    }
+
+    private static void MergeVanillaEdgeOwners(ComboGraph target, ComboGraph fresh)
+    {
+        // Fresh parse ids and saved ids can differ (conduits/extra nodes over versions);
+        // map by TreeIndex, matching redirect-ness so boxes never take attack slots.
+        var freshToTarget = new Dictionary<int, int>();
+        foreach (var fn in fresh.Nodes)
+        {
+            if (fn.TreeIndex < 0) continue;
+            var tn = target.Nodes.FirstOrDefault(n => n.TreeIndex == fn.TreeIndex && n.IsRedirect == fn.IsRedirect);
+            if (tn != null) freshToTarget[fn.Id] = tn.Id;
+        }
+
+        foreach (var fe in fresh.Edges)
+        {
+            if (fe.OwnerRedirectNodeId < 0) continue;
+            if (!freshToTarget.TryGetValue(fe.FromNodeId, out var fromId)) continue;
+            if (!freshToTarget.TryGetValue(fe.ToNodeId, out var toId)) continue;
+            if (!freshToTarget.TryGetValue(fe.OwnerRedirectNodeId, out var ownerId)) continue;
+
+            var existing = target.Edges.FirstOrDefault(e => e.FromNodeId == fromId && e.ToNodeId == toId);
+            if (existing != null)
+            {
+                if (existing.OwnerRedirectNodeId < 0 && !existing.IsNewLink)
+                    existing.OwnerRedirectNodeId = ownerId;
+            }
+            else
+            {
+                target.Edges.Add(new ComboEdge
+                {
+                    FromNodeId = fromId,
+                    ToNodeId = toId,
+                    InputName = fe.InputName,
+                    OwnerRedirectNodeId = ownerId
+                });
+            }
+
+            var ownerNode = target.Nodes.FirstOrDefault(n => n.Id == ownerId);
+            if (ownerNode != null) ownerNode.OwnedContinuation = true;
+        }
     }
 
     private void BtnWeaponVariant_Click(object sender, RoutedEventArgs e)
@@ -6370,7 +8170,7 @@ public partial class MainWindow : Window
             _comboGraph = graph;
             _activeWeapon = NormalizeWeaponForCache(arch, weaponTag);
             UpdateWeaponButtonVisibility();
-            txtComboInfo.Text = $"{arch} {weaponTag} - {graph.Nodes.Count} nodes";
+            SetComboInfo($"{arch} {weaponTag} - {graph.Nodes.Count} nodes");
             _comboTranslate.X = 0;
             _comboTranslate.Y = 0;
             _nodePositions.Clear();
@@ -6443,14 +8243,14 @@ public partial class MainWindow : Window
         _ => null
     };
 
-    private sealed record ImportComboEntry(
+    internal sealed record ImportComboEntry(
         string UnitKey,
         string GamePath,
         string WeaponName,
         string? ActiveVariant,
         string? ActiveWeapon);
 
-    private static Dictionary<string, ImportComboEntry> BuildImportComboCatalog()
+    internal static Dictionary<string, ImportComboEntry> BuildImportComboCatalog()
     {
         var cat = new Dictionary<string, ImportComboEntry>(StringComparer.OrdinalIgnoreCase);
 
@@ -6610,7 +8410,7 @@ public partial class MainWindow : Window
             if (!string.IsNullOrEmpty(_activeWeapon) && !GetWeaponVariantsForArchetype(arch).Any(w => w.tag == _activeWeapon))
                 _activeWeapon = null;
             UpdateWeaponButtonVisibility();
-            txtComboInfo.Text = $"{arch} {variantTag} - {graph.Nodes.Count} nodes";
+            SetComboInfo($"{arch} {variantTag} - {graph.Nodes.Count} nodes");
             _comboTranslate.X = 0;
             _comboTranslate.Y = 0;
             _nodePositions.Clear();
@@ -6758,9 +8558,23 @@ public partial class MainWindow : Window
                     await CopyWithRetryAsync(backupDbExp, vanillaDbExp);
             }
 
-            await CopyWithRetryAsync(movementDbSrc, vanillaDbSrc);
-            if (File.Exists(movementDbExp))
-                await CopyWithRetryAsync(movementDbExp, vanillaDbExp);
+            if (string.Equals(Path.GetFullPath(movementDbSrc), Path.GetFullPath(vanillaDbSrc), StringComparison.OrdinalIgnoreCase))
+            {
+                // MainChar: the slot is its own source. Restore the pristine backup so any
+                // prior truncation (the historical self-copy bug) heals on stance switch.
+                if (File.Exists(backupDbSrc))
+                {
+                    await CopyWithRetryAsync(backupDbSrc, vanillaDbSrc);
+                    if (File.Exists(backupDbExp))
+                        await CopyWithRetryAsync(backupDbExp, vanillaDbExp);
+                }
+            }
+            else
+            {
+                await CopyWithRetryAsync(movementDbSrc, vanillaDbSrc);
+                if (File.Exists(movementDbExp))
+                    await CopyWithRetryAsync(movementDbExp, vanillaDbExp);
+            }
 
             var transition = _stanceMap[stance].Transition;
             if (transition != null)
@@ -6789,7 +8603,18 @@ public partial class MainWindow : Window
                         await CopyWithRetryAsync(backupTransExp, vanillaTransExp);
                 }
 
-                if (File.Exists(transSrc))
+                if (string.Equals(Path.GetFullPath(transSrc), Path.GetFullPath(vanillaTransSrc), StringComparison.OrdinalIgnoreCase))
+                {
+                    // Same self-heal as the movement DB above: MainChar's transition slot is
+                    // its own source, so restore the pristine backup instead of self-copying.
+                    if (File.Exists(backupTransSrc))
+                    {
+                        await CopyWithRetryAsync(backupTransSrc, vanillaTransSrc);
+                        if (File.Exists(backupTransExp))
+                            await CopyWithRetryAsync(backupTransExp, vanillaTransExp);
+                    }
+                }
+                else if (File.Exists(transSrc))
                 {
                     await CopyWithRetryAsync(transSrc, vanillaTransSrc);
                     if (File.Exists(transExp))
@@ -6824,7 +8649,7 @@ public partial class MainWindow : Window
                         stanceNode.AnimPath = _stanceMap[stance].DisplayAnim;
                     }
 
-                    txtComboInfo.Text = $"{stance} - {_comboGraph.WeaponName} ({_comboGraph.Nodes.Count} nodes, {_comboGraph.Edges.Count} edges)";
+                    SetComboInfo($"{stance} - {_comboGraph.WeaponName} ({_comboGraph.Nodes.Count} nodes, {_comboGraph.Edges.Count} edges)");
                     _comboTranslate.X = 0;
                     _comboTranslate.Y = 0;
                     _nodePositions.Clear();
@@ -6838,7 +8663,7 @@ public partial class MainWindow : Window
             {
                 _comboTranslate.X = 0;
                 _comboTranslate.Y = 0;
-                txtComboInfo.Text = $"{stance} - {_comboGraph.WeaponName} ({_comboGraph.Nodes.Count} nodes, {_comboGraph.Edges.Count} edges)";
+                SetComboInfo($"{stance} - {_comboGraph.WeaponName} ({_comboGraph.Nodes.Count} nodes, {_comboGraph.Edges.Count} edges)");
             }
         }
         catch (Exception ex)
@@ -6859,6 +8684,12 @@ public partial class MainWindow : Window
 
     private async Task CopyWithRetryAsync(string src, string dst)
     {
+        // MainChar's stance "source" is the destination slot itself (_stanceMap points
+        // both at DB/Movement/...): FileMode.Create would truncate the very file we are
+        // about to read, silently zeroing it - a self-copy is a no-op.
+        if (string.Equals(Path.GetFullPath(src), Path.GetFullPath(dst), StringComparison.OrdinalIgnoreCase))
+            return;
+
         for (int i=0;i<5;i++)
         {
             try
@@ -7078,8 +8909,58 @@ public partial class MainWindow : Window
         return unified;
     }
 
+    /// <summary>
+    /// Overrides whose value renders identically to their card's vanilla baseline are not
+    /// changes - null them. The Attack DB textbox shows m_fGameplayRange at "0.###" while
+    /// cards carry 4+ decimals, so older saves hold round-trip phantoms (typed back the
+    /// value the panel displayed, failed the raw 0.0001 equality check, got stored).
+    /// Baseline: content dir first, then the persistent CustomAssets copy (mirrors
+    /// CommitAttackDbPanel); an unreadable baseline keeps the override untouched.
+    /// </summary>
+    private int NormalizeVanillaEqualTuning()
+    {
+        int cleared = 0;
+        string contentDir = AttackDbContentDir();
+        foreach (var n in EnumerateAllGraphNodes())
+        {
+            if (n.IsRedirect) continue;
+            bool hasBuildup = n.AttackBuildupFrames.HasValue;
+            bool hasRange = n.AttackGameplayRange.HasValue;
+            if (!hasBuildup && !hasRange) continue;
+
+            string cardPath = AttackDbCard.EffectiveCardPath(n);
+            if (string.IsNullOrEmpty(cardPath)) continue;
+            var baseline = AttackDbCard.ReadDbPath(contentDir, cardPath);
+            if (baseline == null || !baseline.Any)
+                baseline = AttackDbCard.ReadDbPath(CustomAssets.Root, cardPath);
+            if (baseline == null || !baseline.Any) continue;
+
+            if (hasBuildup && baseline.HasBuildup && baseline.Buildup == n.AttackBuildupFrames!.Value)
+            {
+                n.AttackBuildupFrames = null;
+                cleared++;
+            }
+            if (hasRange && baseline.HasRange
+                && AttackDbCard.SameRange(baseline.Range, n.AttackGameplayRange!.Value))
+            {
+                n.AttackGameplayRange = null;
+                cleared++;
+            }
+        }
+        return cleared;
+    }
+
     private void ResetNodeToVanilla(ComboNode node)
     {
+        if (_comboGraph == null) return;
+        if (!node.IsRoot && node.TreeIndex < 0 && node.Kind == ComboNodeKind.UserCreated)
+        {
+            DeleteAuthoredNode(node);
+            if (!_comboGraph.Nodes.Contains(node))
+                txtStatus.Text = $"Removed custom node '{node.DisplayName}' (reset = delete for new nodes)";
+            return;
+        }
+
         var vanillaPath = !string.IsNullOrEmpty(node.VanillaAnimPath)
             ? node.VanillaAnimPath
             : node.DefaultAnimPath;
@@ -7087,6 +8968,7 @@ public partial class MainWindow : Window
         bool alreadyVanilla = string.Equals(node.AnimPath, vanillaPath, StringComparison.Ordinal)
             && string.IsNullOrEmpty(node.ImportedDisplayName)
             && !node.IsImportedFromMod
+            && !node.ReplacedByAiNode
             && (string.IsNullOrEmpty(node.DefaultDBPath) || string.IsNullOrEmpty(node.SourceDBPath)
                 || string.Equals(node.SourceDBPath, node.DefaultDBPath, StringComparison.OrdinalIgnoreCase));
         if (alreadyVanilla && node.IsRedirect && _comboGraph != null
@@ -7097,6 +8979,31 @@ public partial class MainWindow : Window
             if (checkTarget != null && node.ResolvedRedirectNodeId != checkTarget.Id)
                 alreadyVanilla = false;
         }
+        // Branch chances + conditions: edits on this node's writeback struct also count
+        // as changes (the dialog resolves the same owner struct, so reset restores them).
+        int chanceStructIdx = node.TreeIndex < 0 || _comboGraph == null
+            ? -1 : TreeChanceMath.ResolveWriteStruct(_comboGraph, node);
+        bool chanceModified = chanceStructIdx >= 0 && _comboGraph != null
+            && _comboGraph.TreeRowProbabilityOverrides.ContainsKey(chanceStructIdx);
+        bool condModified = false;
+        if (chanceStructIdx >= 0 && _comboGraph != null)
+        {
+            if (_comboGraph.TreeRowConditionOverrides.ContainsKey(chanceStructIdx))
+                condModified = true;
+            else if (_comboGraph.TreeRows.TryGetValue(chanceStructIdx, out var condResetRows))
+                condModified = condResetRows.Any(r => r.ConditionInstanceIndex != 0
+                    && _comboGraph.TreeConditionParamOverrides.ContainsKey(r.ConditionInstanceIndex));
+        }
+        // Conditions on rows this node appends (new links) reset with the node too.
+        var nodeEdgeCondKeys = _comboGraph == null
+            ? new List<string>()
+            : _comboGraph.Edges
+                .Where(ed => ed.FromNodeId == node.Id)
+                .Select(ComboGraph.EdgeConditionKey)
+                .Where(k => _comboGraph.TreeEdgeConditionOverrides.ContainsKey(k))
+                .ToList();
+        if (nodeEdgeCondKeys.Count > 0) condModified = true;
+        if (chanceModified || condModified) alreadyVanilla = false;
         if (alreadyVanilla)
         {
             txtStatus.Text = $"{node.DisplayName} is already vanilla";
@@ -7104,6 +9011,30 @@ public partial class MainWindow : Window
         }
 
         PushUndo("Reset node to vanilla");
+        if (chanceModified) _comboGraph?.TreeRowProbabilityOverrides.Remove(chanceStructIdx);
+        if (condModified && _comboGraph != null)
+        {
+            if (chanceStructIdx >= 0)
+            {
+                _comboGraph.TreeRowConditionOverrides.Remove(chanceStructIdx);
+                // Links merged into this struct's rows just lost their AddedKeys (the
+                // whole override map went) - drop the merges too or export would skip
+                // their appended rows while the target keys no longer exist.
+                foreach (var ed in _comboGraph.Edges
+                    .Where(ed => ed.MergedIntoStruct == chanceStructIdx).ToList())
+                    ClearEdgeMerge(ed);
+            }
+            if (_comboGraph.TreeRows.TryGetValue(chanceStructIdx, out var condResetRows2))
+            {
+                foreach (int expIdx in condResetRows2
+                    .Select(r => r.ConditionInstanceIndex).Where(i => i != 0).Distinct())
+                    _comboGraph.TreeConditionParamOverrides.Remove(expIdx);
+            }
+            foreach (string edgeKey in nodeEdgeCondKeys)
+                _comboGraph.TreeEdgeConditionOverrides.Remove(edgeKey);
+        }
+        bool hadAiReplace = node.ReplacedByAiNode;
+        if (hadAiReplace) ClearAiReplace(node);
 
         if (!string.IsNullOrEmpty(vanillaPath))
             node.AnimPath = vanillaPath;
@@ -7130,7 +9061,9 @@ public partial class MainWindow : Window
             var origTarget = _comboGraph.Nodes.FirstOrDefault(n => n.Id == origTargetId);
             if (origTarget != null && node.ResolvedRedirectNodeId != origTarget.Id)
             {
+                int oldTargetId = node.ResolvedRedirectNodeId;
                 node.ResolvedRedirectNodeId = origTarget.Id;
+                MoveOwnedRedirectRows(node, oldTargetId, origTarget.Id);
 
                 var oldEdge = _comboGraph.Edges.FirstOrDefault(e => e.FromNodeId == node.Id && e.IsRedirect);
                 if (oldEdge != null) _comboGraph.Edges.Remove(oldEdge);
@@ -7150,7 +9083,10 @@ public partial class MainWindow : Window
         }
 
         RenderComboGraph();
-        txtStatus.Text = $"Reset {node.DisplayName} to vanilla";
+        txtStatus.Text = $"Reset {node.DisplayName} to vanilla"
+            + (hadAiReplace ? " (AI replace reverted)" : "")
+            + (chanceModified ? " (branch chances restored)" : "")
+            + (condModified ? " (condition edits restored)" : "");
     }
 
     private void ResetNodeToVanilla_Click(object sender, RoutedEventArgs e)
@@ -7173,51 +9109,126 @@ public partial class MainWindow : Window
 
     private async System.Threading.Tasks.Task ResetProjectToVanillaAsync(string statusMessage)
     {
-        _comboGraph = null;
-        _unitCaches.Clear();
-        _propsByVariant.Clear();
-        _currentUnitProps = null;
-        UnitPropertiesManager.ClearPendingFocus(_contentPath);
-        _activeVariant = null;
-        _activeWeapon = null;
-        _isModLoaded = false;
-        _vanillaGraph = null;
-        _moddedGraph = null;
-        _nodeDiffs = new();
-        ClearNodeSelection();
-        ClearUndoHistory();
-        UpdateUnitPropertiesButtonVisibility();
-
-        try { _parser.SetOverlayProvider(null); } catch { }
-
-        // CustomAssets is the persistent library - reset clears project state only,
-        // so custom cards stay registered and their files stay on disk.
+        // Always multi-second (parser re-init + MainChar reparse), so show the overlay
+        // immediately - covers Import "start fresh" (before its step dialog opens) and
+        // New Project. Blocks input while the reset runs.
+        UpdateLoading("Resetting to vanilla...", statusMessage);
+        loadingOverlay.Visibility = Visibility.Visible;
         try
         {
-            var contentDir = Setup.ContentDetector.ResolveContentDir(_contentPath);
-            var fresh = new AnimationParser();
-            fresh.Initialize(_contentPath, contentDir);
-            fresh.MountCustomIntoProvider(CustomAssets.Root);
-            _parser = fresh;
-        }
-        catch (Exception ex)
-        {
-            ErrorLog.Write("IMPORT", ex);
-        }
+            _comboGraph = null;
+            _unitCaches.Clear();
+            _propsByVariant.Clear();
+            _currentUnitProps = null;
+            UnitPropertiesManager.ClearPendingFocus(_contentPath);
+            UnitPropertiesManager.ClearPendingModel(_contentPath);
+            _activeVariant = null;
+            _activeWeapon = null;
+            _customMoveset = null;
+            _isModLoaded = false;
+            _vanillaGraph = null;
+            _moddedGraph = null;
+            _nodeDiffs = new();
+            ClearNodeSelection();
+            ClearUndoHistory();
+            UpdateUnitPropertiesButtonVisibility();
 
-        await SwitchStanceAsync("MainChar");
-        FilterMoves();
-        txtStatus.Text = statusMessage;
+            try { _parser.SetOverlayProvider(null); } catch { }
+
+            // CustomAssets is the persistent library - reset clears project state only,
+            // so custom cards stay registered and their files stay on disk.
+            try
+            {
+                var contentDir = Setup.ContentDetector.ResolveContentDir(_contentPath);
+                var fresh = new AnimationParser();
+                fresh.Initialize(_contentPath, contentDir);
+                fresh.MountCustomIntoProvider(CustomAssets.Root);
+                _parser = fresh;
+            }
+            catch (Exception ex)
+            {
+                ErrorLog.Write("IMPORT", ex);
+            }
+
+            await SwitchStanceAsync("MainChar");
+            FilterMoves();
+            txtStatus.Text = statusMessage;
+        }
+        finally
+        {
+            loadingOverlay.Visibility = Visibility.Collapsed;
+        }
     }
 
     private async void NewProject_Click(object sender, RoutedEventArgs e)
     {
-        var result = MessageBox.Show(
+        var dlg = new ConfirmDialog(
+            "New Project",
             "Discard all changes and imported mods and reset the project to vanilla?",
-            "New Project", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-        if (result != MessageBoxResult.OK) return;
+            "Reset to Vanilla",
+            "Cancel",
+            "Discards: unit graph edits, custom nodes and links, imported mods.\n" +
+            "Keeps: Custom Section files on disk (the library stays).")
+        { Owner = this };
+        if (dlg.ShowDialog() != true) return;
 
         await ResetProjectToVanillaAsync("New project — reset to vanilla");
+    }
+
+    private async void NewMoveset_Click(object sender, RoutedEventArgs e)
+    {
+        CommitAttackDbPanel();
+        var dlg = new NewMovesetDialog(_contentPath) { Owner = this };
+        if (dlg.ShowDialog() != true || dlg.Result == null) return;
+        var info = dlg.Result;
+
+        if (_customMoveset != null || ProjectHasExistingChanges())
+        {
+            var confirm = new ConfirmDialog(
+                "New Moveset",
+                "Creating a custom moveset discards all current edits. Continue?",
+                "Discard & Create",
+                "Cancel",
+                "Discards: unit graph edits, custom nodes and links, imported mods.\n" +
+                "Keeps: Custom Section files on disk (the library stays).")
+            { Owner = this };
+            if (confirm.ShowDialog() != true) return;
+            await ResetProjectToVanillaAsync("New custom moveset — reset to vanilla");
+        }
+
+        _customMoveset = info;
+        EnterCustomMovesetContext(info);
+    }
+
+    private void EnterCustomMovesetContext(CustomMovesetInfo info)
+    {
+        ClearNodeSelection();
+        ClearUndoHistory();
+
+        _activeStance = info.DonorArch;
+        _activeVariant = info.DonorVariantTag;
+        _activeWeapon = string.IsNullOrEmpty(info.DonorWeaponTag)
+            ? null
+            : NormalizeWeaponForCache(info.DonorArch, info.DonorWeaponTag!);
+        _currentUnitProps = null;
+        _vanillaGraph = null;
+        _moddedGraph = null;
+        _nodeDiffs = new();
+        _originalVanillaComboGraph = null;
+        UpdateVariantButtonVisibility();
+        UpdateWeaponButtonVisibility();
+        UpdateUnitPropertiesButtonVisibility();
+
+        _comboGraph = new ComboGraph { WeaponName = info.DonorArch };
+        _nodePositions.Clear();
+        _comboTranslate.X = 0;
+        _comboTranslate.Y = 0;
+        LayoutComboGraph();
+        RenderComboGraph();
+        btnExport.IsEnabled = true;
+        txtComboInfo.Text = $"Custom {info.DisplayName} - {info.DonorArch} (0 nodes, 0 start entries)";
+        txtStatus.Text = $"Custom moveset '{info.DisplayName}' created - drop attack cards onto the canvas to build your combo";
+        FilterMoves();
     }
 
     private void ResetComboCamera_Click(object sender, RoutedEventArgs e)
@@ -7227,6 +9238,19 @@ public partial class MainWindow : Window
         txtStatus.Text = "Combo graph camera reset";
     }
 
+    private void AutoArrange_Click(object sender, RoutedEventArgs e)
+    {
+        if (_comboGraph == null || _opInProgress) return;
+        PushUndo("Auto-arrange");
+        // Clear first: LayoutComboGraph restores any positions that remain, so an
+        // empty table is what makes it lay the whole graph out from scratch
+        // (PushUndo above captured the old arrangement).
+        _nodePositions.Clear();
+        LayoutComboGraph();
+        RenderComboGraph();
+        txtStatus.Text = $"Auto-arranged {_comboGraph.Nodes.Count(n => !IsBeginnerHiddenAi(n))} node(s){AiHiddenSuffix()}";
+    }
+
     private void ResetAllToVanilla_Click(object sender, RoutedEventArgs e)
     {
         if (_comboGraph == null) return;
@@ -7234,22 +9258,35 @@ public partial class MainWindow : Window
         int pending = ApplyResetAllToVanilla(false);
         if (pending == 0)
         {
-            txtStatus.Text = "All nodes already at vanilla";
+            // Graph untouched, but nodes may have been dragged - restore the default
+            // layout too (undoable, so it can be reverted like any other change).
+            PushUndo("Reset all to vanilla");
+            _nodePositions.Clear();
+            LayoutComboGraph();
+            RenderComboGraph();
+            txtStatus.Text = "Already vanilla - node positions reset to default";
             return;
         }
 
-        var confirm = MessageBox.Show(
+        var confirm = new ConfirmDialog(
+            "Reset All to Vanilla",
             $"Reset {pending} change(s) back to vanilla? This discards your combo edits for the current tree.",
-            "Reset All to Vanilla", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-        if (confirm != MessageBoxResult.OK) return;
+            "Reset to Vanilla",
+            "Cancel")
+        { Owner = this };
+        if (confirm.ShowDialog() != true) return;
 
         PushUndo("Reset all to vanilla");
         int resetCount = ApplyResetAllToVanilla(true);
 
+        // LayoutComboGraph restores saved positions if any remain, so clear first to
+        // snap every node back to its default spot (PushUndo above captured the old ones).
+        _nodePositions.Clear();
+        LayoutComboGraph();
         RenderComboGraph();
         txtStatus.Text = resetCount > 0
-            ? $"Reset {resetCount} nodes to vanilla"
-            : "All nodes already at vanilla";
+            ? $"Reset {resetCount} change(s) to vanilla, node positions restored to default"
+            : "Already vanilla - node positions reset to default";
     }
 
     private int ApplyResetAllToVanilla(bool apply)
@@ -7257,6 +9294,89 @@ public partial class MainWindow : Window
         if (_comboGraph == null) return 0;
 
         int resetCount = 0;
+
+        // Start Entries first: an edited entry may point at a custom node removed below.
+        if (_comboGraph.StartEntries != null)
+        {
+            foreach (var entry in _comboGraph.StartEntries)
+            {
+                int modifiedRows = entry.Transitions.Count(t => t.IsModified());
+                if (modifiedRows == 0) continue;
+                resetCount += modifiedRows;
+                if (apply)
+                {
+                    entry.Transitions.RemoveAll(t => t.OriginalIndex < 0);
+                    foreach (var t in entry.Transitions)
+                    {
+                        t.Probability = t.OriginalProbability;
+                        t.TargetNodeId = t.OriginalTargetNodeId;
+                        t.TargetTreeIndex = t.OriginalTargetTreeIndex;
+                        t.TargetName = t.OriginalTargetName;
+                        t.Removed = false;
+                    }
+                }
+            }
+        }
+
+        // Branch-chance edits (m_fProbability): row edits reset like delay windows,
+        // unlike retargets. New-link edge probabilities die with the links below.
+        var chanceOverrides = _comboGraph?.TreeRowProbabilityOverrides;
+        if (chanceOverrides != null && chanceOverrides.Count > 0)
+        {
+            resetCount += chanceOverrides.Sum(kvp => kvp.Value.Count);
+            if (apply) chanceOverrides.Clear();
+        }
+
+        // Condition edits: param overrides (by condition export) + row clear/re-route
+        // edits reset alongside chances.
+        var condParamOverrides = _comboGraph?.TreeConditionParamOverrides;
+        if (condParamOverrides != null && condParamOverrides.Count > 0)
+        {
+            resetCount += condParamOverrides.Sum(kvp => kvp.Value.Count);
+            if (apply) condParamOverrides.Clear();
+        }
+        var condRowOverrides = _comboGraph?.TreeRowConditionOverrides;
+        if (condRowOverrides != null && condRowOverrides.Count > 0)
+        {
+            resetCount += condRowOverrides.Sum(kvp => kvp.Value.Count);
+            if (apply) condRowOverrides.Clear();
+        }
+        var edgeCondOverrides = _comboGraph?.TreeEdgeConditionOverrides;
+        if (edgeCondOverrides != null && edgeCondOverrides.Count > 0)
+        {
+            resetCount += edgeCondOverrides.Count;
+            if (apply) edgeCondOverrides.Clear();
+        }
+
+        // Custom nodes (incl. authored redirects) and new links between surviving nodes.
+        if (_comboGraph == null) return resetCount;   // flow-state re-assert (never actually null here)
+        var customNodes = _comboGraph.Nodes
+            .Where(n => !n.IsRoot && n.Kind == ComboNodeKind.UserCreated)
+            .ToList();
+        var customIds = new HashSet<int>(customNodes.Select(n => n.Id));
+        var newLinks = _comboGraph.Edges
+            .Where(ed => ed.IsNewLink && !customIds.Contains(ed.FromNodeId) && !customIds.Contains(ed.ToNodeId))
+            .ToList();
+        resetCount += customNodes.Count + newLinks.Count;
+        if (apply && (customNodes.Count > 0 || newLinks.Count > 0))
+        {
+            foreach (var ed in newLinks) _comboGraph.Edges.Remove(ed);
+            foreach (var cn in customNodes)
+            {
+                _comboGraph.Edges.RemoveAll(ed => ed.FromNodeId == cn.Id || ed.ToNodeId == cn.Id);
+                _comboGraph.Nodes.Remove(cn);
+                _nodePositions.Remove(cn.Id);
+                _nodeBorders.Remove(cn.Id);
+                _comboGraph.RedirectOriginalTargets.Remove(cn.Id);
+            }
+            foreach (var n in _comboGraph.Nodes)
+            {
+                if (n.IsRedirect && n.ResolvedRedirectNodeId >= 0 && customIds.Contains(n.ResolvedRedirectNodeId))
+                    n.ResolvedRedirectNodeId = -1;
+            }
+            ClearNodeSelection();
+        }
+
         foreach (var node in _comboGraph.Nodes)
         {
             if (node.IsRoot) continue;
@@ -7307,6 +9427,12 @@ public partial class MainWindow : Window
                 resetCount++;
             }
 
+            if (node.ReplacedByAiNode)
+            {
+                if (apply) ClearAiReplace(node);
+                resetCount++;
+            }
+
             if (node.IsRedirect && _comboGraph.RedirectOriginalTargets.TryGetValue(node.Id, out var origTargetId)
                 && origTargetId >= 0)
             {
@@ -7315,7 +9441,9 @@ public partial class MainWindow : Window
                 {
                     if (apply)
                     {
+                        int oldTargetId = node.ResolvedRedirectNodeId;
                         node.ResolvedRedirectNodeId = origTarget.Id;
+                        MoveOwnedRedirectRows(node, oldTargetId, origTarget.Id);
                         var oldEdge = _comboGraph.Edges.FirstOrDefault(e2 => e2.FromNodeId == node.Id && e2.IsRedirect);
                         if (oldEdge != null) _comboGraph.Edges.Remove(oldEdge);
                         if (_comboGraph.Edges.All(e2 => !(e2.FromNodeId == node.Id && e2.ToNodeId == origTarget.Id)))
@@ -7336,17 +9464,56 @@ public partial class MainWindow : Window
         return resetCount;
     }
 
-    private static bool IsValidMoveDropTarget(ComboNode? node) => node != null && !node.IsRedirect;
+    private static bool IsValidMoveDropTarget(ComboNode? node)
+        => node != null && !node.IsRedirect && !node.IsActionNode && !node.IsEventNode && !node.Removed;
+
+    // Payload replacement targets: a vanilla node whose struct export can patch in place.
+    // MainChar cannot host AI actions (the player pawn lacks the Order system), and
+    // mod-imported / user-created nodes are not vanilla structs.
+    private bool CanReplacePayload(ComboNode? node)
+        => node != null && !node.IsRoot && !node.IsRedirect && !node.Removed
+            && node.TreeIndex >= 0
+            && node.Kind == ComboNodeKind.Vanilla
+            && !node.IsImportedFromMod
+            && !IsCurrentGraphMainChar();
+
+    private bool IsValidNodeDrop(DragEventArgs e, ComboNode? node)
+    {
+        if (e.Data.GetDataPresent(typeof(AiNodeInfo)))
+            return CanReplacePayload(node);
+        if (node == null || !e.Data.GetDataPresent(typeof(MoveInfo)))
+            return false;
+        if (IsValidMoveDropTarget(node))
+            return true;
+        // Attack card onto an action/event node replaces the payload instead of the anim.
+        return (node.IsActionNode || node.IsEventNode)
+            && CanReplacePayload(node)
+            && e.Data.GetData(typeof(MoveInfo)) is MoveInfo m
+            && !string.IsNullOrEmpty(m.FullPath)
+            && IsAttackDbPath(m.FullPath);
+    }
+
+    private static void ClearAiReplace(ComboNode node)
+    {
+        node.ReplacedByAiNode = false;
+        node.ReplacedAiKind = "";
+        node.ReplacedAiClass = "";
+        node.ReplacedImportComboRel = "";
+        node.ReplacedSourceTreeIndex = -1;
+        node.ReplacedAttackCardRel = "";
+    }
 
     private void ComboNode_DragEnter(object sender, DragEventArgs e)
     {
         if (sender is Border border)
         {
             var node = border.Tag as ComboNode;
-            if (IsValidMoveDropTarget(node))
+            bool canDrop = IsValidNodeDrop(e, node);
+            if (canDrop)
             {
                 border.BorderBrush = new SolidColorBrush(Color.FromRgb(0xa6, 0xe3, 0xa1));
                 border.Background = new SolidColorBrush(Color.FromArgb(0x60, 0xa6, 0xe3, 0xa1));
+                border.Opacity = 1;
                 e.Effects = DragDropEffects.Copy;
             }
             else
@@ -7359,19 +9526,18 @@ public partial class MainWindow : Window
 
     private void ComboNode_DragOver(object sender, DragEventArgs e)
     {
-        var node = (sender as Border)?.Tag as ComboNode;
-        e.Effects = e.Data.GetDataPresent(typeof(MoveInfo)) && IsValidMoveDropTarget(node)
-            ? DragDropEffects.Copy
-            : DragDropEffects.None;
-        e.Handled = true;
+            var node = (sender as Border)?.Tag as ComboNode;
+            e.Effects = IsValidNodeDrop(e, node)
+                ? DragDropEffects.Copy
+                : DragDropEffects.None;
+            e.Handled = true;
     }
 
     private void ComboNode_DragLeave(object sender, DragEventArgs e)
     {
         if (sender is Border border && border.Tag is ComboNode node)
         {
-            border.BorderBrush = GetNodeColor(node);
-            border.Background = GetNodeBackground(node);
+            RestoreNodeVisual(border, node);
             e.Handled = true;
         }
     }
@@ -7380,10 +9546,48 @@ public partial class MainWindow : Window
     {
         if (sender is Border border && border.Tag is ComboNode node)
         {
-            border.BorderBrush = GetNodeColor(node);
-            border.Background = GetNodeBackground(node);
+            RestoreNodeVisual(border, node);
 
-            if (!IsValidMoveDropTarget(node))
+            if (e.Data.GetDataPresent(typeof(AiNodeInfo)))
+            {
+                // Drop on a node to replace that node's payload at export; drop on the
+                // canvas background instead to append a new node. MainChar cannot host
+                // them - the player pawn cannot run the Order system those actions rely
+                // on for range/dash behavior.
+                if (IsCurrentGraphMainChar())
+                {
+                    e.Effects = DragDropEffects.None;
+                    e.Handled = true;
+                    txtStatus.Text = "AI actions are enemy-only - drop them on an enemy tree's canvas background "
+                      + "to append a new node";
+                    return;
+                }
+                if (e.Data.GetData(typeof(AiNodeInfo)) is not AiNodeInfo ai || !CanReplacePayload(node))
+                {
+                    e.Effects = DragDropEffects.None;
+                    e.Handled = true;
+                    return;
+                }
+
+                CommitAttackDbPanel();
+                PushUndo("Replace payload");
+                node.IsImportedFromMod = false;
+                ClearAiReplace(node);
+                node.ReplacedByAiNode = true;
+                node.ReplacedAiKind = ai.Kind;
+                node.ReplacedAiClass = ai.ClassName;
+                node.ReplacedImportComboRel = ai.SourceComboRel;
+                node.ReplacedSourceTreeIndex = ai.SourceTreeIndex;
+                RenderComboGraph();
+                txtStatus.Text = $"Payload replaced: {node.DisplayName} -> {ai.Kind} {ai.ClassName}";
+                if (_nodeBorders.TryGetValue(node.Id, out var aiBorder))
+                    PlayFusionAnimation(aiBorder);
+                e.Effects = DragDropEffects.Copy;
+                e.Handled = true;
+                return;
+            }
+
+            if (!IsValidMoveDropTarget(node) && !IsValidNodeDrop(e, node))
             {
                 e.Effects = DragDropEffects.None;
                 e.Handled = true;
@@ -7395,17 +9599,41 @@ public partial class MainWindow : Window
                 var move = e.Data.GetData(typeof(MoveInfo)) as MoveInfo;
                 if (move != null)
                 {
+                    string moveName = move.DisplayName;
+                    if (!string.IsNullOrEmpty(move.FullPath) && IsAttackDbPath(move.FullPath))
+                    {
+                        var pretty = AnimationParser.PrettifyNodeName(move.FullPath);
+                        if (!string.IsNullOrEmpty(pretty)) moveName = pretty;
+                    }
+
+                    // Action/event nodes cannot take an anim swap - an attack card replaces
+                    // their payload instead (slots <- card, class/event prop cleared).
+                    bool attackPayload = (node.IsActionNode || node.IsEventNode)
+                        && CanReplacePayload(node)
+                        && !string.IsNullOrEmpty(move.FullPath)
+                        && IsAttackDbPath(move.FullPath);
+
                     // Flush any pending AttackDB edit into the pre-drop undo entry first.
                     CommitAttackDbPanel();
-                    PushUndo("Replace move");
+                    PushUndo(attackPayload ? "Replace payload" : "Replace move");
                     node.IsImportedFromMod = false;
                     if (node.Name == "MainChar_Stance" && !string.IsNullOrEmpty(move.Character)
                         && _stanceMap.ContainsKey(move.Character))
                     {
                         node.AnimPath = move.FullPath;
-                        ApplyLocalChangeName(node, move.DisplayName);
+                        ApplyLocalChangeName(node, moveName);
                         RenderComboGraph();
                         txtStatus.Text = $"Combat Stance -> {move.Character} ({move.DisplayName})";
+                    }
+                    else if (attackPayload)
+                    {
+                        ClearAiReplace(node);
+                        node.ReplacedByAiNode = true;
+                        node.ReplacedAiKind = "Attack";
+                        node.ReplacedAiClass = moveName;
+                        node.ReplacedAttackCardRel = move.FullPath;
+                        RenderComboGraph();
+                        txtStatus.Text = $"Payload replaced: {node.Name} -> attack {moveName}";
                     }
                     else if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
                     {
@@ -7415,20 +9643,22 @@ public partial class MainWindow : Window
                         foreach (var ln in linkedNodes)
                         {
                             ln.IsImportedFromMod = false;
+                            if (ln.ReplacedByAiNode) ClearAiReplace(ln); // move drop wins over AI replace
                             ln.AnimPath = move.FullPath;
-                            ApplyLocalChangeName(ln, move.DisplayName);
+                            ApplyLocalChangeName(ln, moveName);
                             ApplyMoveSourceDbPath(ln, move);
                         }
                         RenderComboGraph();
-                        txtStatus.Text = $"Replaced {linkedNodes.Count} linked nodes -> {move.DisplayName}";
+                        txtStatus.Text = $"Replaced {linkedNodes.Count} linked nodes -> {moveName}";
                     }
                     else
                     {
+                        if (node.ReplacedByAiNode) ClearAiReplace(node); // move drop wins over AI replace
                         node.AnimPath = move.FullPath;
-                        ApplyLocalChangeName(node, move.DisplayName);
+                        ApplyLocalChangeName(node, moveName);
                         ApplyMoveSourceDbPath(node, move);
                         RenderComboGraph();
-                        txtStatus.Text = $"Replaced: {node.Name} -> {move.DisplayName}";
+                        txtStatus.Text = $"Replaced: {node.Name} -> {moveName}";
                     }
 
                     if (_nodeBorders.TryGetValue(node.Id, out var newNodeBorder))
@@ -7448,7 +9678,8 @@ public partial class MainWindow : Window
     {
         // Background drops create a new attack node. Over a node border the node's own
         // handlers run first (they set e.Handled), so this only sees the canvas background.
-        e.Effects = e.Data.GetDataPresent(typeof(MoveInfo)) && _comboGraph != null
+        e.Effects = (e.Data.GetDataPresent(typeof(MoveInfo)) || e.Data.GetDataPresent(typeof(AiNodeInfo)))
+            && _comboGraph != null
             ? DragDropEffects.Copy
             : DragDropEffects.None;
         e.Handled = true;
@@ -7458,13 +9689,60 @@ public partial class MainWindow : Window
     {
         e.Handled = true;
         if (_comboGraph == null) return;
-        if (!e.Data.GetDataPresent(typeof(MoveInfo))) return;
-        if (e.Data.GetData(typeof(MoveInfo)) is not MoveInfo move) return;
 
         var canvasPos = e.GetPosition(comboCanvas);
         if (HitTestNode(canvasPos) != null) return; // owned by ComboNode_Drop
 
+        if (e.Data.GetDataPresent(typeof(AiNodeInfo)))
+        {
+            if (IsCurrentGraphMainChar())
+            {
+                txtStatus.Text = "AI actions are enemy-only - switch to an enemy moveset "
+                    + "to append action/event nodes";
+                return;
+            }
+            if (e.Data.GetData(typeof(AiNodeInfo)) is AiNodeInfo aiNode)
+                AddAiNode(aiNode, canvasPos);
+            return;
+        }
+        if (!e.Data.GetDataPresent(typeof(MoveInfo))) return;
+        if (e.Data.GetData(typeof(MoveInfo)) is not MoveInfo move) return;
+
         AddNewAttackNode(move, canvasPos);
+    }
+
+    private void AddAiNode(AiNodeInfo ai, Point canvasPos)
+    {
+        if (_comboGraph == null) return;
+
+        CommitAttackDbPanel();
+        PushUndo($"Add {ai.Kind.ToLowerInvariant()} node");
+
+        int id = (_comboGraph.Nodes.Count > 0 ? _comboGraph.Nodes.Max(n => n.Id) : -1) + 1;
+        var node = new ComboNode
+        {
+            Id = id,
+            TreeIndex = -1,
+            Kind = ComboNodeKind.UserCreated,
+            Name = "",
+            DisplayName = ai.DisplayName,
+            IsActionNode = string.Equals(ai.Kind, "Action", StringComparison.Ordinal),
+            ActionClass = string.Equals(ai.Kind, "Action", StringComparison.Ordinal) ? ai.ClassName : "",
+            IsEventNode = string.Equals(ai.Kind, "Event", StringComparison.Ordinal),
+            EventName = string.Equals(ai.Kind, "Event", StringComparison.Ordinal) ? ai.ClassName : "",
+            ImportComboRel = ai.SourceComboRel,
+            ImportSourceTreeIndex = ai.SourceTreeIndex,
+            IsRoot = false,
+            DirectionLabel = ""
+        };
+
+        _comboGraph.Nodes.Add(node);
+        _nodePositions[id] = canvasPos;
+        RenderComboGraph();
+
+        if (_nodeBorders.TryGetValue(id, out var border))
+            SelectNode(border, node);
+        txtStatus.Text = $"Added {ai.Kind.ToLowerInvariant()} node '{ai.DisplayName}' - right-click it, Connect to… to link it";
     }
 
     private void AddNewAttackNode(MoveInfo move, Point canvasPos)
@@ -7487,6 +9765,11 @@ public partial class MainWindow : Window
         string display = string.IsNullOrEmpty(move.DisplayName)
             ? Path.GetFileNameWithoutExtension(fullPath)
             : move.DisplayName;
+        if (IsAttackDbPath(fullPath))
+        {
+            var pretty = AnimationParser.PrettifyNodeName(fullPath);
+            if (!string.IsNullOrEmpty(pretty)) display = pretty;
+        }
 
         var node = new ComboNode
         {
@@ -7674,9 +9957,34 @@ public partial class MainWindow : Window
                 ToNodeId = e.ToNodeId,
                 InputName = e.InputName,
                 IsRedirect = e.IsRedirect,
-                IsNewLink = e.IsNewLink
+                IsNewLink = e.IsNewLink,
+                OwnerRedirectNodeId = e.OwnerRedirectNodeId,
+                NewLinkProbability = e.NewLinkProbability,
+                FromClearMixup = e.FromClearMixup,
+                MergedIntoStruct = e.MergedIntoStruct,
+                MergedIntoRow = e.MergedIntoRow,
+                MergedIntoKey = e.MergedIntoKey
             }).ToList(),
-            RedirectOriginalTargets = new Dictionary<int, int>(graph.RedirectOriginalTargets)
+            RedirectOriginalTargets = new Dictionary<int, int>(graph.RedirectOriginalTargets),
+            StartEntries = graph.StartEntries.Select(e => e.Clone()).ToList(),
+            // TreeRows is a read-only parse snapshot (shared reference is safe);
+            // overrides are mutable - deep-copy so undo clones stay isolated.
+            TreeRows = graph.TreeRows,
+            SourceGamePath = graph.SourceGamePath,
+            TreeRowsBackfillAttempted = graph.TreeRowsBackfillAttempted,
+            TreeNodeConditions = graph.TreeNodeConditions,
+            TreeRowProbabilityOverrides = graph.TreeRowProbabilityOverrides
+                .ToDictionary(kv => kv.Key, kv => new Dictionary<int, float>(kv.Value)),
+            TreeConditionParamOverrides = graph.TreeConditionParamOverrides
+                .ToDictionary(kv => kv.Key, kv => new Dictionary<string, string>(kv.Value)),
+            TreeRowConditionOverrides = graph.TreeRowConditionOverrides
+                .ToDictionary(kv => kv.Key, kv => kv.Value.ToDictionary(
+                    r => r.Key,
+                    r => r.Value.Clone())),
+            TreeEdgeConditionOverrides = graph.TreeEdgeConditionOverrides
+                .ToDictionary(kv => kv.Key, kv => kv.Value.Clone()),
+            ConduitTargets = graph.ConduitTargets
+                .ToDictionary(kv => kv.Key, kv => new List<int>(kv.Value))
         };
     }
 
@@ -7706,7 +10014,21 @@ public partial class MainWindow : Window
             DelayWindowLo = n.DelayWindowLo,
             DelayWindowHi = n.DelayWindowHi,
             Kind = n.Kind,
-            IsImportedFromMod = n.IsImportedFromMod
+            IsImportedFromMod = n.IsImportedFromMod,
+            OwnedContinuation = n.OwnedContinuation,
+            IsActionNode = n.IsActionNode,
+            ActionClass = n.ActionClass,
+            IsEventNode = n.IsEventNode,
+            EventName = n.EventName,
+            ImportComboRel = n.ImportComboRel,
+            ImportSourceTreeIndex = n.ImportSourceTreeIndex,
+            Removed = n.Removed,
+            ReplacedByAiNode = n.ReplacedByAiNode,
+            ReplacedAiKind = n.ReplacedAiKind,
+            ReplacedAiClass = n.ReplacedAiClass,
+            ReplacedImportComboRel = n.ReplacedImportComboRel,
+            ReplacedSourceTreeIndex = n.ReplacedSourceTreeIndex,
+            ReplacedAttackCardRel = n.ReplacedAttackCardRel
         };
     }
 
@@ -7720,7 +10042,11 @@ public partial class MainWindow : Window
             MemoryLimit = props.MemoryLimit,
             HitsCount = props.HitsCount,
             MemoryFlushLimit = props.MemoryFlushLimit,
-            ImmuneToFocus = props.ImmuneToFocus
+            ImmuneToFocus = props.ImmuneToFocus,
+            ModelOverride = props.ModelOverride,
+            ModelSet = props.ModelSet,
+            PhaseSwap = props.PhaseSwap,
+            PhaseSwapTarget = props.PhaseSwapTarget
         };
     }
 
@@ -7733,7 +10059,11 @@ public partial class MainWindow : Window
             && a.MemoryLimit == b.MemoryLimit
             && a.HitsCount == b.HitsCount
             && a.MemoryFlushLimit == b.MemoryFlushLimit
-            && a.ImmuneToFocus == b.ImmuneToFocus;
+            && a.ImmuneToFocus == b.ImmuneToFocus
+            && string.Equals(a.ModelOverride, b.ModelOverride, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(a.ModelSet, b.ModelSet, StringComparison.OrdinalIgnoreCase)
+            && a.PhaseSwap == b.PhaseSwap
+            && string.Equals(a.PhaseSwapTarget, b.PhaseSwapTarget, StringComparison.OrdinalIgnoreCase);
     }
 
     #endregion
@@ -7777,6 +10107,8 @@ public partial class MainWindow : Window
         ["HitsCount"] = ("Hits Count", "How many hits the enemy must receive within the Memory Limit window before it defends (parry, dodge, or avoid). At 1, the enemy defends on the very first hit. At 3, it \"absorbs\" 3 hits before reacting.", null),
         ["FlushLimit"] = ("Flush Limit", "Cooldown (seconds) after the enemy defends before it can defend again. Lower = more frequent defense cycles. At 0s, the enemy can defend again instantly. Combine with Hit Count = 0 for constant defense.", null),
         ["ImmuneToFocus"] = ("Immune to Focus Attacks", "Derived from the unit's VitalPointDB: checked when that database contains no Vital Point entries, meaning the unit has no Focus target (this is how Yang behaves by default). When checked, the export repoints the family's shared ArchetypeDB at Yang's empty one. This is a single flag per family - checking it on any member checks it for every member, and un-checking cannot undo a write that was never made for you.", null),
+        ["Model"] = ("Model Override", "Two ways to change this unit's looks, both picked from the Choose dialog:\n\n- Roster swap (family): replaces every spawn of this unit's family with another family's whole roster of looks (e.g. all Grunts get FireDisciple's looks). Per-spawn variety is kept: each Character BP is matched to the source's same-hideout, same-gender meshes first, rotating round-robin. Covers the whole family by design; '(default)' clears it.\n\n- Specific model (variant): replaces just this variant's spawned mesh in its own scenario files (levels, training room, void, tutorial): matching m_OverrideSkeletalMesh entries point at the chosen mesh on export. Scoped to the current unit variant - other variants keep their in-game models. '(default)' clears the pick.\n\nThe two modes exclude each other: picking one clears the other for this family. 'Import custom model...' accepts an already-converted SK_ uasset bundle on Sifu's Base_skeleton - it is validated, stored in CustomAssets and listed under the Custom group.\n\nCaveats: hats and held props are attachments of the old skeleton and may float or disappear; female spawns of a specific-model variant are replaced too; bosses' phase models are shared, so a pick there still changes the whole boss fight.", null),
+        ["PhaseSwap"] = ("Phase Swap", "Makes this enemy phase-swap into the chosen moveset when taken down (Last Man transition, the mechanic Grunts already use against the player).\n\nOn export, a Last Man takedown transition is appended to this variant's scenario files, pointing the new phase at the picked moveset DB. Taking the unit down with a synchronized takedown swaps it into that moveset with health, structure and super-dizzy reset. The Last Man gauge is not required.\n\nThe moveset pick is token-matched: a per-level DB (e.g. FireDisciple / MiniBoss_H5) only patches scenarios with the same level token, so H5 only pairs with H5. Arena-only DBs patch arena scenarios; tokenless DBs patch every tier scenario. Scenarios that already phase (vanilla Grunt roster, bosses) are left untouched.\n\nA target DB must already be referenced by the scenario as its second phase (that's how per-level pairings work in vanilla) - if it isn't, the export log reports the file as failed. Hideout/arena FDs, Grunts, Bodyguards, BigGuys and FlashKicks are the intended subjects.", null),
     };
 
     /// <summary>
@@ -7842,6 +10174,21 @@ public partial class MainWindow : Window
 
         unitPropsTitle.Text = $"Unit Properties \u2014 {variantTag}";
 
+        // MainChar has no ArchetypeDB / ContextDefense / VitalPoint files - only the model row applies.
+        bool isMainChar = IsMainCharStance();
+        var sectionVisibility = isMainChar ? Visibility.Collapsed : Visibility.Visible;
+        unitPropsArchSection.Visibility = sectionVisibility;
+        unitPropsDefenseSection.Visibility = sectionVisibility;
+        unitPropsFocusSection.Visibility = sectionVisibility;
+
+        // Phase swap needs a scenario family with per-tier files; boss families share one
+        // multi-phase scenario file, so the section stays hidden there too.
+        var phaseFamily = ModelCatalog.FamilyDirForVariant(variantTag);
+        bool phaseAllowed = !isMainChar && phaseFamily != null
+            && !ModelCatalog.IsFamilyWideScenarioFamily(phaseFamily);
+        unitPropsPhaseSection.Visibility = phaseAllowed ? Visibility.Visible : Visibility.Collapsed;
+        if (phaseAllowed) PopulatePhaseSwapTargets();
+
         SetField(txtUnitHealth, _currentUnitProps.Health?.ToString("F1"), _currentUnitProps.Health.HasValue);
         SetField(txtUnitStructure, _currentUnitProps.Structure?.ToString("F1"), _currentUnitProps.Structure.HasValue);
         SetField(txtMemoryLimit, _currentUnitProps.MemoryLimit?.ToString("F1"), _currentUnitProps.MemoryLimit.HasValue);
@@ -7851,15 +10198,88 @@ public partial class MainWindow : Window
         // Family-wide: show the effective value, not this unit's own (possibly stale) copy.
         chkImmuneToFocus.IsChecked = UnitPropertiesManager.GetEffectiveFocus(_contentPath, variantTag);
         _currentUnitProps.ImmuneToFocus = chkImmuneToFocus.IsChecked;
+
+        _selectedModelOverride = UnitPropertiesManager.GetEffectiveModel(_contentPath, variantTag)
+            ?? _currentUnitProps.ModelOverride;
+        _selectedModelSet = UnitPropertiesManager.GetEffectiveModelSet(_contentPath, variantTag)
+            ?? _currentUnitProps.ModelSet;
+        UpdateModelOverrideLabel();
+
+        chkPhaseSwap.IsChecked = _currentUnitProps.PhaseSwap ?? false;
+        SelectPhaseTarget(_currentUnitProps.PhaseSwapTarget);
+        cmbPhaseSwapTarget.IsEnabled = chkPhaseSwap.IsChecked == true;
+    }
+
+    private List<ModelCatalog.PhaseSwapTargetOption>? _phaseTargetOptions;
+    private string? _phaseTargetsContentDir;
+
+    private void PopulatePhaseSwapTargets()
+    {
+        var contentDir = Setup.ContentDetector.ResolveContentDir(_contentPath);
+        if (_phaseTargetOptions == null
+            || !string.Equals(_phaseTargetsContentDir, contentDir, StringComparison.OrdinalIgnoreCase))
+        {
+            _phaseTargetOptions = ModelCatalog.PhaseSwapTargetOptions(_contentPath).ToList();
+            _phaseTargetsContentDir = contentDir;
+            cmbPhaseSwapTarget.ItemsSource = _phaseTargetOptions;
+            cmbPhaseSwapTarget.DisplayMemberPath = nameof(ModelCatalog.PhaseSwapTargetOption.Label);
+        }
+    }
+
+    private void SelectPhaseTarget(string? rel)
+    {
+        if (_phaseTargetOptions == null) return;
+        cmbPhaseSwapTarget.SelectedItem = null;
+        if (string.IsNullOrEmpty(rel)) return;
+        cmbPhaseSwapTarget.SelectedItem = _phaseTargetOptions
+            .FirstOrDefault(o => string.Equals(o.Rel, rel, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void ChkPhaseSwap_Changed(object sender, RoutedEventArgs e)
+    {
+        if (cmbPhaseSwapTarget != null)
+            cmbPhaseSwapTarget.IsEnabled = chkPhaseSwap.IsChecked == true;
+    }
+
+    private void UpdateModelOverrideLabel()
+    {
+        if (txtModelOverride == null) return;
+        bool hasSet = !string.IsNullOrEmpty(_selectedModelSet);
+        txtModelOverride.Text = hasSet
+            ? $"Roster: {_selectedModelSet} (family)"
+            : ModelCatalog.DisplayNameForGamePath(_selectedModelOverride);
+        txtModelOverride.Foreground = new SolidColorBrush(
+            hasSet || !string.IsNullOrEmpty(_selectedModelOverride)
+                ? Color.FromRgb(0xa6, 0xe3, 0xa1)
+                : Color.FromRgb(0x6c, 0x70, 0x86));
     }
 
     private void SaveUnitProperties()
     {
-        if (_activeStance == "MainChar") return;
-
         string variantTag = CurrentVariantTag();
 
         var props = new UnitProperties();
+
+        if (IsMainCharStance())
+        {
+            // MainChar's popup only exposes the model row: no ArchetypeDB, ContextDefense
+            // or VitalPoint files exist for the player, so every other field is out of scope.
+            props.ModelOverride = _selectedModelOverride;
+            props.ImmuneToFocus = _currentUnitProps?.ImmuneToFocus;
+
+            bool mainModelChanged = !string.Equals(props.ModelOverride,
+                UnitPropertiesManager.GetEffectiveModel(_contentPath, variantTag), StringComparison.OrdinalIgnoreCase);
+            if (mainModelChanged)
+                UnitPropertiesManager.SetPendingModel(_contentPath, variantTag, props.ModelOverride);
+
+            if (UnitPropsEqual(props, _currentUnitProps)) return;
+
+            PushUndo("Unit properties");
+            _currentUnitProps = props;
+            _propsByVariant[variantTag] = props;
+            txtStatus.Text = $"Unit properties saved for {variantTag}";
+            return;
+        }
 
         if (txtUnitHealth.IsEnabled && float.TryParse(txtUnitHealth.Text, out float h)) props.Health = h;
         if (txtUnitStructure.IsEnabled && float.TryParse(txtUnitStructure.Text, out float s)) props.Structure = s;
@@ -7867,11 +10287,28 @@ public partial class MainWindow : Window
         if (txtHitsCount.IsEnabled && int.TryParse(txtHitsCount.Text, out int hc)) props.HitsCount = hc;
         if (txtFlushLimit.IsEnabled && float.TryParse(txtFlushLimit.Text, out float fl)) props.MemoryFlushLimit = fl;
         props.ImmuneToFocus = chkImmuneToFocus.IsChecked ?? false;
+        props.ModelOverride = _selectedModelOverride;
+        props.ModelSet = _selectedModelSet;
+        if (unitPropsPhaseSection.Visibility == Visibility.Visible)
+        {
+            props.PhaseSwap = chkPhaseSwap.IsChecked == true;
+            props.PhaseSwapTarget = (cmbPhaseSwapTarget.SelectedItem as ModelCatalog.PhaseSwapTargetOption)?.Rel;
+        }
 
         bool effective = UnitPropertiesManager.GetEffectiveFocus(_contentPath, variantTag);
         bool focusChanged = props.ImmuneToFocus != effective;
         if (focusChanged)
             UnitPropertiesManager.SetPendingFocus(_contentPath, variantTag, props.ImmuneToFocus!.Value);
+
+        bool modelChanged = !string.Equals(props.ModelOverride,
+            UnitPropertiesManager.GetEffectiveModel(_contentPath, variantTag), StringComparison.OrdinalIgnoreCase);
+        if (modelChanged)
+            UnitPropertiesManager.SetPendingModel(_contentPath, variantTag, props.ModelOverride);
+
+        bool modelSetChanged = !string.Equals(props.ModelSet,
+            UnitPropertiesManager.GetEffectiveModelSet(_contentPath, variantTag), StringComparison.OrdinalIgnoreCase);
+        if (modelSetChanged)
+            UnitPropertiesManager.SetPendingModelSet(_contentPath, variantTag, props.ModelSet);
 
         if (UnitPropsEqual(props, _currentUnitProps)) return;
 
@@ -7880,7 +10317,75 @@ public partial class MainWindow : Window
         _propsByVariant[variantTag] = props;
         if (focusChanged)
             PropagateFocusToFamily(variantTag, props.ImmuneToFocus!.Value);
+        if (modelChanged && !string.IsNullOrEmpty(props.ModelOverride))
+            PropagateModelSetToFamily(variantTag, null);
+        if (modelSetChanged)
+        {
+            PropagateModelSetToFamily(variantTag, props.ModelSet);
+            if (!string.IsNullOrEmpty(props.ModelSet))
+                PropagateModelToFamily(variantTag, null);
+        }
         txtStatus.Text = $"Unit properties saved for {variantTag}";
+    }
+
+    /// <summary>
+    /// Roster swaps are family-wide, so a pick (or clear) is written to every variant of the
+    /// family and into the session pending store - mirrors PropagateModelToFamily.
+    /// </summary>
+    private void PropagateModelSetToFamily(string variantTag, string? sourceKey)
+    {
+        var family = ModelCatalog.FamilyDirForVariant(variantTag);
+        if (family == null) return;
+
+        foreach (var kvp in _propsByVariant)
+        {
+            if (!SameModelFamily(kvp.Key, family)) continue;
+            kvp.Value.ModelSet = sourceKey;
+            UnitPropertiesManager.SetPendingModelSet(_contentPath, kvp.Key, sourceKey);
+        }
+
+        foreach (var kvp in _unitCaches)
+        {
+            var parts = kvp.Key.Split('|');
+            if (parts.Length < 2 || !SameModelFamily(parts[1], family)) continue;
+
+            var cached = kvp.Value.Props;
+            if (cached == null)
+                kvp.Value.Props = cached = new UnitProperties();
+            cached.ModelSet = sourceKey;
+            UnitPropertiesManager.SetPendingModelSet(_contentPath, parts[1], sourceKey);
+        }
+    }
+
+    private void PropagateModelToFamily(string variantTag, string? gamePath)
+    {
+        var family = ModelCatalog.FamilyDirForVariant(variantTag);
+        if (family == null) return;
+
+        foreach (var kvp in _propsByVariant)
+        {
+            if (!SameModelFamily(kvp.Key, family)) continue;
+            kvp.Value.ModelOverride = gamePath;
+            UnitPropertiesManager.SetPendingModel(_contentPath, kvp.Key, gamePath);
+        }
+
+        foreach (var kvp in _unitCaches)
+        {
+            var parts = kvp.Key.Split('|');
+            if (parts.Length < 2 || !SameModelFamily(parts[1], family)) continue;
+
+            var cached = kvp.Value.Props;
+            if (cached == null)
+                kvp.Value.Props = cached = new UnitProperties();
+            cached.ModelOverride = gamePath;
+            UnitPropertiesManager.SetPendingModel(_contentPath, parts[1], gamePath);
+        }
+    }
+
+    private bool SameModelFamily(string variantTag, string family)
+    {
+        var other = ModelCatalog.FamilyDirForVariant(variantTag);
+        return other != null && string.Equals(other, family, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -7928,6 +10433,12 @@ public partial class MainWindow : Window
         string variantTag = _activeVariant ?? $"{arch}_Base";
         chkImmuneToFocus.IsChecked = props.ImmuneToFocus
             ?? UnitPropertiesManager.ReadFocusImmunity(_contentPath, variantTag);
+        _selectedModelOverride = props.ModelOverride;
+        _selectedModelSet = props.ModelSet;
+        UpdateModelOverrideLabel();
+        chkPhaseSwap.IsChecked = props.PhaseSwap ?? false;
+        SelectPhaseTarget(props.PhaseSwapTarget);
+        cmbPhaseSwapTarget.IsEnabled = chkPhaseSwap.IsChecked == true;
     }
 
     private void SetField(System.Windows.Controls.TextBox tb, string? value, bool available)
@@ -7945,6 +10456,759 @@ public partial class MainWindow : Window
             tb.Foreground = new SolidColorBrush(Color.FromRgb(0x6c, 0x70, 0x86));
         }
     }
+
+    private List<MeshCatalogEntry> _modelCatalogEntries = new();
+    private string? _modelFilter;
+    private readonly Dictionary<string, List<Border>> _modelThumbCards = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Queue<string> _thumbQueue = new();
+    private readonly HashSet<string> _thumbQueued = new(StringComparer.OrdinalIgnoreCase);
+    private bool _thumbPumpRunning;
+    private bool _thumbReady;
+    private bool _thumbUnavailable;
+    private Task? _thumbInitTask;
+    private TaskCompletionSource<bool>? _thumbReadyTcs;
+    private int _thumbRenderSeq;
+    private readonly Dictionary<int, TaskCompletionSource<string?>> _thumbRenderers = new();
+    private readonly Dictionary<string, BitmapImage> _thumbBitmapCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, BitmapImage> _thumbBigBitmapCache = new(StringComparer.OrdinalIgnoreCase);
+
+    private static string ThumbCacheDir => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "SifuMovesetEditor", "Thumbnails");
+
+    private static string ThumbCachePath(string gamePath, int size = 128)
+    {
+        // The 128px seed stays byte-identical to the original so existing caches remain valid.
+        string seed = size == 128
+            ? "v3|" + gamePath.ToLowerInvariant()
+            : "v3|" + size + "|" + gamePath.ToLowerInvariant();
+        using var sha = System.Security.Cryptography.SHA1.Create();
+        var hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(seed));
+        var hex = string.Concat(hash.Select(b => b.ToString("x2")));
+        return Path.Combine(ThumbCacheDir, hex + ".png");
+    }
+
+    private static void MapTextureHost(CoreWebView2 core)
+    {
+        try
+        {
+            core.SetVirtualHostNameToFolderMapping(
+                MeshTextureResolver.TextureHost, ThumbCacheDir,
+                CoreWebView2HostResourceAccessKind.Allow);
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("TEXHOST", ex);
+        }
+    }
+
+    private void BtnChooseModel_Click(object sender, RoutedEventArgs e)
+    {
+        _ = OpenModelPickerAsync();
+    }
+
+    private async void BtnImportModel_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_contentPath)) return;
+        if (_parser == null || !_parser.IsLoaded)
+        {
+            MessageBox.Show("The model preview is still initializing - try again in a moment.",
+                "Import custom model", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Import custom model",
+            Filter = "Sifu skeletal mesh (*.uasset)|*.uasset"
+        };
+        if (dlg.ShowDialog(this) != true) return;
+
+        string srcUasset = dlg.FileName;
+        var error = ModelCatalog.ValidateCustomMesh(srcUasset);
+        if (error != null)
+        {
+            MessageBox.Show(error, "Import custom model", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        string name = Path.GetFileNameWithoutExtension(srcUasset);
+        string rel = $"Characters/Custom/{name}";
+        string dstDir = Path.Combine(CustomAssets.Root, "Characters", "Custom");
+        string dstUasset = Path.Combine(dstDir, name + ".uasset");
+        var extras = new List<string>();
+        foreach (var ext in new[] { ".uexp", ".ubulk" })
+        {
+            var sibling = Path.ChangeExtension(srcUasset, ext);
+            if (File.Exists(sibling)) extras.Add(sibling);
+        }
+
+        try
+        {
+            _suppressCustomWatcher = true;
+            Directory.CreateDirectory(dstDir);
+            File.Copy(srcUasset, dstUasset, true);
+            foreach (var sibling in extras)
+                File.Copy(sibling, Path.Combine(dstDir, Path.GetFileName(sibling)), true);
+        }
+        catch (Exception ex)
+        {
+            _suppressCustomWatcher = false;
+            MessageBox.Show($"Could not copy the mesh into CustomAssets:\n{ex.Message}",
+                "Import custom model", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+        finally
+        {
+            _suppressCustomWatcher = false;
+        }
+
+        _parser?.MountCustomIntoProvider(CustomAssets.Root);
+
+        bool loaded = false;
+        try
+        {
+            var mesh = await Task.Run(() => _parser?.LoadMeshFromPath(("/Game/" + rel).TrimStart('/'), includeMaterials: false));
+            loaded = mesh != null && mesh.positions.Length > 0 && mesh.uvs.Length > 0 && mesh.indices.Length > 0;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("IMPORT", ex);
+        }
+
+        if (!loaded)
+        {
+            try
+            {
+                _suppressCustomWatcher = true;
+                foreach (var f in Directory.GetFiles(dstDir, name + ".*"))
+                    File.Delete(f);
+            }
+            catch (Exception ex) { ErrorLog.Write("IMPORT", ex); }
+            finally { _suppressCustomWatcher = false; }
+
+            MessageBox.Show(
+                "The file passed the skeleton check but failed to load as a skeletal mesh - " +
+                "it was not imported. The asset may be corrupted or built for a different engine version.",
+                "Import custom model", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        ModelCatalog.InvalidateMeshCache();
+        _selectedModelOverride = "/Game/" + rel;
+        _selectedModelSet = null;
+        UpdateModelOverrideLabel();
+
+        if (modelPopupBorder.Visibility == Visibility.Visible)
+        {
+            _modelCatalogEntries = ModelCatalog.ScanMeshes(_contentPath);
+            if (!_modelPickerRosterMode)
+                RefreshModelPickerContent();
+        }
+
+        modelPopupBorder.Visibility = Visibility.Collapsed;
+        txtStatus.Text = $"Imported custom model {name} (Custom group)";
+    }
+
+    private void ModelPopupBackground_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource == modelPopupBorder)
+            modelPopupBorder.Visibility = Visibility.Collapsed;
+    }
+
+    private async Task OpenModelPickerAsync()
+    {
+        if (string.IsNullOrEmpty(_contentPath)) return;
+
+        _modelPickerRosterMode = !IsMainCharStance() && !string.IsNullOrEmpty(_selectedModelSet);
+
+        modelWrapPanel.Children.Clear();
+        modelFilterWrap.Children.Clear();
+        modelWrapPanel.Children.Add(new TextBlock
+        {
+            Text = "Scanning meshes...",
+            Foreground = new SolidColorBrush(Color.FromRgb(0x6c, 0x70, 0x86)),
+            FontSize = 12,
+            Margin = new Thickness(4)
+        });
+        PopulateModelModeChips();
+        ApplyModelPickerHint();
+        modelPopupBorder.Visibility = Visibility.Visible;
+
+        var entries = await Task.Run(() => ModelCatalog.ScanMeshes(_contentPath));
+        await EnsureThumbWebViewAsync();
+
+        _modelCatalogEntries = entries;
+        RefreshModelPickerContent();
+        if (_thumbQueue.Count > 0) _ = ThumbPumpAsync();
+    }
+
+    private void ApplyModelPickerHint()
+    {
+        string variantTag = CurrentVariantTag();
+        var familyDir = ModelCatalog.FamilyDirForVariant(variantTag);
+
+        modelPopupTitle.Text = (_modelPickerRosterMode ? "Model Set \u2014 " : "Select Model \u2014 ") + variantTag;
+        if (modelPopupHint == null) return;
+
+        if (_modelPickerRosterMode)
+        {
+            modelPopupHint.Text = familyDir != null
+                ? $"Family-wide: every {familyDir} spawn gets the source family's roster, with per-spawn variety kept."
+                : "Family-wide roster swap.";
+        }
+        else
+        {
+            modelPopupHint.Text = familyDir != null
+                ? $"Applies to {variantTag} only \u2014 other {familyDir} variants keep their in-game model."
+                : $"Applies to {variantTag} only.";
+        }
+    }
+
+    private void PopulateModelModeChips()
+    {
+        modelModeWrap.Children.Clear();
+        // The player has no archetype family - only the specific-model mode applies.
+        if (!IsMainCharStance())
+            AddModelModeChip("Roster swap (family)", true);
+        AddModelModeChip("Specific model (variant)", false);
+    }
+
+    private void AddModelModeChip(string label, bool rosterMode)
+    {
+        bool active = _modelPickerRosterMode == rosterMode;
+
+        var chip = new Border
+        {
+            Cursor = Cursors.Hand,
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(8, 2, 8, 2),
+            Margin = new Thickness(0, 0, 6, 0),
+            Background = new SolidColorBrush(active ? Color.FromRgb(0x45, 0x47, 0x5a) : Color.FromRgb(0x31, 0x32, 0x44)),
+            BorderBrush = new SolidColorBrush(active ? Color.FromRgb(0xa6, 0xe3, 0xa1) : Color.FromRgb(0x58, 0x5b, 0x70)),
+            BorderThickness = new Thickness(1),
+            Tag = rosterMode
+        };
+        chip.Child = new TextBlock
+        {
+            Text = label,
+            FontSize = 10,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(active ? Color.FromRgb(0xa6, 0xe3, 0xa1) : Color.FromRgb(0xcd, 0xd6, 0xf4))
+        };
+        chip.MouseLeftButtonDown += (s, ev) =>
+        {
+            _modelPickerRosterMode = (bool)((Border)s).Tag!;
+            PopulateModelModeChips();
+            ApplyModelPickerHint();
+            RefreshModelPickerContent();
+        };
+        modelModeWrap.Children.Add(chip);
+    }
+
+    private void RefreshModelPickerContent()
+    {
+        modelWrapPanel.Children.Clear();
+        modelFilterWrap.Children.Clear();
+        _modelThumbCards.Clear();
+        _thumbQueued.Clear();
+
+        if (_modelPickerRosterMode)
+        {
+            modelFilterWrap.Visibility = Visibility.Collapsed;
+            btnImportModel.Visibility = Visibility.Collapsed;
+
+            AddRosterCard(null, "(default)", 0);
+
+            var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var key in ModelCatalog.ModelSetKeys)
+            {
+                counts[key] = ModelCatalog.BuildRoster(_contentPath, key).Count;
+                AddRosterCard(key, key, counts[key]);
+            }
+            return;
+        }
+
+        modelFilterWrap.Visibility = Visibility.Visible;
+        btnImportModel.Visibility = Visibility.Visible;
+        PopulateModelFilterChips();
+        PopulateModelCards();
+    }
+
+    private void PopulateModelFilterChips()
+    {
+        modelFilterWrap.Children.Clear();
+        AddModelFilterChip("All", null);
+        foreach (var group in _modelCatalogEntries
+                     .Select(e => e.Group)
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(g => g, StringComparer.OrdinalIgnoreCase))
+            AddModelFilterChip(group, group);
+    }
+
+    private void AddModelFilterChip(string label, string? group)
+    {
+        bool active = group == null
+            ? _modelFilter == null
+            : _modelFilter != null && _modelFilter.Equals(group, StringComparison.OrdinalIgnoreCase);
+
+        var chip = new Border
+        {
+            Cursor = Cursors.Hand,
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(8, 2, 8, 2),
+            Margin = new Thickness(0, 0, 6, 0),
+            Background = new SolidColorBrush(active ? Color.FromRgb(0x45, 0x47, 0x5a) : Color.FromRgb(0x31, 0x32, 0x44)),
+            BorderBrush = new SolidColorBrush(active ? Color.FromRgb(0x89, 0xb4, 0xfa) : Color.FromRgb(0x58, 0x5b, 0x70)),
+            BorderThickness = new Thickness(1),
+            Tag = group
+        };
+        chip.Child = new TextBlock
+        {
+            Text = label,
+            FontSize = 10,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(active ? Color.FromRgb(0x89, 0xb4, 0xfa) : Color.FromRgb(0xcd, 0xd6, 0xf4))
+        };
+        chip.MouseLeftButtonDown += (s, ev) =>
+        {
+            _modelFilter = (string?)((Border)s).Tag;
+            PopulateModelFilterChips();
+            PopulateModelCards();
+            if (_thumbQueue.Count > 0) _ = ThumbPumpAsync();
+        };
+        modelFilterWrap.Children.Add(chip);
+    }
+
+    private void PopulateModelCards()
+    {
+        modelWrapPanel.Children.Clear();
+        _modelThumbCards.Clear();
+        _thumbQueued.Clear();
+
+        AddModelCard(null, "(default)");
+
+        foreach (var entry in _modelCatalogEntries)
+        {
+            if (_modelFilter != null && !entry.Group.Equals(_modelFilter, StringComparison.OrdinalIgnoreCase))
+                continue;
+            AddModelCard(entry.GamePath, entry.DisplayName);
+        }
+    }
+
+    private void AddModelCard(string? gamePath, string displayName)
+    {
+        bool selected = string.Equals(gamePath, _selectedModelOverride, StringComparison.OrdinalIgnoreCase);
+
+        var card = new Border
+        {
+            Width = 90, Height = 130,
+            Background = new SolidColorBrush(Color.FromRgb(0x1e, 0x1e, 0x2e)),
+            BorderBrush = new SolidColorBrush(selected ? Color.FromRgb(0x89, 0xb4, 0xfa) : Color.FromRgb(0x58, 0x5b, 0x70)),
+            BorderThickness = new Thickness(selected ? 2 : 1),
+            CornerRadius = new CornerRadius(6),
+            Margin = new Thickness(6),
+            Cursor = Cursors.Hand,
+            Tag = gamePath
+        };
+
+        var stack = new StackPanel();
+        var imgBorder = new Border
+        {
+            Height = 90,
+            CornerRadius = new CornerRadius(6, 6, 0, 0),
+            Background = new SolidColorBrush(gamePath == null
+                ? Color.FromRgb(0x45, 0x47, 0x5a)
+                : Color.FromRgb(0x31, 0x32, 0x44)),
+            ClipToBounds = true
+        };
+        var tile = new TextBlock
+        {
+            Text = gamePath == null
+                ? "\u25c7"
+                : displayName.Substring(0, Math.Min(2, displayName.Length)).ToUpper(),
+            Foreground = Brushes.White,
+            FontSize = gamePath == null ? 30 : 28,
+            FontWeight = FontWeights.Bold,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 24, 0, 0)
+        };
+
+        if (gamePath == null)
+        {
+            imgBorder.Child = tile;
+        }
+        else
+        {
+            // Tile + eye overlay: the thumb swap replaces grid child 0, keeping the button.
+            var grid = new Grid();
+            grid.Children.Add(tile);
+
+            var eye = new Button
+            {
+                Content = "\ue942",
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = 10,
+                Width = 16,
+                Height = 16,
+                Padding = new Thickness(0),
+                Margin = new Thickness(2),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Cursor = Cursors.Hand,
+                Background = new SolidColorBrush(Color.FromArgb(0xAA, 0x00, 0x00, 0x00)),
+                Foreground = Brushes.White,
+                BorderBrush = new SolidColorBrush(Color.FromArgb(0x77, 0xff, 0xff, 0xff)),
+                BorderThickness = new Thickness(1)
+            };
+            string eyePath = gamePath;
+            string eyeName = displayName;
+            eye.MouseLeftButtonDown += (s, ev) => ev.Handled = true;
+            eye.Click += async (s, ev) => await ShowBigModelPreviewAsync(eyePath, eyeName);
+            grid.Children.Add(eye);
+            imgBorder.Child = grid;
+        }
+
+        var nameBlock = new Border
+        {
+            Height = 40,
+            Background = new SolidColorBrush(Color.FromRgb(0x31, 0x32, 0x44)),
+            CornerRadius = new CornerRadius(0, 0, 6, 6),
+            Padding = new Thickness(4)
+        };
+        nameBlock.Child = new TextBlock
+        {
+            Text = displayName,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xcd, 0xd6, 0xf4)),
+            FontSize = 9,
+            FontWeight = FontWeights.SemiBold,
+            TextAlignment = TextAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap
+        };
+
+        stack.Children.Add(imgBorder);
+        stack.Children.Add(nameBlock);
+        card.Child = stack;
+
+        card.MouseLeftButtonDown += (s, ev) =>
+        {
+            _selectedModelOverride = (string?)((Border)s).Tag;
+            _selectedModelSet = null;
+            UpdateModelOverrideLabel();
+            modelPopupBorder.Visibility = Visibility.Collapsed;
+        };
+
+        modelWrapPanel.Children.Add(card);
+
+        if (gamePath != null)
+        {
+            if (!_modelThumbCards.TryGetValue(gamePath, out var borders))
+                _modelThumbCards[gamePath] = borders = new List<Border>();
+            borders.Add(imgBorder);
+
+            if (_thumbBitmapCache.TryGetValue(gamePath, out var cachedBitmap))
+            {
+                SetThumbContent(imgBorder, new Image
+                {
+                    Source = cachedBitmap,
+                    Stretch = Stretch.Uniform,
+                    Margin = new Thickness(2)
+                });
+            }
+            else if (_thumbQueued.Add(gamePath))
+                _thumbQueue.Enqueue(gamePath);
+        }
+    }
+
+    /// <summary>Swaps in the thumbnail while keeping the eye overlay (cards wrap tile + button in a Grid).</summary>
+    private static void SetThumbContent(Border imgBorder, Image image)
+    {
+        if (imgBorder.Child is Grid grid && grid.Children.Count > 0)
+        {
+            // WPF's UIElementCollection indexer throws "Specified index is already in use"
+            // on assignment - the old child has to be disconnected before the new one goes in.
+            grid.Children.RemoveAt(0);
+            grid.Children.Insert(0, image);
+        }
+        else
+            imgBorder.Child = image;
+    }
+
+    private async Task ShowBigModelPreviewAsync(string gamePath, string displayName)
+    {
+        bigModelTitle.Text = displayName;
+        bigModelImage.Source = null;
+        bigModelPlaceholder.Text = "Rendering\u2026";
+        bigModelPlaceholder.Visibility = Visibility.Visible;
+        bigModelPopupBorder.Visibility = Visibility.Visible;
+
+        try
+        {
+            BitmapImage? bitmap = null;
+            if (_thumbBigBitmapCache.TryGetValue(gamePath, out var cached))
+                bitmap = cached;
+
+            if (bitmap == null)
+            {
+                var bytes = await GetOrCreateThumbAsync(gamePath, 512);
+                if (bytes == null)
+                {
+                    bigModelPlaceholder.Text = "Preview unavailable";
+                    return;
+                }
+                bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.StreamSource = new MemoryStream(bytes);
+                bitmap.EndInit();
+                bitmap.Freeze();
+                _thumbBigBitmapCache[gamePath] = bitmap;
+            }
+
+            bigModelImage.Source = bitmap;
+            bigModelPlaceholder.Visibility = Visibility.Collapsed;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("THUMB", ex);
+            bigModelPlaceholder.Text = "Preview unavailable";
+        }
+    }
+
+    private void BigModelPopupBackground_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource == bigModelPopupBorder)
+            bigModelPopupBorder.Visibility = Visibility.Collapsed;
+    }
+
+    private void AddRosterCard(string? sourceKey, string displayName, int lookCount)
+    {
+        bool selected = string.Equals(sourceKey, _selectedModelSet, StringComparison.OrdinalIgnoreCase);
+
+        var card = new Border
+        {
+            Width = 90, Height = 130,
+            Background = new SolidColorBrush(Color.FromRgb(0x1e, 0x1e, 0x2e)),
+            BorderBrush = new SolidColorBrush(selected ? Color.FromRgb(0xa6, 0xe3, 0xa1) : Color.FromRgb(0x58, 0x5b, 0x70)),
+            BorderThickness = new Thickness(selected ? 2 : 1),
+            CornerRadius = new CornerRadius(6),
+            Margin = new Thickness(6),
+            Cursor = Cursors.Hand,
+            Tag = sourceKey
+        };
+
+        var stack = new StackPanel();
+        var imgBorder = new Border
+        {
+            Height = 90,
+            CornerRadius = new CornerRadius(6, 6, 0, 0),
+            Background = new SolidColorBrush(sourceKey == null
+                ? Color.FromRgb(0x45, 0x47, 0x5a)
+                : Color.FromRgb(0x31, 0x32, 0x44)),
+            ClipToBounds = true
+        };
+        imgBorder.Child = new TextBlock
+        {
+            Text = sourceKey == null ? "\u25c7" : displayName.Substring(0, Math.Min(2, displayName.Length)).ToUpper(),
+            Foreground = Brushes.White,
+            FontSize = sourceKey == null ? 30 : 26,
+            FontWeight = FontWeights.Bold,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 24, 0, 0)
+        };
+
+        var nameBlock = new Border
+        {
+            Height = 40,
+            Background = new SolidColorBrush(Color.FromRgb(0x31, 0x32, 0x44)),
+            CornerRadius = new CornerRadius(0, 0, 6, 6),
+            Padding = new Thickness(4)
+        };
+        nameBlock.Child = new TextBlock
+        {
+            Text = sourceKey == null ? displayName : $"{displayName}\n{lookCount} looks",
+            Foreground = new SolidColorBrush(Color.FromRgb(0xcd, 0xd6, 0xf4)),
+            FontSize = 9,
+            FontWeight = FontWeights.SemiBold,
+            TextAlignment = TextAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap
+        };
+
+        stack.Children.Add(imgBorder);
+        stack.Children.Add(nameBlock);
+        card.Child = stack;
+
+        card.MouseLeftButtonDown += (s, ev) =>
+        {
+            _selectedModelSet = (string?)((Border)s).Tag;
+            if (_selectedModelSet != null)
+                _selectedModelOverride = null;
+            UpdateModelOverrideLabel();
+            modelPopupBorder.Visibility = Visibility.Collapsed;
+        };
+
+        modelWrapPanel.Children.Add(card);
+    }
+
+    private async Task ThumbPumpAsync()
+    {
+        if (_thumbPumpRunning) return;
+        _thumbPumpRunning = true;
+        try
+        {
+            while (_thumbQueue.Count > 0)
+            {
+                var gamePath = _thumbQueue.Dequeue();
+                _thumbQueued.Remove(gamePath);
+                try
+                {
+                    var bytes = await GetOrCreateThumbAsync(gamePath);
+                    if (bytes != null) ApplyThumbToCards(gamePath, bytes);
+                }
+                catch (Exception ex)
+                {
+                    ErrorLog.Write("THUMB", ex);
+                }
+            }
+        }
+        finally
+        {
+            _thumbPumpRunning = false;
+        }
+    }
+
+    private async Task<byte[]?> GetOrCreateThumbAsync(string gamePath, int size = 128)
+    {
+        var cachePath = ThumbCachePath(gamePath, size);
+        if (File.Exists(cachePath))
+            return await Task.Run(() => File.ReadAllBytes(cachePath));
+
+        if (!_thumbReady || _parser == null || !_parser.IsLoaded) return null;
+
+        var mesh = await Task.Run(() => _parser.LoadMeshFromPath(gamePath.TrimStart('/'), includeMaterials: true));
+        if (mesh == null) return null;
+
+        var payload = JsonConvert.SerializeObject(new
+        {
+            positions = mesh.positions,
+            normals = mesh.normals,
+            uvs = mesh.uvs,
+            indices = mesh.indices,
+            materials = mesh.materials
+        });
+
+        int id = ++_thumbRenderSeq;
+        var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _thumbRenderers[id] = tcs;
+        try
+        {
+            await thumbWebView.CoreWebView2!.ExecuteScriptAsync($"window.renderThumb({id}, {payload}, {size})");
+            var dataUrl = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            if (dataUrl == null) return null;
+
+            var comma = dataUrl.IndexOf(',');
+            if (comma < 0) return null;
+            var bytes = Convert.FromBase64String(dataUrl[(comma + 1)..]);
+            try
+            {
+                Directory.CreateDirectory(ThumbCacheDir);
+                File.WriteAllBytes(cachePath, bytes);
+            }
+            catch { }
+            return bytes;
+        }
+        finally
+        {
+            _thumbRenderers.Remove(id);
+        }
+    }
+
+    private void ApplyThumbToCards(string gamePath, byte[] bytes)
+    {
+        if (!_modelThumbCards.TryGetValue(gamePath, out var borders) || borders.Count == 0) return;
+
+        if (!_thumbBitmapCache.TryGetValue(gamePath, out var bitmap))
+        {
+            try
+            {
+                bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.StreamSource = new MemoryStream(bytes);
+                bitmap.EndInit();
+                bitmap.Freeze();
+            }
+            catch { return; }
+            _thumbBitmapCache[gamePath] = bitmap;
+        }
+
+        foreach (var border in borders)
+        {
+            SetThumbContent(border, new Image
+            {
+                Source = bitmap,
+                Stretch = Stretch.Uniform,
+                Margin = new Thickness(2)
+            });
+        }
+    }
+
+    private Task EnsureThumbWebViewAsync()
+    {
+        if (_thumbUnavailable || _thumbReady) return Task.CompletedTask;
+        _thumbInitTask ??= InitThumbWebViewAsync();
+        return _thumbInitTask;
+    }
+
+    private async Task InitThumbWebViewAsync()
+    {
+        try
+        {
+            await thumbWebView.EnsureCoreWebView2Async(null);
+            thumbWebView.CoreWebView2.WebMessageReceived += OnThumbWebViewMessage;
+            MapTextureHost(thumbWebView.CoreWebView2);
+            _thumbReadyTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var thumbPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "viewer", "thumb.html");
+            thumbWebView.CoreWebView2.Navigate(new Uri(thumbPath).AbsoluteUri);
+            _thumbReady = await _thumbReadyTcs.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("THUMB", ex);
+            _thumbReady = false;
+            _thumbUnavailable = true;
+        }
+    }
+
+    private void OnThumbWebViewMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        try
+        {
+            var root = JObject.Parse(e.WebMessageAsJson);
+            var type = root.Value<string>("type");
+            if (type == "thumbReady")
+            {
+                _thumbReadyTcs?.TrySetResult(true);
+            }
+            else if (type == "thumb")
+            {
+                int id = root.Value<int>("id");
+                if (_thumbRenderers.TryGetValue(id, out var tcs))
+                {
+                    var error = root.Value<string>("error");
+                    tcs.TrySetResult(error == null ? root.Value<string>("data") : null);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("THUMB", ex);
+        }
+    }
     #endregion
 }
 
@@ -7953,6 +11217,10 @@ public class Settings
     public string ContentPath { get; set; } = "";
     public string OutputPath { get; set; } = "";
     public bool ShowLines { get; set; } = true;
+    // Beginner view: hides AI action/event nodes, the AI Actions & Events library and
+    // AI-target rows in the Start Entries popup. Default false so old settings.json
+    // files (key absent) deserializing to the C# default also get the clean graph.
+    public bool ShowAiNodes { get; set; } = false;
     public double[]? CameraPosition { get; set; }
     public double[]? CameraTarget { get; set; }
     public string UnrealPakPath { get; set; } = "";

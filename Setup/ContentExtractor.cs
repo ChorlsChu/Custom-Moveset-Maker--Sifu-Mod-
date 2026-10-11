@@ -205,17 +205,20 @@ public static class ContentExtractor
     }
 
     // Path wildcard filters for UnrealPak -Filter (verified against pakchunk0).
-    // Multi-pass: only needed assets land in stage (~700MB vs ~29GB full extract).
-    // Mesh filters must cover direct Meshes/SK_* and nested Meshes/<sub>/SK_* layouts.
+    // Multi-pass: only needed assets land in stage (~1.5GB vs ~29GB full extract).
+    // The SK_* catch-all covers any depth under Characters/ (M/ and W/ variants,
+    // outfit folders, Old/, direct-child layouts like Servant/M/Old).
+    // Materials/Textures/Maps feed the model-preview texture pipeline (picker + animation preview).
     private static readonly string[] SelectiveExtractFilters =
     [
         "*Content/Animations*",
         "*Content/DB*",
         "*Characters/Skeleton*",
         "*Engine/Content/Animation*",
-        "*Characters*/Meshes/SK_*",
-        "*Characters*/Meshes/*/SK_*",
-        "*Characters*/Meshes/*/*/SK_*",
+        "*Content/Characters*/SK_*",
+        "*Content/Characters*Materials*",
+        "*Content/Characters*Textures*",
+        "*Content/Characters*Maps*",
     ];
 
     // Completeness baselines from the full pakchunk0 reference extract.
@@ -223,7 +226,7 @@ public static class ContentExtractor
     private const int MinAnimationUassets = 3370;      // REF 3379
     private const int MinArchetypeUassets = 1105;      // REF 1110
     private const int MinComboTreeUassets = 280;       // REF 283
-    private const int MinMeshUassets = 200;            // REF 256
+    private const int MinMeshUassets = 200;            // REF 418
 
     /// <summary>
     /// Short stage path under %TEMP%. The deep bin\Debug\...\VanillaExtract path exceeded
@@ -749,9 +752,8 @@ public static class ContentExtractor
    - DB/AI/_Shared/
    - DB/Attacks/
    - DB/Movement/
-   - Characters/MainChar/M/Meshes/SK_M_MainChar_01.*
-   - Characters/PNJ/ (Grunt, Disicple, FlashKick, BigGuy, BodyGuards, Servant)
-   - Characters/Boss/ (Fajar, Sean, Kuroki, Yang, Fengjie)
+   - Characters/ (every SK_*.uasset, any depth: M/ and W/ variants, outfits,
+     Grunt/Servant Old/, _Shared, Boss including Sifu)
 6. Point this tool to the extracted folder";
     }
 

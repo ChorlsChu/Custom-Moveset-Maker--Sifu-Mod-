@@ -183,7 +183,7 @@ The right sidebar shows an **Attack DB** panel when the selected combo node has 
 | Field | What it does |
 |---------|--------|
 | **Buildup frames** | How many frames the attack charges before it can hit (`m_iWantedBuildupFrames`). Lower = faster startup. |
-| **Gameplay range** | Attack reach in Unreal units (`m_fGameplayRange`). Higher = hits from farther away. |
+| **Gameplay range** | Attack reach in Unreal units (`m_fGameplayRange`). Higher = hits from farther away *(unverified in-game; it did not extend hitboxes in testing)*. |
 
 - The hint line below the fields shows the card's **vanilla values**, with `— edited` appended when your value differs from vanilla.
 - Edits are remembered per node in the project (`.sifu-edit`) and written into the node's AttackDB asset on export. Importing a mod seeds the fields when the modded card differs from vanilla.

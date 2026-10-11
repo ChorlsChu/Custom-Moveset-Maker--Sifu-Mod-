@@ -6,6 +6,7 @@ using UAssetAPI;
 using UAssetAPI.ExportTypes;
 using UAssetAPI.PropertyTypes;
 using UAssetAPI.PropertyTypes.Objects;
+using UAssetAPI.PropertyTypes.Structs;
 using UAssetAPI.UnrealTypes;
 
 namespace SifuMovesetEditor;
@@ -18,6 +19,10 @@ public class UnitProperties
     public int? HitsCount { get; set; }
     public float? MemoryFlushLimit { get; set; }
     public bool? ImmuneToFocus { get; set; }
+    public string? ModelOverride { get; set; }
+    public string? ModelSet { get; set; }
+    public bool? PhaseSwap { get; set; }
+    public string? PhaseSwapTarget { get; set; }
 }
 
 public static class UnitPropertiesManager
@@ -97,6 +102,25 @@ public static class UnitPropertiesManager
         => ResolveByLongestPrefix(ContextDefensePaths, variantTag);
 
     /// <summary>
+    /// The ArchetypePaths key this variant belongs to: exact match first, then progressively
+    /// shorter '_'-prefixed keys (FD_Base_Staff -> FD_Base). Null for tags with no unit DB
+    /// (MainChar stances). Needed by passes that resolve scenarios per variant, since
+    /// ScenarioRelsForVariant is keyed by canonical tags, not weapon suffixes.
+    /// </summary>
+    public static string? CanonicalVariantTag(string variantTag)
+    {
+        if (string.IsNullOrEmpty(variantTag)) return null;
+        if (ArchetypePaths.ContainsKey(variantTag)) return variantTag;
+        var parts = variantTag.Split('_');
+        for (int i = parts.Length - 1; i >= 1; i--)
+        {
+            var prefix = string.Join("_", parts, 0, i);
+            if (ArchetypePaths.ContainsKey(prefix)) return prefix;
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Exact match first, then progressively shorter '_'-prefixed keys, so weapon-suffixed tags
     /// (FD_Base_Staff, Grunt_Advanced_Bat) resolve to their unit instead of collapsing to "FD".
     /// </summary>
@@ -122,6 +146,22 @@ public static class UnitPropertiesManager
             : Path.Combine(contentPath, "Content");
     }
 
+    /// <summary>
+    /// Content-relative uasset: the persistent CustomAssets copy when it exists (a mod
+    /// harvest or a manual same-path drop - deliberate overrides), otherwise the vanilla
+    /// game copy. Null when neither side has it. Mirrors ExportDialog.ResolveStageSource
+    /// so reads measure against the same file export would patch.
+    /// </summary>
+    private static string? ResolveSourceUasset(string contentDir, string contentRel)
+    {
+        var rel = contentRel.Replace('\\', '/');
+        var custom = CustomAssets.FileForContentRel(rel + ".uasset");
+        if (File.Exists(custom)) return custom;
+        var vanilla = Path.Combine(contentDir,
+            rel.Replace('/', Path.DirectorySeparatorChar) + ".uasset");
+        return File.Exists(vanilla) ? vanilla : null;
+    }
+
     public static bool HasChanges(string contentPath, string variantTag, UnitProperties props)
     {
         var vanilla = Read(contentPath, variantTag);
@@ -130,6 +170,9 @@ public static class UnitPropertiesManager
             || (props.MemoryLimit.HasValue && (!vanilla.MemoryLimit.HasValue || Math.Abs(props.MemoryLimit.Value - vanilla.MemoryLimit.Value) > 0.01f))
             || (props.HitsCount.HasValue && (!vanilla.HitsCount.HasValue || props.HitsCount.Value != vanilla.HitsCount.Value))
             || (props.MemoryFlushLimit.HasValue && (!vanilla.MemoryFlushLimit.HasValue || Math.Abs(props.MemoryFlushLimit.Value - vanilla.MemoryFlushLimit.Value) > 0.01f))
+            || !string.IsNullOrEmpty(props.ModelOverride)
+            || !string.IsNullOrEmpty(props.ModelSet)
+            || PhaseSwapActive(props)
             || FocusChanged(contentPath, variantTag, props);
     }
 
@@ -141,8 +184,15 @@ public static class UnitPropertiesManager
             || (props.MemoryLimit.HasValue && (!vanilla.MemoryLimit.HasValue || Math.Abs(props.MemoryLimit.Value - vanilla.MemoryLimit.Value) > 0.01f))
             || (props.HitsCount.HasValue && (!vanilla.HitsCount.HasValue || props.HitsCount.Value != vanilla.HitsCount.Value))
             || (props.MemoryFlushLimit.HasValue && (!vanilla.MemoryFlushLimit.HasValue || Math.Abs(props.MemoryFlushLimit.Value - vanilla.MemoryFlushLimit.Value) > 0.01f))
+            || !string.IsNullOrEmpty(props.ModelOverride)
+            || !string.IsNullOrEmpty(props.ModelSet)
+            || PhaseSwapActive(props)
             || FocusChanged(contentPath, variantTag, props);
     }
+
+    /// <summary>Checked with a target picked - the only state the phase-swap export pass writes.</summary>
+    public static bool PhaseSwapActive(UnitProperties props)
+        => props.PhaseSwap == true && !string.IsNullOrEmpty(props.PhaseSwapTarget);
 
     /// <summary>
     /// True when the focus flag this export would actually write differs from what is on disk.
@@ -165,8 +215,8 @@ public static class UnitPropertiesManager
         var archPath = ResolveArchetypePath(variantTag);
         if (archPath != null)
         {
-            var fullPath = Path.Combine(contentDir, archPath + ".uasset");
-            if (File.Exists(fullPath))
+            var fullPath = ResolveSourceUasset(contentDir, archPath);
+            if (fullPath != null)
             {
                 try
                 {
@@ -187,8 +237,8 @@ public static class UnitPropertiesManager
         var defPath = ResolveContextDefensePath(variantTag);
         if (defPath != null)
         {
-            var uassetPath = Path.Combine(contentDir, defPath + ".uasset");
-            if (File.Exists(uassetPath))
+            var uassetPath = ResolveSourceUasset(contentDir, defPath);
+            if (uassetPath != null)
             {
                 try
                 {
@@ -438,6 +488,106 @@ public static class UnitPropertiesManager
         FocusPending.Remove(ResolveContentDir(contentPath));
     }
 
+    private static readonly Dictionary<string, Dictionary<string, string?>> ModelPending =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Session-wide model choice for one variant tag (e.g. Grunt_Base only). Null clears
+    /// the choice back to "(default)" - the scenarios keep whatever model they ship with.
+    /// </summary>
+    public static void SetPendingModel(string contentPath, string? variantTag, string? gamePath)
+    {
+        var contentDir = ResolveContentDir(contentPath);
+        if (string.IsNullOrEmpty(variantTag)) return;
+
+        if (!ModelPending.TryGetValue(contentDir, out var pending))
+            ModelPending[contentDir] = pending = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        pending[variantTag!] = gamePath;
+    }
+
+    /// <summary>
+    /// Pending model choice for this variant, or null when none was made. Family-wide
+    /// scenario families (bosses) share their tags' picks, since one file serves all phases.
+    /// </summary>
+    public static string? GetEffectiveModel(string contentPath, string? variantTag)
+    {
+        var contentDir = ResolveContentDir(contentPath);
+        if (string.IsNullOrEmpty(variantTag)) return null;
+
+        if (ModelPending.TryGetValue(contentDir, out var pending)
+            && pending.TryGetValue(variantTag!, out var value)
+            && !string.IsNullOrEmpty(value))
+            return value;
+
+        var family = ModelCatalog.FamilyDirForVariant(variantTag);
+        if (string.IsNullOrEmpty(family) || !ModelCatalog.IsFamilyWideScenarioFamily(family))
+            return null;
+
+        if (ModelPending.TryGetValue(contentDir, out var siblings))
+        {
+            foreach (var kvp in siblings)
+            {
+                if (string.IsNullOrEmpty(kvp.Value)) continue;
+                if (string.Equals(ModelCatalog.FamilyDirForVariant(kvp.Key), family, StringComparison.OrdinalIgnoreCase))
+                    return kvp.Value;
+            }
+        }
+        return null;
+    }
+
+    public static void ClearPendingModel(string? contentPath)
+    {
+        if (string.IsNullOrEmpty(contentPath)) return;
+        ModelPending.Remove(ResolveContentDir(contentPath));
+        ModelSetPending.Remove(ResolveContentDir(contentPath));
+    }
+
+    private static readonly Dictionary<string, Dictionary<string, string?>> ModelSetPending =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Session-wide roster-swap choice (source family key) for one variant tag. The swap is
+    /// family-wide by nature, so callers propagate it to every family member on save.
+    /// </summary>
+    public static void SetPendingModelSet(string contentPath, string? variantTag, string? sourceKey)
+    {
+        var contentDir = ResolveContentDir(contentPath);
+        if (string.IsNullOrEmpty(variantTag)) return;
+
+        if (!ModelSetPending.TryGetValue(contentDir, out var pending))
+            ModelSetPending[contentDir] = pending = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        pending[variantTag!] = sourceKey;
+    }
+
+    /// <summary>
+    /// Pending roster-swap choice for this variant, or a sibling's when any family member
+    /// has one - the swap always covers the whole family.
+    /// </summary>
+    public static string? GetEffectiveModelSet(string contentPath, string? variantTag)
+    {
+        var contentDir = ResolveContentDir(contentPath);
+        if (string.IsNullOrEmpty(variantTag)) return null;
+
+        if (ModelSetPending.TryGetValue(contentDir, out var pending)
+            && pending.TryGetValue(variantTag!, out var value)
+            && !string.IsNullOrEmpty(value))
+            return value;
+
+        var family = ModelCatalog.FamilyDirForVariant(variantTag);
+        if (string.IsNullOrEmpty(family)) return null;
+
+        if (ModelSetPending.TryGetValue(contentDir, out var siblings))
+        {
+            foreach (var kvp in siblings)
+            {
+                if (string.IsNullOrEmpty(kvp.Value)) continue;
+                if (string.Equals(ModelCatalog.FamilyDirForVariant(kvp.Key), family, StringComparison.OrdinalIgnoreCase))
+                    return kvp.Value;
+            }
+        }
+        return null;
+    }
+
     private static void InvalidateFocusReadCache(string contentPath)
     {
         var prefix = contentPath + "|";
@@ -642,6 +792,770 @@ public static class UnitPropertiesManager
         }
 
         return written;
+    }
+
+    /// <summary>
+    /// Final model pass, run after every unit's other staging so no later pass can overwrite
+    /// it. For each variant with a chosen override, stages exactly that variant's scenario
+    /// files (tier-matched subset of the local ArchetypeDB tree + the family's Blueprint
+    /// training/tutorial tree, anchored at the family's Base pick) and points every
+    /// m_OverrideSkeletalMesh at the chosen mesh. Unpicked variants are left untouched so
+    /// their spawns keep the in-game model. Returns the staged scenario rel-paths.
+    /// </summary>
+    public static List<string> ApplyModelOverrides(
+        string vanillaContentDir,
+        string stagedContentDir,
+        IReadOnlyDictionary<string, UnitProperties>? propsByVariant,
+        string? blueprintContentDir,
+        Func<string, string?>? resolveSource,
+        Action<string>? onLog = null)
+    {
+        var written = new List<string>();
+        if (propsByVariant == null || propsByVariant.Count == 0) return written;
+
+        var familyPicks = new Dictionary<string, List<(string Tag, string Path)>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kvp in propsByVariant)
+        {
+            if (string.IsNullOrEmpty(kvp.Key)) continue;
+            var path = kvp.Value?.ModelOverride;
+            if (string.IsNullOrEmpty(path)) continue;
+
+            var family = ModelCatalog.FamilyDirForVariant(kvp.Key);
+            if (string.IsNullOrEmpty(family)) continue;
+
+            if (!familyPicks.TryGetValue(family!, out var list))
+                familyPicks[family!] = list = new List<(string, string)>();
+            list.Add((kvp.Key, path!));
+        }
+
+        var wanted = new Dictionary<string, (string Path, string Tag)>(StringComparer.OrdinalIgnoreCase);
+        void AddWanted(string rel, string path, string tag)
+        {
+            if (wanted.TryGetValue(rel, out var existing))
+            {
+                if (!existing.Path.Equals(path, StringComparison.OrdinalIgnoreCase))
+                    onLog?.Invoke($"[MODEL] Conflicting model choices for {rel}: keeping {existing.Path} (from {existing.Tag}), ignoring {path} (from {tag})");
+                return;
+            }
+            wanted[rel] = (path, tag);
+        }
+
+        foreach (var fam in familyPicks)
+        {
+            string family = fam.Key;
+            var picks = fam.Value;
+
+            foreach (var pick in picks)
+            {
+                var rels = ModelCatalog.ScenarioRelsForVariant(vanillaContentDir, pick.Tag);
+                if (rels.Count == 0)
+                    onLog?.Invoke($"[MODEL] No scenario files matched variant {pick.Tag} - override not written");
+                foreach (var rel in rels)
+                    AddWanted(rel, pick.Path, pick.Tag);
+            }
+
+            if (!string.IsNullOrEmpty(blueprintContentDir))
+            {
+                var anchor = picks.FirstOrDefault(p => p.Tag.EndsWith("_Base", StringComparison.OrdinalIgnoreCase));
+                if (string.IsNullOrEmpty(anchor.Path)) anchor = picks[0];
+                foreach (var bpRel in ModelCatalog.BlueprintScenarioRels(blueprintContentDir!, family))
+                    AddWanted(bpRel, anchor.Path, anchor.Tag);
+            }
+        }
+
+        var summary = new Dictionary<string, (string Path, int Ok, int Skip)>(StringComparer.OrdinalIgnoreCase);
+        void Count(string tag, string path, int ok, int skip)
+        {
+            var cur = summary.TryGetValue(tag, out var s)
+                ? s
+                : (Path: path, Ok: 0, Skip: 0);
+            summary[tag] = (path, cur.Ok + ok, cur.Skip + skip);
+        }
+
+        foreach (var kvp in wanted)
+        {
+            string rel = kvp.Key;
+            string gamePath = kvp.Value.Path;
+            string ownerTag = kvp.Value.Tag;
+            string meshName = gamePath[(gamePath.LastIndexOf('/') + 1)..];
+
+            var src = resolveSource != null ? resolveSource(rel) : null;
+            if (src == null || !File.Exists(src))
+            {
+                onLog?.Invoke($"[MODEL] Scenario source missing: {rel} (variant {ownerTag})");
+                Count(ownerTag, meshName, 0, 1);
+                continue;
+            }
+
+            var stagedUasset = Path.Combine(stagedContentDir,
+                rel.Replace('/', Path.DirectorySeparatorChar) + ".uasset");
+            try
+            {
+                var dir = Path.GetDirectoryName(stagedUasset);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                File.Copy(src, stagedUasset, true);
+                var srcUexp = Path.ChangeExtension(src, ".uexp");
+                if (File.Exists(srcUexp))
+                    File.Copy(srcUexp, Path.ChangeExtension(stagedUasset, ".uexp"), true);
+            }
+            catch (Exception ex)
+            {
+                onLog?.Invoke($"[MODEL] Stage failed for {rel}: {ex.Message}");
+                Count(ownerTag, meshName, 0, 1);
+                continue;
+            }
+
+            int n = PatchScenarioMesh(stagedUasset, gamePath, meshName);
+            if (n <= 0)
+            {
+                try { File.Delete(stagedUasset); } catch { }
+                try { var u = Path.ChangeExtension(stagedUasset, ".uexp"); if (File.Exists(u)) File.Delete(u); } catch { }
+                if (n == 0)
+                    onLog?.Invoke($"[MODEL] No m_OverrideSkeletalMesh in {rel} - not staged");
+                else
+                    onLog?.Invoke($"[MODEL] Patch failed for {rel} (variant {ownerTag}) - staged copy removed");
+                Count(ownerTag, meshName, 0, 1);
+                continue;
+            }
+            written.Add(rel);
+            Count(ownerTag, meshName, 1, 0);
+        }
+
+        foreach (var kvp in summary)
+            onLog?.Invoke($"[MODEL] {kvp.Key} -> {kvp.Value.Path}: {kvp.Value.Ok} scenario file(s) staged, {kvp.Value.Skip} skipped");
+
+        return written;
+    }
+
+    /// <summary>
+    /// Phase-swap pass: for each unit with PhaseSwap on and a target DB picked, stages that
+    /// variant's tier-matched scenarios (token-filtered against the target name) and appends a
+    /// Last Man takedown transition retargeted at the chosen DB's CDO - the proven LastMan_B
+    /// behavior (gauge off, Grunt launcher cloned). Runs after the model pass; when a scenario
+    /// is already staged it patches that copy in place so both edits survive in one file.
+    /// Scenarios that already phase (vanilla Grunt roster, bosses) are skipped. Returns the
+    /// staged scenario rel-paths that now carry the transition.
+    /// </summary>
+    public static List<string> ApplyPhaseSwaps(
+        string vanillaContentDir,
+        string stagedContentDir,
+        IReadOnlyDictionary<string, UnitProperties>? propsByVariant,
+        Func<string, string?>? resolveSource,
+        Action<string>? onLog = null)
+    {
+        var written = new List<string>();
+        if (propsByVariant == null || propsByVariant.Count == 0) return written;
+
+        var template = PhaseSwapPatcher.LoadTemplate(vanillaContentDir, out var tplError);
+        if (template == null)
+        {
+            onLog?.Invoke("[PHASE-SWAP] " + tplError);
+            return written;
+        }
+
+        var wanted = new Dictionary<string, (string TargetDb, string Tag)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kvp in propsByVariant)
+        {
+            var props = kvp.Value;
+            if (props == null || !PhaseSwapActive(props)) continue;
+
+            var tag = CanonicalVariantTag(kvp.Key);
+            if (string.IsNullOrEmpty(tag)) continue;
+            var family = ModelCatalog.FamilyDirForVariant(tag);
+            if (string.IsNullOrEmpty(family) || ModelCatalog.IsFamilyWideScenarioFamily(family)) continue;
+
+            var rels = ModelCatalog.ScenarioRelsForVariant(vanillaContentDir, tag);
+            if (rels.Count == 0)
+            {
+                onLog?.Invoke($"[PHASE-SWAP] No scenario files matched variant {kvp.Key} - not written");
+                continue;
+            }
+
+            string targetDb = props.PhaseSwapTarget!;
+            int matched = 0;
+            foreach (var rel in rels)
+            {
+                if (!PhaseSwapPatcher.ScenarioMatchesTarget(rel, targetDb)) continue;
+                matched++;
+                if (wanted.TryGetValue(rel, out var existing))
+                {
+                    if (!existing.TargetDb.Equals(targetDb, StringComparison.OrdinalIgnoreCase))
+                        onLog?.Invoke($"[PHASE-SWAP] Conflicting targets for {rel}: keeping {existing.TargetDb} (from {existing.Tag}), ignoring {targetDb} (from {kvp.Key})");
+                    continue;
+                }
+                wanted[rel] = (targetDb, kvp.Key);
+            }
+
+            string dbLeaf = PhaseSwapPatcher.DbLeafName(targetDb);
+            if (matched == 0)
+                onLog?.Invoke($"[PHASE-SWAP] Target {dbLeaf} matched none of {tag}'s {rels.Count} scenario(s) - not written");
+            else
+                onLog?.Invoke($"[PHASE-SWAP] {kvp.Key} -> {dbLeaf}: {matched} scenario file(s) queued");
+        }
+
+        foreach (var kvp in wanted)
+        {
+            string rel = kvp.Key;
+            string targetDb = kvp.Value.TargetDb;
+            string ownerTag = kvp.Value.Tag;
+
+            var stagedUasset = Path.Combine(stagedContentDir,
+                rel.Replace('/', Path.DirectorySeparatorChar) + ".uasset");
+            bool stagedByUs = false;
+
+            if (!File.Exists(stagedUasset))
+            {
+                var src = resolveSource != null ? resolveSource(rel) : null;
+                if (src == null)
+                {
+                    var vanilla = Path.Combine(vanillaContentDir,
+                        rel.Replace('/', Path.DirectorySeparatorChar) + ".uasset");
+                    if (File.Exists(vanilla)) src = vanilla;
+                }
+                if (src == null || !File.Exists(src))
+                {
+                    onLog?.Invoke($"[PHASE-SWAP] Scenario source missing: {rel} (variant {ownerTag})");
+                    continue;
+                }
+                try
+                {
+                    var dir = Path.GetDirectoryName(stagedUasset);
+                    if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                    File.Copy(src, stagedUasset, true);
+                    var srcUexp = Path.ChangeExtension(src, ".uexp");
+                    if (File.Exists(srcUexp))
+                        File.Copy(srcUexp, Path.ChangeExtension(stagedUasset, ".uexp"), true);
+                }
+                catch (Exception ex)
+                {
+                    onLog?.Invoke($"[PHASE-SWAP] Stage failed for {rel}: {ex.Message}");
+                    continue;
+                }
+                stagedByUs = true;
+            }
+
+            var outcome = PhaseSwapPatcher.PatchScenario(stagedUasset, template, targetDb, out var error);
+            if (outcome == PhaseSwapPatcher.Outcome.Patched)
+            {
+                written.Add(rel);
+                onLog?.Invoke($"[PHASE-SWAP] patched {rel} -> {PhaseSwapPatcher.DbLeafName(targetDb)} (Last Man, no gauge)");
+                continue;
+            }
+
+            // Failed writes may have left a corrupt file; skip leaves any earlier staged copy
+            // (e.g. the model pass's mesh-patched one) untouched unless we staged it just now.
+            if (outcome == PhaseSwapPatcher.Outcome.Failed || stagedByUs)
+            {
+                try { File.Delete(stagedUasset); } catch { }
+                try { var u = Path.ChangeExtension(stagedUasset, ".uexp"); if (File.Exists(u)) File.Delete(u); } catch { }
+            }
+            onLog?.Invoke(outcome == PhaseSwapPatcher.Outcome.SkippedAlreadyPhasing
+                ? $"[PHASE-SWAP] skipped {rel}: already has a Last Man transition"
+                : $"[PHASE-SWAP] patch failed for {rel} (variant {ownerTag}): {error}");
+        }
+
+        return written;
+    }
+
+    /// <summary>Points every m_OverrideSkeletalMesh in a scenario asset at the given mesh. Returns fields patched, 0 when the asset has none, -1 on verify failure.</summary>
+    private static int PatchScenarioMesh(string stagedUasset, string meshGamePath, string meshObjectName)
+    {
+        var asset = new UAsset(stagedUasset, EngineVersion.VER_UE4_26, null, CustomSerializationFlags.None);
+        var patch = new List<ObjectPropertyData>();
+        foreach (var exp in asset.Exports)
+        {
+            if (exp is not NormalExport ne || ne.Data == null) continue;
+            WalkProps(ne.Data, p =>
+            {
+                if (p is ObjectPropertyData op && op.Name.Value?.ToString() == "m_OverrideSkeletalMesh")
+                    patch.Add(op);
+            });
+        }
+        if (patch.Count == 0) return 0;
+
+        string classPackage = "/Script/Engine";
+        string className = "SkeletalMesh";
+        foreach (var op in patch)
+        {
+            if (op.Value == null || !op.Value.IsImport()) continue;
+            int i = -(op.Value.Index + 1);
+            if (i < 0 || i >= asset.Imports.Count) continue;
+            classPackage = asset.Imports[i].ClassPackage.Value?.ToString() ?? classPackage;
+            className = asset.Imports[i].ClassName.Value?.ToString() ?? className;
+            break;
+        }
+
+        int pkgIdx = -1;
+        for (int i = 0; i < asset.Imports.Count; i++)
+        {
+            var imp = asset.Imports[i];
+            if (imp.ClassName.Value?.ToString() == "Package" &&
+                imp.ObjectName.Value?.ToString() == meshGamePath)
+            { pkgIdx = i; break; }
+        }
+        if (pkgIdx < 0)
+        {
+            pkgIdx = asset.Imports.Count;
+            asset.Imports.Add(new UAssetAPI.Import
+            {
+                ClassPackage = FName.FromString(asset, "/Script/CoreUObject"),
+                ClassName = FName.FromString(asset, "Package"),
+                ObjectName = FName.FromString(asset, meshGamePath),
+                OuterIndex = new FPackageIndex(0),
+                PackageName = FName.FromString(asset, "None")
+            });
+        }
+
+        int objIdx = -1;
+        for (int i = 0; i < asset.Imports.Count; i++)
+        {
+            var imp = asset.Imports[i];
+            if (imp.ObjectName.Value?.ToString() == meshObjectName &&
+                imp.OuterIndex.Index == -(pkgIdx + 1))
+            { objIdx = i; break; }
+        }
+        if (objIdx < 0)
+        {
+            objIdx = asset.Imports.Count;
+            asset.Imports.Add(new UAssetAPI.Import
+            {
+                ClassPackage = FName.FromString(asset, classPackage),
+                ClassName = FName.FromString(asset, className),
+                ObjectName = FName.FromString(asset, meshObjectName),
+                OuterIndex = FPackageIndex.FromImport(pkgIdx),
+                PackageName = FName.FromString(asset, "None")
+            });
+        }
+
+        foreach (var op in patch)
+            op.Value = FPackageIndex.FromImport(objIdx);
+        asset.Write(stagedUasset);
+
+        var post = new UAsset(stagedUasset, EngineVersion.VER_UE4_26, null, CustomSerializationFlags.None);
+        var expectedSuffix = " " + meshObjectName + " (outer=" + meshGamePath + ")";
+        int count = 0;
+        bool verifyFailed = false;
+        foreach (var exp in post.Exports)
+        {
+            if (exp is not NormalExport ne || ne.Data == null) continue;
+            WalkProps(ne.Data, p =>
+            {
+                if (p is not ObjectPropertyData op || op.Name.Value?.ToString() != "m_OverrideSkeletalMesh") return;
+                count++;
+                var target = ResolveImportTarget(post, op.Value);
+                if (!target.EndsWith(expectedSuffix, StringComparison.Ordinal))
+                    verifyFailed = true;
+            });
+        }
+        if (count != patch.Count || count == 0 || verifyFailed) return -1;
+        return count;
+    }
+
+    /// <summary>
+    /// Model-set (roster swap) pass: for each target family with a chosen source, stages that
+    /// family's Character BPs (Blueprints/AI/&lt;family&gt;/BP_AICharacter_*) and repoints each
+    /// BP's single mesh import at a roster entry - same hideout + gender preferred, same gender
+    /// otherwise, gender miss leaves the BP untouched. Round-robin counters are per bucket, so
+    /// every hideout/gender combination rotates over its share of the source roster exactly like
+    /// vanilla's own per-spawn variety. Returns the staged Blueprint rel-paths.
+    /// </summary>
+    public static List<string> ApplyModelRosterSwap(
+        string vanillaContentDir,
+        string stagedContentDir,
+        IReadOnlyDictionary<string, UnitProperties>? propsByVariant,
+        string? blueprintContentDir,
+        Func<string, string?>? resolveSource,
+        Action<string>? onLog = null)
+    {
+        var written = new List<string>();
+        if (propsByVariant == null || propsByVariant.Count == 0) return written;
+        if (string.IsNullOrEmpty(blueprintContentDir)) return written;
+
+        var swaps = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kvp in propsByVariant)
+        {
+            if (string.IsNullOrEmpty(kvp.Key)) continue;
+            var source = kvp.Value?.ModelSet;
+            if (string.IsNullOrEmpty(source)) continue;
+
+            var family = ModelCatalog.FamilyDirForVariant(kvp.Key);
+            if (string.IsNullOrEmpty(family)) continue;
+
+            if (swaps.TryGetValue(family!, out var existing))
+            {
+                if (!existing.Equals(source!, StringComparison.OrdinalIgnoreCase))
+                    onLog?.Invoke($"[ROSTER] Conflicting model sets for {family}: keeping {existing}, ignoring {source} (variant {kvp.Key})");
+                continue;
+            }
+            swaps[family!] = source!;
+        }
+        if (swaps.Count == 0) return written;
+
+        foreach (var swap in swaps)
+        {
+            string targetFamily = swap.Key;
+            string sourceKey = swap.Value;
+
+            var bpDir = ModelCatalog.AIFamilyDirForKey(targetFamily);
+            if (bpDir == null)
+            {
+                onLog?.Invoke($"[ROSTER] {targetFamily} has no per-spawn Character BPs - not a swap target (source {sourceKey} unaffected)");
+                continue;
+            }
+
+            var roster = ModelCatalog.BuildRoster(vanillaContentDir, sourceKey);
+            if (roster.Count == 0)
+            {
+                onLog?.Invoke($"[ROSTER] Source roster for {sourceKey} is empty - swap not written for {targetFamily}");
+                continue;
+            }
+
+            var bpRoot = Path.Combine(blueprintContentDir!, "Blueprints", "AI", bpDir!);
+            if (!Directory.Exists(bpRoot))
+            {
+                onLog?.Invoke($"[ROSTER] Extracted BP folder missing: Blueprints/AI/{bpDir} - swap not written for {targetFamily}");
+                continue;
+            }
+
+            string[] bpFiles;
+            try
+            {
+                bpFiles = Directory.GetFiles(bpRoot, "BP_AICharacter_*.uasset", SearchOption.AllDirectories)
+                    .OrderBy(p => p, StringComparer.OrdinalIgnoreCase).ToArray();
+            }
+            catch (Exception ex)
+            {
+                onLog?.Invoke($"[ROSTER] BP enumeration failed for {targetFamily}: {ex.Message}");
+                continue;
+            }
+
+            var counters = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            int ok = 0, inherited = 0, failed = 0, genderMiss = 0;
+
+            foreach (var bpFile in bpFiles)
+            {
+                var rel = bpFile.Substring(blueprintContentDir!.Length)
+                    .TrimStart('\\', '/').Replace('\\', '/');
+                if (rel.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
+                    rel = rel[..^".uasset".Length];
+
+                var gender = ModelCatalog.BPGender(rel);
+                int? hideout = ModelCatalog.HideoutOfPath(rel);
+
+                var target = ModelCatalog.AssignRosterMesh(roster, gender, hideout, counters);
+                if (target == null)
+                {
+                    genderMiss++;
+                    continue;
+                }
+
+                var src = resolveSource != null ? resolveSource(rel) : null;
+                if (src == null || !File.Exists(src))
+                {
+                    onLog?.Invoke($"[ROSTER] BP source missing: {rel}");
+                    failed++;
+                    continue;
+                }
+
+                var stagedUasset = Path.Combine(stagedContentDir,
+                    rel.Replace('/', Path.DirectorySeparatorChar) + ".uasset");
+                try
+                {
+                    var dir = Path.GetDirectoryName(stagedUasset);
+                    if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                    File.Copy(src, stagedUasset, true);
+                    var srcUexp = Path.ChangeExtension(src, ".uexp");
+                    if (File.Exists(srcUexp))
+                        File.Copy(srcUexp, Path.ChangeExtension(stagedUasset, ".uexp"), true);
+                }
+                catch (Exception ex)
+                {
+                    onLog?.Invoke($"[ROSTER] Stage failed for {rel}: {ex.Message}");
+                    failed++;
+                    continue;
+                }
+
+                int n = PatchCharacterBPMesh(stagedUasset, target.GamePath, target.Name);
+                if (n <= 0)
+                {
+                    try { File.Delete(stagedUasset); } catch { }
+                    try { var u = Path.ChangeExtension(stagedUasset, ".uexp"); if (File.Exists(u)) File.Delete(u); } catch { }
+                    if (n == 0)
+                    {
+                        inherited++;
+                    }
+                    else
+                    {
+                        failed++;
+                        onLog?.Invoke($"[ROSTER] Patch failed for {rel} (target {target.GamePath}) - staged copy removed");
+                    }
+                    continue;
+                }
+
+                written.Add(rel);
+                ok++;
+            }
+
+            onLog?.Invoke($"[ROSTER] {targetFamily} -> {sourceKey}: {ok}/{bpFiles.Length} BP(s) staged"
+                + (inherited > 0 ? $", {inherited} inherit their mesh (kept)" : "")
+                + (genderMiss > 0 ? $", {genderMiss} no same-gender mesh (kept)" : "")
+                + (failed > 0 ? $", {failed} failed" : ""));
+        }
+
+        return written;
+    }
+
+    /// <summary>
+    /// Repoints a Character BP's single mesh import (Package + object pair) at the chosen mesh.
+    /// Returns 1 on a verified write, 0 when the BP has no mesh import of its own (it inherits
+    /// from its parent), -1 on a verify/structure failure, -2 when the target package is already
+    /// imported by something else in this BP.
+    /// </summary>
+    private static int PatchCharacterBPMesh(string stagedUasset, string meshGamePath, string meshObjectName)
+    {
+        var asset = new UAsset(stagedUasset, EngineVersion.VER_UE4_26, null, CustomSerializationFlags.None);
+
+        int pkgIdx = -1;
+        string oldObjectName = "";
+        for (int i = 0; i < asset.Imports.Count; i++)
+        {
+            var imp = asset.Imports[i];
+            if (imp.ClassName.Value?.ToString() != "Package") continue;
+            var name = imp.ObjectName.Value?.ToString() ?? "";
+            if (!name.StartsWith("/Game/Characters/", StringComparison.OrdinalIgnoreCase)) continue;
+            var leaf = name[(name.LastIndexOf('/') + 1)..];
+            if (!leaf.StartsWith("SK_", StringComparison.Ordinal)) continue;
+            pkgIdx = i;
+            oldObjectName = leaf;
+            break;
+        }
+        if (pkgIdx < 0) return 0;
+
+        for (int i = 0; i < asset.Imports.Count; i++)
+        {
+            if (i == pkgIdx) continue;
+            var n = asset.Imports[i].ObjectName.Value?.ToString() ?? "";
+            if (n.Equals(meshGamePath, StringComparison.OrdinalIgnoreCase) ||
+                n.Equals(meshObjectName, StringComparison.OrdinalIgnoreCase))
+                return -2;
+        }
+
+        int objIdx = -1;
+        for (int i = 0; i < asset.Imports.Count; i++)
+        {
+            var imp = asset.Imports[i];
+            if (imp.OuterIndex.Index == -(pkgIdx + 1))
+            {
+                objIdx = i;
+                break;
+            }
+            if (objIdx < 0 && imp.ClassName.Value?.ToString() != "Package" &&
+                imp.ObjectName.Value?.ToString() == oldObjectName)
+                objIdx = i;
+        }
+        if (objIdx < 0) return -1;
+
+        asset.Imports[pkgIdx].ObjectName = FName.FromString(asset, meshGamePath);
+        asset.Imports[objIdx].ObjectName = FName.FromString(asset, meshObjectName);
+        asset.Write(stagedUasset);
+
+        var post = new UAsset(stagedUasset, EngineVersion.VER_UE4_26, null, CustomSerializationFlags.None);
+        if (post.Imports.Count <= pkgIdx || post.Imports.Count <= objIdx) return -1;
+        bool ok = post.Imports[pkgIdx].ObjectName.Value?.ToString() == meshGamePath
+            && post.Imports[objIdx].ObjectName.Value?.ToString() == meshObjectName;
+        return ok ? 1 : -1;
+    }
+
+    // The five name-table entries in BP_FightingPlayer that carry the player's default
+    // base mesh: the component-default import path/object plus the runtime path names the
+    // game picks for the male/female body. Renaming all five (instead of only the import)
+    // keeps every reference the pawn can follow pointing at the same chosen mesh.
+    private static readonly string[] PlayerBaseMeshNames =
+    {
+        "/Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01",
+        "/Game/Characters/MainChar/M/Meshes/SK_M_MainChar_01.SK_M_MainChar_01",
+        "SK_M_MainChar_01",
+        "/Game/Characters/MainChar/W/Meshes/SK_W_MainChar_01",
+        "/Game/Characters/MainChar/W/Meshes/SK_W_MainChar_01.SK_W_MainChar_01",
+    };
+
+    /// <summary>
+    /// MainChar model picks target the player pawn itself (BP_FightingPlayer), which no
+    /// archetype scenario file reaches. The pawn holds its default base-mesh links as
+    /// name-table entries only, so the patch renames those entries in place to the chosen
+    /// mesh (target paths that already exist in the table - the outfit list - are fine;
+    /// load-time FName interning collapses the duplicates). Returns the staged rel list,
+    /// empty on skip/failure.
+    /// </summary>
+    public static List<string> ApplyPlayerModelOverride(
+        string stagedContentDir,
+        IReadOnlyDictionary<string, UnitProperties>? propsByVariant,
+        Func<string, string?>? resolveSource,
+        Action<string>? onLog = null)
+    {
+        var written = new List<string>();
+        if (propsByVariant == null || propsByVariant.Count == 0) return written;
+
+        string? pick = null, pickKey = null;
+        foreach (var kvp in propsByVariant)
+        {
+            if (string.IsNullOrEmpty(kvp.Key)) continue;
+            if (!kvp.Key.StartsWith("MainChar", StringComparison.OrdinalIgnoreCase)) continue;
+            var model = kvp.Value?.ModelOverride;
+            if (string.IsNullOrEmpty(model)) continue;
+            if (pick == null)
+            {
+                pick = model;
+                pickKey = kvp.Key;
+            }
+            else if (!pick.Equals(model!, StringComparison.OrdinalIgnoreCase))
+            {
+                onLog?.Invoke($"[PLAYER] Conflicting model picks ({pickKey} -> {pick}, {kvp.Key} -> {model}) - keeping {pickKey}");
+            }
+        }
+        if (string.IsNullOrEmpty(pick)) return written;
+
+        const string rel = "Blueprints/BP_FightingPlayer";
+        // Either vanilla base path means "keep the default" - renaming would repoint the
+        // other gender's entries at this one instead of leaving them alone.
+        if (pick!.Equals(PlayerBaseMeshNames[0], StringComparison.OrdinalIgnoreCase)
+            || pick.Equals(PlayerBaseMeshNames[3], StringComparison.OrdinalIgnoreCase))
+        {
+            onLog?.Invoke($"[PLAYER] Pick equals the vanilla base mesh ({pick}) - nothing to write");
+            return written;
+        }
+
+        var src = resolveSource != null ? resolveSource(rel) : null;
+        if (src == null || !File.Exists(src))
+        {
+            onLog?.Invoke("[PLAYER] BP_FightingPlayer source missing - model pick not staged");
+            return written;
+        }
+
+        var meshObjectName = pick![(pick!.LastIndexOf('/') + 1)..];
+        var stagedUasset = Path.Combine(stagedContentDir,
+            rel.Replace('/', Path.DirectorySeparatorChar) + ".uasset");
+        try
+        {
+            var dir = Path.GetDirectoryName(stagedUasset);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            File.Copy(src, stagedUasset, true);
+            var srcUexp = Path.ChangeExtension(src, ".uexp");
+            if (File.Exists(srcUexp))
+                File.Copy(srcUexp, Path.ChangeExtension(stagedUasset, ".uexp"), true);
+        }
+        catch (Exception ex)
+        {
+            onLog?.Invoke($"[PLAYER] Stage failed for {rel}: {ex.Message}");
+            return written;
+        }
+
+        int n;
+        try
+        {
+            n = PatchPlayerPawnMesh(stagedUasset, pick!, meshObjectName);
+        }
+        catch (Exception ex)
+        {
+            onLog?.Invoke($"[PLAYER] Patch failed for {rel} (target {pick}): {ex.Message}");
+            n = -1;
+        }
+        if (n != 1)
+        {
+            try { File.Delete(stagedUasset); } catch { }
+            try { var u = Path.ChangeExtension(stagedUasset, ".uexp"); if (File.Exists(u)) File.Delete(u); } catch { }
+            if (n == 0)
+                onLog?.Invoke($"[PLAYER] Pick equals the vanilla base mesh ({pick}) - nothing to write");
+            else if (n == -2)
+                onLog?.Invoke($"[PLAYER] {rel} does not carry the vanilla base-mesh name entries - model pick not staged");
+            else
+                onLog?.Invoke($"[PLAYER] Patch failed for {rel} (target {pick}) - staged copy removed");
+            return written;
+        }
+
+        written.Add(rel);
+        onLog?.Invoke($"[PLAYER] {rel} -> {pick}: default base mesh repointed (M/W paths + bare name)");
+        return written;
+    }
+
+    /// <summary>
+    /// Renames BP_FightingPlayer's five vanilla base-mesh name-table entries to the chosen
+    /// mesh. Returns 1 on a verified write, 0 when the pick already is the vanilla base mesh
+    /// (nothing to change), -1 on a patch/verify failure, -2 when the pawn lacks those
+    /// entries (not the expected file).
+    /// </summary>
+    private static int PatchPlayerPawnMesh(string stagedUasset, string meshGamePath, string meshObjectName)
+    {
+        string newPathObj = meshGamePath + "." + meshObjectName;
+        var renames = new (string Old, string New)[]
+        {
+            (PlayerBaseMeshNames[0], meshGamePath),
+            (PlayerBaseMeshNames[1], newPathObj),
+            (PlayerBaseMeshNames[2], meshObjectName),
+            (PlayerBaseMeshNames[3], meshGamePath),
+            (PlayerBaseMeshNames[4], newPathObj),
+        };
+
+        var asset = new UAsset(stagedUasset, EngineVersion.VER_UE4_26, null, CustomSerializationFlags.None);
+        var idxs = new int[renames.Length];
+        bool anyChange = false;
+        for (int k = 0; k < renames.Length; k++)
+        {
+            idxs[k] = asset.ContainsNameReference((FString)renames[k].Old)
+                ? asset.SearchNameReference((FString)renames[k].Old) : -1;
+            if (idxs[k] < 0) return -2;
+            if (renames[k].Old != renames[k].New) anyChange = true;
+        }
+        if (!anyChange) return 0;
+
+        for (int k = 0; k < renames.Length; k++)
+            if (renames[k].Old != renames[k].New)
+                asset.SetNameReference(idxs[k], new FString(renames[k].New));
+        asset.Write(stagedUasset);
+
+        var post = new UAsset(stagedUasset, EngineVersion.VER_UE4_26, null, CustomSerializationFlags.None);
+        var postNames = post.GetNameMapIndexList();
+        for (int k = 0; k < renames.Length; k++)
+        {
+            if (renames[k].Old == renames[k].New) continue;
+            if (idxs[k] < 0 || idxs[k] >= postNames.Count) return -1;
+            if (post.GetNameReference(idxs[k]).ToString() != renames[k].New) return -1;
+        }
+        return 1;
+    }
+
+    private static void WalkProps(IEnumerable<PropertyData> props, Action<PropertyData> onProp)
+    {
+        foreach (var p in props)
+        {
+            if (p == null) continue;
+            onProp(p);
+            if (p is StructPropertyData sp && sp.Value != null)
+                WalkProps(sp.Value, onProp);
+            else if (p is ArrayPropertyData ap && ap.Value != null)
+            {
+                foreach (var e in ap.Value)
+                {
+                    if (e == null) continue;
+                    onProp(e);
+                    if (e is StructPropertyData esp && esp.Value != null)
+                        WalkProps(esp.Value, onProp);
+                }
+            }
+        }
+    }
+
+    private static string ResolveImportTarget(UAsset asset, FPackageIndex? idx)
+    {
+        if (idx == null || idx.Index >= 0) return idx == null ? "<null>" : $"<export {idx.Index}>";
+        int i = -(idx.Index + 1);
+        if (i < 0 || i >= asset.Imports.Count) return $"<out-of-range {idx.Index}>";
+        var imp = asset.Imports[i];
+        int o = imp.OuterIndex.Index;
+        var outer = o < 0 && -(o + 1) < asset.Imports.Count
+            ? asset.Imports[-(o + 1)].ObjectName.Value?.ToString()
+            : (o == 0 ? "" : $"<{o}>");
+        return $"{imp.ClassName.Value} {imp.ObjectName.Value} (outer={outer})";
     }
 
     private static int InsertFocusAnchor(NormalExport ne)
@@ -887,12 +1801,20 @@ public static class UnitPropertiesManager
         if (source.HitsCount.HasValue) target.HitsCount = source.HitsCount;
         if (source.MemoryFlushLimit.HasValue) target.MemoryFlushLimit = source.MemoryFlushLimit;
         if (source.ImmuneToFocus.HasValue) target.ImmuneToFocus = source.ImmuneToFocus;
+        target.ModelOverride = source.ModelOverride;
+        target.ModelSet = source.ModelSet;
+        target.PhaseSwap = source.PhaseSwap;
+        target.PhaseSwapTarget = source.PhaseSwapTarget;
     }
 
     public static bool HasAnyValue(UnitProperties props) =>
         props.Health.HasValue || props.Structure.HasValue || props.MemoryLimit.HasValue
         || props.HitsCount.HasValue || props.MemoryFlushLimit.HasValue
-        || props.ImmuneToFocus.HasValue;
+        || props.ImmuneToFocus.HasValue
+        || !string.IsNullOrEmpty(props.ModelOverride)
+        || !string.IsNullOrEmpty(props.ModelSet)
+        || props.PhaseSwap.HasValue
+        || !string.IsNullOrEmpty(props.PhaseSwapTarget);
 
     public static void Write(string contentPath, string variantTag, UnitProperties props)
     {

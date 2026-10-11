@@ -12,6 +12,9 @@ public class SavedEdge
     public int FromNodeId { get; set; }
     public int ToNodeId { get; set; }
     public string InputName { get; set; } = "";
+    // -1 for user-created links; otherwise the redirect node whose re-sourced rows
+    // this edge belongs to (A' pass-through). Absent in old saves (deserializes -1).
+    public int OwnerRedirectNodeId { get; set; } = -1;
 }
 
 public class SavedPosition
@@ -39,6 +42,30 @@ public class SavedUnitCache
     public List<SavedCustomNode> CustomNodes { get; set; } = new();
     public Dictionary<string, int> RedirectMods { get; set; } = new();
     public UnitProperties? Props { get; set; }
+    public List<StartEntry>? StartEntries { get; set; }
+    // Branch chances: vanilla m_Transitions rows per struct tree index + user overrides
+    // (struct tree index -> row index -> value). Null on old saves -> dialog falls back
+    // to new-link rows only, export still reads probabilities from the asset itself.
+    public Dictionary<int, List<TreeRowInfo>>? TreeRows { get; set; }
+    // Source combo game path for TreeRows backfill; null on old saves.
+    public string? SourceGamePath { get; set; }
+    public Dictionary<int, Dictionary<int, float>>? TreeRowProbabilityOverrides { get; set; }
+    // Node-level condition data (required tags + conditional attacks); null on old saves.
+    public Dictionary<int, TreeNodeConditionInfo>? TreeNodeConditions { get; set; }
+    // Condition editing: param overrides keyed by condition export index -> (path ->
+    // value), and row-level clear/re-route edits (struct idx -> row idx -> edit).
+    // Null on old saves.
+    public Dictionary<int, Dictionary<string, string>>? TreeConditionParamOverrides { get; set; }
+    public Dictionary<int, Dictionary<int, TreeRowConditionEdit>>? TreeRowConditionOverrides { get; set; }
+    // Condition edits on rows that only exist after export (new-link rows), keyed by
+    // ComboGraph.EdgeConditionKey. Null on old saves.
+    public Dictionary<string, TreeRowConditionEdit>? TreeEdgeConditionOverrides { get; set; }
+    // Stripped conduit routing (raw file index -> downstream indices); display
+    // annotation only. Null on old saves.
+    public Dictionary<int, List<int>>? ConduitTargets { get; set; }
+    // Marker written only by builds that persist ComboEdge.OwnerRedirectNodeId /
+    // ComboNode.OwnedContinuation; old saves deserialize null -> needs backfill.
+    public bool? EdgeOwnersPersisted { get; set; }
 }
 
 public class UnitCacheEntry
@@ -48,6 +75,7 @@ public class UnitCacheEntry
     public string? ActiveVariant { get; set; }
     public string? ActiveWeapon { get; set; }
     public UnitProperties? Props { get; set; }
+    public bool NeedsEdgeOwnerBackfill { get; set; }
 }
 
 public class EditorProject
@@ -61,7 +89,10 @@ public class EditorProject
     public Dictionary<string, SavedPosition> NodePositions { get; set; } = new();
     public List<SavedCustomNode> CustomNodes { get; set; } = new();
     public Dictionary<string, int> RedirectMods { get; set; } = new();
+    public List<int> RemovedNodes { get; set; } = new();
     public Dictionary<string, SavedUnitCache>? UnitCaches { get; set; }
+    // Present only while the project is a custom moveset; old saves deserialize null.
+    public CustomMovesetInfo? CustomMoveset { get; set; }
 }
 
 public static class ProjectManager
@@ -82,7 +113,8 @@ public static class ProjectManager
         {
             FromNodeId = e.FromNodeId,
             ToNodeId = e.ToNodeId,
-            InputName = e.InputName
+            InputName = e.InputName,
+            OwnerRedirectNodeId = e.OwnerRedirectNodeId
         }).ToList();
 
         project.NodePositions = new Dictionary<string, SavedPosition>();
@@ -106,6 +138,8 @@ public static class ProjectManager
             .Where(n => n.IsRedirect && graph.RedirectOriginalTargets.TryGetValue(n.Id, out var orig) && n.ResolvedRedirectNodeId >= 0 && n.ResolvedRedirectNodeId != orig)
             .ToDictionary(n => n.Id.ToString(), n => n.ResolvedRedirectNodeId);
 
+        project.RemovedNodes = graph.Nodes.Where(n => n.Removed).Select(n => n.Id).ToList();
+
         string json = JsonConvert.SerializeObject(project, Formatting.Indented);
         File.WriteAllText(filePath, json);
     }
@@ -116,6 +150,7 @@ public static class ProjectManager
         project.ActiveVariant = activeVariant;
         project.ActiveWeapon = activeWeapon;
         project.UnitCaches = new Dictionary<string, SavedUnitCache>();
+        project.RemovedNodes = new List<int>();
 
         foreach (var kvp in caches)
         {
@@ -131,13 +166,23 @@ public static class ProjectManager
                 ActiveVariant = kvp.Value.ActiveVariant,
                 ActiveWeapon = kvp.Value.ActiveWeapon,
                 Props = kvp.Value.Props,
+                StartEntries = graph.StartEntries,
+                TreeRows = graph.TreeRows,
+                SourceGamePath = graph.SourceGamePath,
+                TreeRowProbabilityOverrides = graph.TreeRowProbabilityOverrides,
+                TreeNodeConditions = graph.TreeNodeConditions,
+                TreeConditionParamOverrides = graph.TreeConditionParamOverrides,
+                TreeRowConditionOverrides = graph.TreeRowConditionOverrides,
+                TreeEdgeConditionOverrides = graph.TreeEdgeConditionOverrides,
+                ConduitTargets = graph.ConduitTargets,
                 CustomNodes = graph.Nodes
                     .Where(n => n.TreeIndex == -1 && !n.IsRoot)
                     .Select(n => new SavedCustomNode { Id = n.Id, DisplayName = n.DisplayName, AnimPath = n.AnimPath })
                     .ToList(),
                 RedirectMods = graph.Nodes
                     .Where(n => n.IsRedirect && graph.RedirectOriginalTargets.TryGetValue(n.Id, out var orig) && n.ResolvedRedirectNodeId >= 0 && n.ResolvedRedirectNodeId != orig)
-                    .ToDictionary(n => n.Id.ToString(), n => n.ResolvedRedirectNodeId)
+                    .ToDictionary(n => n.Id.ToString(), n => n.ResolvedRedirectNodeId),
+                EdgeOwnersPersisted = true
             };
 
             if (pos != null)
@@ -164,7 +209,8 @@ public static class ProjectManager
         {
             FromNodeId = se.FromNodeId,
             ToNodeId = se.ToNodeId,
-            InputName = se.InputName
+            InputName = se.InputName,
+            OwnerRedirectNodeId = se.OwnerRedirectNodeId
         }).ToList();
 
         var positions = new Dictionary<int, Point>();
@@ -191,7 +237,16 @@ public static class ProjectManager
                 WeaponName = saved.WeaponName,
                 Nodes = saved.Nodes,
                 Edges = saved.Edges,
-                RedirectOriginalTargets = saved.RedirectOriginalTargets
+                RedirectOriginalTargets = saved.RedirectOriginalTargets,
+                StartEntries = saved.StartEntries ?? new List<StartEntry>(),
+                TreeRows = saved.TreeRows ?? new Dictionary<int, List<TreeRowInfo>>(),
+                SourceGamePath = saved.SourceGamePath ?? "",
+                TreeRowProbabilityOverrides = saved.TreeRowProbabilityOverrides ?? new Dictionary<int, Dictionary<int, float>>(),
+                TreeNodeConditions = saved.TreeNodeConditions ?? new Dictionary<int, TreeNodeConditionInfo>(),
+                TreeConditionParamOverrides = saved.TreeConditionParamOverrides ?? new Dictionary<int, Dictionary<string, string>>(),
+                TreeRowConditionOverrides = saved.TreeRowConditionOverrides ?? new Dictionary<int, Dictionary<int, TreeRowConditionEdit>>(),
+                TreeEdgeConditionOverrides = saved.TreeEdgeConditionOverrides ?? new Dictionary<string, TreeRowConditionEdit>(),
+                ConduitTargets = saved.ConduitTargets ?? new Dictionary<int, List<int>>()
             };
 
             var positions = new Dictionary<int, Point>();
@@ -202,7 +257,8 @@ public static class ProjectManager
                         positions[nodeId] = new Point(p.Value.X, p.Value.Y);
             }
 
-            SanitizeMainCharCache(kvp.Key, graph, positions, saved);
+            SanitizeMainCharCache(kvp.Key, graph, positions, saved.ActiveWeapon);
+            graph.RehydrateStartEntryKeyModels();
 
             result[kvp.Key] = new UnitCacheEntry
             {
@@ -210,20 +266,24 @@ public static class ProjectManager
                 Positions = positions,
                 ActiveVariant = saved.ActiveVariant,
                 ActiveWeapon = saved.ActiveWeapon,
-                Props = saved.Props
+                Props = saved.Props,
+                NeedsEdgeOwnerBackfill = saved.EdgeOwnersPersisted != true
             };
         }
         return result;
     }
 
-    private static void SanitizeMainCharCache(string unitKey, ComboGraph graph, Dictionary<int, Point> positions, SavedUnitCache saved)
+    // Internal: ProjectMigrator re-applies this to a freshly parsed graph after a
+    // legacy-schema migration (the fresh parse re-introduces stance nodes the saved
+    // cache had already been sanitized of).
+    internal static void SanitizeMainCharCache(string unitKey, ComboGraph graph, Dictionary<int, Point> positions, string? activeWeapon)
     {
         var arch = unitKey.Contains('|') ? unitKey.Split('|')[0] : unitKey;
         if (!string.Equals(arch, "MainChar", StringComparison.OrdinalIgnoreCase))
             return;
 
-        var weaponTag = !string.IsNullOrEmpty(saved.ActiveWeapon)
-            ? saved.ActiveWeapon
+        var weaponTag = !string.IsNullOrEmpty(activeWeapon)
+            ? activeWeapon
             : (unitKey.Contains('|') ? unitKey.Split('|').Last() : null);
 
         bool isBarehands = string.IsNullOrEmpty(weaponTag)

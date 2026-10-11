@@ -141,25 +141,31 @@ public static class CustomAssets
     }
 
     /// <summary>Deletes the given manifest entries' files and trims emptied folders.
-    /// Returns how many files were removed.</summary>
-    public static int DeleteEntries(IEnumerable<string> manifestEntries)
+    /// Returns how many files were removed. <paramref name="onProgress"/>, when given,
+    /// receives (done, total) after every entry - invoked on the calling thread.</summary>
+    public static int DeleteEntries(IEnumerable<string> manifestEntries, Action<int, int>? onProgress = null)
     {
+        var entries = manifestEntries as IReadOnlyList<string> ?? manifestEntries.ToList();
+        int total = entries.Count;
         int removed = 0;
-        foreach (var entry in manifestEntries)
+        for (int i = 0; i < total; i++)
         {
             try
             {
-                var rel = RelOf(entry);
+                var rel = RelOf(entries[i]);
                 var path = Path.Combine(Root, rel.Replace('/', Path.DirectorySeparatorChar));
-                if (!File.Exists(path)) continue;
-                File.Delete(path);
-                removed++;
-                TrimEmptyDirs(Path.GetDirectoryName(path));
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                    removed++;
+                    TrimEmptyDirs(Path.GetDirectoryName(path));
+                }
             }
             catch (Exception ex)
             {
                 ErrorLog.Write("CUSTOM", ex);
             }
+            onProgress?.Invoke(i + 1, total);
         }
         return removed;
     }

@@ -21,6 +21,14 @@ public partial class SetupWizard : Window
     public string? RepairReason { get; set; }
     public string? PreviousContentPath { get; set; }
 
+    /// <summary>
+    /// True only for the launch-time first-run gate: closing without finishing quits
+    /// the app. In-app opens (Settings → Open Setup, post-reset, startup repair) leave
+    /// this false so Cancel/X just closes the wizard and the caller's graceful
+    /// "stay in app" fallback runs.
+    /// </summary>
+    public bool QuitOnCancel { get; set; }
+
     private string? _lastBrowsePath;
     private bool _launched;
 
@@ -36,7 +44,7 @@ public partial class SetupWizard : Window
 
     private void SetupWizard_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        if (_launched) return;
+        if (!QuitOnCancel || _launched) return;
         Application.Current.Shutdown();
     }
 

@@ -41,13 +41,120 @@ public static class ProjectChangeSummary
         => graph != null && graph.Nodes.Any(HasAttackDbTuning);
 
     /// <summary>
+    /// True when any start entry (m_ComboStartNodesContainer) row was added, removed,
+    /// retargeted or reweighted in the editor. Diffed against the parse-time Original* snapshot.
+    /// </summary>
+    public static bool GraphHasStartEntryChanges(ComboGraph? graph)
+        => graph?.StartEntries != null
+           && graph.StartEntries.Any(e => e.Removed || e.Transitions.Any(t => t.IsModified()));
+
+    /// <summary>
+    /// One row per edited start transition: added/removed rows plus vanilla -> edited
+    /// pairs for probability and target changes.
+    /// </summary>
+    public static List<object> BuildStartEntryRows(ComboGraph? graph)
+    {
+        var rows = new List<object>();
+        if (graph?.StartEntries == null) return rows;
+
+        foreach (var entry in graph.StartEntries)
+        {
+            if (entry.Removed)
+            {
+                rows.Add(MakeValueRow($"start entry '{entry.Label}': removed",
+                    TicketShort(entry.TicketEnumValue), "removed",
+                    "The entry is dropped from m_ComboStartNodesContainer on export."));
+                continue;
+            }
+            if (entry.VanillaIndex < 0)
+            {
+                rows.Add(MakeValueRow($"start entry '{entry.Label}': added",
+                    "new", TicketShort(entry.TicketEnumValue),
+                    "New entry appended to m_ComboStartNodesContainer on export."));
+                continue;
+            }
+            for (int i = 0; i < entry.Transitions.Count; i++)
+            {
+                var t = entry.Transitions[i];
+                if (!t.IsModified()) continue;
+                string num = t.OriginalIndex >= 0 ? $"#{t.OriginalIndex + 1}" : "#new";
+                string title = string.IsNullOrEmpty(entry.Label) ? $"start {num}" : $"{entry.Label} {num}";
+
+                if (t.OriginalIndex < 0 && !t.Removed)
+                {
+                    rows.Add(MakeValueRow($"{title}: new transition",
+                        "added", $"→ {StartTargetName(graph, t, false)} ({t.Probability:0.###}%)"));
+                    continue;
+                }
+                if (t.Removed)
+                {
+                    rows.Add(MakeValueRow($"{title}: transition removed",
+                        $"→ {StartTargetName(graph, t, true)} ({t.OriginalProbability:0.###}%)", "removed"));
+                    continue;
+                }
+                if (Math.Abs(t.Probability - t.OriginalProbability) > 0.001f)
+                {
+                    rows.Add(MakeValueRow($"{title}: probability",
+                        $"{t.OriginalProbability:0.###}%", $"{t.Probability:0.###}%",
+                        $"{entry.Label}: transition {num} probability"));
+                }
+                if (t.KeyCount > 1
+                    && t.Keys.Count == t.KeyCount
+                    && t.KeyTargetTreeIndices.Count == t.KeyCount
+                    && t.OriginalKeyTargetTreeIndices.Count == t.KeyCount)
+                {
+                    // Multi-key conditional row: one change line per re-routed key (the
+                    // primary Target* fields only mirror the first key's target).
+                    for (int ki = 0; ki < t.KeyCount; ki++)
+                    {
+                        int was = t.OriginalKeyTargetTreeIndices[ki];
+                        int now = t.KeyTargetTreeIndices[ki];
+                        if (was == now) continue;
+                        string nm = t.KeyTargetNames[ki];
+                        rows.Add(MakeValueRow($"{title}: start target (key {t.Keys[ki]})",
+                            $"tree[{was}]", $"tree[{now}]" + (string.IsNullOrEmpty(nm) ? "" : $" {nm}"),
+                            $"{entry.Label}: transition {num} key {t.Keys[ki]} retargeted"));
+                    }
+                }
+                else if (t.TargetNodeId != t.OriginalTargetNodeId)
+                {
+                    rows.Add(MakeValueRow($"{title}: start target",
+                        StartTargetName(graph, t, true),
+                        StartTargetName(graph, t, false),
+                        $"{entry.Label}: transition {num} retargeted"));
+                }
+            }
+        }
+        return rows;
+    }
+
+    private static string TicketShort(string ticketEnumValue)
+        => string.IsNullOrEmpty(ticketEnumValue) ? "?"
+            : ticketEnumValue.Contains("::") ? ticketEnumValue.Split("::")[^1] : ticketEnumValue;
+
+    private static string StartTargetName(ComboGraph graph, StartTransition t, bool original)
+    {
+        int id = original ? t.OriginalTargetNodeId : t.TargetNodeId;
+        int tree = original ? t.OriginalTargetTreeIndex : t.TargetTreeIndex;
+        string nm = original ? t.OriginalTargetName : t.TargetName;
+        if (id >= 0)
+        {
+            var n = graph.Nodes.FirstOrDefault(x => x.Id == id);
+            if (n != null) return NodeLabel(n, id);
+        }
+        if (tree >= 0) return string.IsNullOrEmpty(nm) ? $"tree[{tree}]" : $"tree[{tree}] {nm}";
+        return string.IsNullOrEmpty(nm) ? "?" : nm;
+    }
+
+    /// <summary>
     /// Shared change detector used by the export gates and both change lists.
     /// Authored content (new attack/redirect nodes) always counts - those nodes may
     /// carry an empty AnimPath, so they are checked before the vanilla rules.
     /// </summary>
     public static bool IsModifiedNode(ComboNode? n)
-        => n != null && !n.IsRoot && (
-            n.Kind == ComboNodeKind.UserCreated
+        => n != null && !n.IsRoot && (n.Removed
+            || n.Kind == ComboNodeKind.UserCreated
+            || n.ReplacedByAiNode
             || (!string.IsNullOrEmpty(n.AnimPath)
                 && (n.TreeIndex == -1 || n.AnimPath != n.DefaultAnimPath
                     || (!string.IsNullOrEmpty(n.VanillaAnimPath) && n.AnimPath != n.VanillaAnimPath)
@@ -57,8 +164,11 @@ public static class ProjectChangeSummary
     /// <summary>
     /// One row per tuned field, showing the vanilla value it was changed from.
     /// Rows whose override already equals vanilla are dropped so a type-in of the
-    /// current value never shows up as a change. Baseline is the card the node
-    /// actually points at (swapped source counts), not its original default.
+    /// current value never shows up as a change - "equals" is display equality at
+    /// the UI's "0.###" precision (the textbox round-trip loses vanilla's 4th decimal,
+    /// and both sides of a row render at 3 decimals anyway). Baseline is the card the
+    /// node actually points at (swapped source counts), not its original default; the
+    /// CustomAssets copy is the fallback for custom cards, mirroring the panel/commit.
     /// </summary>
     public static List<object> BuildAttackDbRows(IEnumerable<ComboNode>? nodes, string contentPath)
     {
@@ -70,7 +180,10 @@ public static class ProjectChangeSummary
             .OrderBy(n => n.TreeIndex)
             .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase))
         {
-            var vanilla = AttackDbCard.ReadDbPath(contentDir, AttackDbCard.EffectiveCardPath(n));
+            string cardPath = AttackDbCard.EffectiveCardPath(n);
+            var vanilla = AttackDbCard.ReadDbPath(contentDir, cardPath);
+            if (vanilla == null || !vanilla.Any)
+                vanilla = AttackDbCard.ReadDbPath(CustomAssets.Root, cardPath);
             string name = string.IsNullOrEmpty(n.DisplayName) ? n.Name : n.DisplayName;
 
             if (n.AttackBuildupFrames.HasValue
@@ -82,11 +195,11 @@ public static class ProjectChangeSummary
             }
             if (n.AttackGameplayRange.HasValue
                 && (vanilla == null || !vanilla.HasRange
-                    || Math.Abs(vanilla.Range - n.AttackGameplayRange.Value) > 0.0001f))
+                    || !AttackDbCard.SameRange(vanilla.Range, n.AttackGameplayRange.Value)))
             {
                 rows.Add(MakeValueRow($"{name} gameplay range",
-                    vanilla != null && vanilla.HasRange ? vanilla.Range.ToString("0.###") : "?",
-                    n.AttackGameplayRange.Value.ToString("0.###")));
+                    vanilla != null && vanilla.HasRange ? AttackDbCard.FormatRange(vanilla.Range) : "?",
+                    AttackDbCard.FormatRange(n.AttackGameplayRange.Value)));
             }
         }
         return rows;
@@ -119,14 +232,18 @@ public static class ProjectChangeSummary
                 .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
             var newNodes = modified.Where(n => n.Kind == ComboNodeKind.UserCreated).ToList();
-            var moveNodes = modified.Where(n => n.Kind != ComboNodeKind.UserCreated).ToList();
+            var moveNodes = modified.Where(n => n.Kind != ComboNodeKind.UserCreated && !n.ReplacedByAiNode).ToList();
             var linkRows = BuildLinkRows(graph);
             var importedNodes = BuildImportedNodeRows(graph);
             var importedLinkRows = BuildImportedLinkRows(graph);
 
             var retargetRows = BuildRetargetRows(graph);
+            var aiReplaceRows = BuildAiReplaceRows(graph);
             var attackRows = BuildAttackDbRows(graph.Nodes, contentPath);
             if (attackRows.Count > 0) attackByUnit.Add((unitKey, attackRows));
+            var startEntryRows = BuildStartEntryRows(graph);
+            var chanceRows = BuildBranchChanceRows(graph);
+            var condRows = BuildConditionOverrideRows(graph);
 
             var keyParts = unitKey.Split('|');
             string variant = keyParts.Length > 1 ? keyParts[1] : unitKey;
@@ -137,7 +254,8 @@ public static class ProjectChangeSummary
                 propRows.Clear();
 
             if (modified.Count == 0 && retargetRows.Count == 0 && propRows.Count == 0
-                && linkRows.Count == 0 && importedNodes.Count == 0 && importedLinkRows.Count == 0)
+                && linkRows.Count == 0 && importedNodes.Count == 0 && importedLinkRows.Count == 0
+                && startEntryRows.Count == 0 && chanceRows.Count == 0 && condRows.Count == 0)
                 continue;
 
             var unit = new UnitReview
@@ -172,6 +290,18 @@ public static class ProjectChangeSummary
 
             if (retargetRows.Count > 0)
                 unit.Sections.Add(new UnitSectionReview { Name = "Retargets", Rows = retargetRows });
+
+            if (aiReplaceRows.Count > 0)
+                unit.Sections.Add(new UnitSectionReview { Name = "AI Replaces", Rows = aiReplaceRows });
+
+            if (startEntryRows.Count > 0)
+                unit.Sections.Add(new UnitSectionReview { Name = "Start Entries", Rows = startEntryRows });
+
+            if (chanceRows.Count > 0)
+                unit.Sections.Add(new UnitSectionReview { Name = "Branch chances", Rows = chanceRows });
+
+            if (condRows.Count > 0)
+                unit.Sections.Add(new UnitSectionReview { Name = "Conditions", Rows = condRows });
 
             if (propRows.Count > 0)
                 unit.Sections.Add(new UnitSectionReview { Name = "Unit Props", Rows = propRows });
@@ -269,6 +399,18 @@ public static class ProjectChangeSummary
         string newPath = n.AnimPath;
         bool renamed = !string.Equals(oldName, newName, StringComparison.Ordinal);
 
+        if (n.Removed)
+        {
+            return new ChangeRow
+            {
+                Title = $"{oldName} (removed)",
+                ShowDetail = false,
+                ToolTip = string.IsNullOrEmpty(oldPath)
+                    ? $"{oldName} removed from tree"
+                    : $"{oldName} removed from tree (was {oldPath})"
+            };
+        }
+
         if (renamed)
         {
             return new ChangeRow
@@ -299,6 +441,15 @@ public static class ProjectChangeSummary
         string right = n.IsRedirect ? "redirect"
             : string.IsNullOrEmpty(n.AnimPath) ? "node"
             : n.AnimPath;
+        // Action/event nodes read as bare "node" without their kind + class/event name,
+        // and cloned nodes carry provenance the anim path alone does not show.
+        if (n.IsActionNode)
+            right += $" [action{(string.IsNullOrEmpty(n.ActionClass) ? "" : " " + n.ActionClass)}]";
+        else if (n.IsEventNode)
+            right += $" [event{(string.IsNullOrEmpty(n.EventName) ? "" : " " + n.EventName)}]";
+        string source = string.IsNullOrEmpty(n.ImportComboRel)
+            ? ""
+            : $"; cloned from {n.ImportComboRel} node {n.ImportSourceTreeIndex}";
         return new ChangeRow
         {
             Title = name,
@@ -308,8 +459,8 @@ public static class ProjectChangeSummary
             ToolTip = n.IsRedirect
                 ? $"{name} (new redirect node)"
                 : string.IsNullOrEmpty(n.AnimPath)
-                    ? $"{name} (new node)"
-                    : $"{name} (new node) → {n.AnimPath}"
+                    ? $"{name} (new node){source}"
+                    : $"{name} (new node) → {n.AnimPath}{source}"
         };
     }
 
@@ -341,7 +492,10 @@ public static class ProjectChangeSummary
         if (graph?.Edges == null || graph.Nodes == null) return rows;
 
         foreach (var e in graph.Edges.Where(ed => ed.IsNewLink))
-            rows.Add(MakeLinkRow(graph, e, "new link"));
+            rows.Add(MakeLinkRow(graph, e, e.MergedIntoStruct >= 0
+                ? $"merged into tree[{e.MergedIntoStruct}] row {e.MergedIntoRow + 1} "
+                  + $"key {e.MergedIntoKey} (no separate chance row)"
+                : "new link"));
         return rows;
     }
 
@@ -379,6 +533,39 @@ public static class ProjectChangeSummary
             && (TouchesImported(ed.FromNodeId) || TouchesImported(ed.ToNodeId))))
             rows.Add(MakeLinkRow(graph, e, "imported link"));
         return rows;
+    }
+
+    /// <summary>
+    /// Nodes whose payload export replaces at write time (ReplacedByAiNode): the model
+    /// keeps anim/class fields untouched, so these satisfy IsModifiedNode on their own
+    /// and are listed under their own section rather than as moves.
+    /// </summary>
+    public static List<object> BuildAiReplaceRows(ComboGraph? graph)
+    {
+        var rows = new List<object>();
+        if (graph?.Nodes == null) return rows;
+
+        foreach (var n in graph.Nodes
+            .Where(n => n.ReplacedByAiNode && !n.Removed)
+            .OrderBy(n => n.TreeIndex)
+            .ThenBy(n => n.DisplayName, StringComparer.OrdinalIgnoreCase))
+            rows.Add(ToAiReplaceRow(n));
+        return rows;
+    }
+
+    public static object ToAiReplaceRow(ComboNode n)
+    {
+        string name = string.IsNullOrEmpty(n.DisplayName)
+            ? (string.IsNullOrEmpty(n.Name) ? $"Node {n.Id}" : n.Name)
+            : n.DisplayName;
+        string orig = n.IsActionNode ? $"action {n.ActionClass}"
+            : n.IsEventNode ? $"event {n.EventName}"
+            : "attack";
+        string next = n.ReplacedAiKind == "Attack"
+            ? $"attack card {n.ReplacedAiClass}"
+            : $"{n.ReplacedAiKind.ToLowerInvariant()} {n.ReplacedAiClass}";
+        return MakeValueRow($"AI replace: {name}", orig, next,
+            $"{name}: payload {orig} -> {next} (applied on export)");
     }
 
     private static object MakeLinkRow(ComboGraph graph, ComboEdge e, string kindLabel)
@@ -434,6 +621,190 @@ public static class ProjectChangeSummary
         return rows;
     }
 
+    /// <summary>
+    /// Branch-chance edits (m_fProbability): explicit row overrides with their vanilla
+    /// baseline, plus a note per struct that receives appended links (export rebalances
+    /// those sets so the struct sums to 100 and the appended rows stay reachable).
+    /// </summary>
+    public static List<object> BuildBranchChanceRows(ComboGraph? graph)
+    {
+        var rows = new List<object>();
+        if (graph?.TreeRowProbabilityOverrides == null || graph.Nodes == null) return rows;
+
+        string StructName(int treeIdx)
+        {
+            var n = graph.Nodes.FirstOrDefault(x => x.TreeIndex == treeIdx && !x.IsRedirect)
+                ?? graph.Nodes.FirstOrDefault(x => x.TreeIndex == treeIdx);
+            return n != null ? NodeLabel(n, n.Id) : $"tree[{treeIdx}]";
+        }
+
+        foreach (var kvp in graph.TreeRowProbabilityOverrides.OrderBy(kv => kv.Key))
+        {
+            if (kvp.Value == null || kvp.Value.Count == 0) continue;
+            var originals = graph.TreeRows != null && graph.TreeRows.TryGetValue(kvp.Key, out var orows)
+                ? orows : null;
+            string nodeName = StructName(kvp.Key);
+            foreach (var row in kvp.Value.OrderBy(kv => kv.Key))
+            {
+                float? orig = originals != null && row.Key >= 0 && row.Key < originals.Count
+                    ? originals[row.Key].OriginalProbability
+                    : null;
+                rows.Add(MakeValueRow(
+                    $"Branch chance: {nodeName}",
+                    $"row {row.Key + 1}: {(orig.HasValue ? orig.Value.ToString("0.###") + "%" : "?")}",
+                    $"{row.Value:0.###}%"));
+            }
+        }
+
+        var appendStructs = new SortedSet<int>();
+        foreach (var e in graph.Edges.Where(ed => ed.IsNewLink && !ed.IsRedirect
+            && ed.MergedIntoStruct < 0))
+        {
+            var from = graph.Nodes.FirstOrDefault(n => n.Id == e.FromNodeId);
+            if (from == null) continue;
+            int writeIdx = TreeChanceMath.ResolveWriteStruct(graph, from);
+            if (writeIdx >= 0) appendStructs.Add(writeIdx);
+        }
+        foreach (int treeIdx in appendStructs)
+        {
+            int rowCount = graph.TreeRows != null && graph.TreeRows.TryGetValue(treeIdx, out var trows)
+                ? trows.Count : 0;
+            rows.Add(MakeValueRow(
+                $"Branch chances: {StructName(treeIdx)}",
+                $"{rowCount} existing row(s)",
+                "new link rows rebalanced to 100% on export"));
+        }
+        return rows;
+    }
+
+    /// <summary>
+    /// Condition edits: parameter overrides per condition instance (node label resolved
+    /// through the rows referencing it) plus row-level clear/re-route edits with their
+    /// vanilla target baseline.
+    /// </summary>
+    public static List<object> BuildConditionOverrideRows(ComboGraph? graph)
+    {
+        var rows = new List<object>();
+        if (graph == null) return rows;
+
+        string StructName(int treeIdx)
+        {
+            var n = graph.Nodes.FirstOrDefault(x => x.TreeIndex == treeIdx && !x.IsRedirect)
+                ?? graph.Nodes.FirstOrDefault(x => x.TreeIndex == treeIdx);
+            return n != null ? NodeLabel(n, n.Id) : $"tree[{treeIdx}]";
+        }
+
+        if (graph.TreeConditionParamOverrides != null)
+        {
+            foreach (var kvp in graph.TreeConditionParamOverrides.OrderBy(kv => kv.Key))
+            {
+                if (kvp.Value == null || kvp.Value.Count == 0) continue;
+                string nodeName = kvp.Key < 0
+                    ? "new condition (clone)"
+                    : $"condition export {kvp.Key}";
+                string condClass = "";
+                if (graph.TreeRows != null)
+                {
+                    foreach (var trows in graph.TreeRows)
+                    {
+                        var refRow = trows.Value.FirstOrDefault(r => r.ConditionInstanceIndex == kvp.Key);
+                        if (refRow == null) continue;
+                        nodeName = StructName(trows.Key);
+                        condClass = refRow.ConditionClass;
+                        break;
+                    }
+                }
+                foreach (var p in kvp.Value.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+                    rows.Add(MakeValueRow(
+                        $"Condition param: {nodeName}",
+                        string.IsNullOrEmpty(condClass) ? p.Key : $"{condClass}.{p.Key}",
+                        p.Value));
+            }
+        }
+
+        if (graph.TreeRowConditionOverrides != null)
+        {
+            foreach (var kvp in graph.TreeRowConditionOverrides.OrderBy(kv => kv.Key))
+            {
+                if (kvp.Value == null || kvp.Value.Count == 0) continue;
+                string nodeName = StructName(kvp.Key);
+                var originals = graph.TreeRows != null && graph.TreeRows.TryGetValue(kvp.Key, out var orows)
+                    ? orows : null;
+                foreach (var row in kvp.Value.OrderBy(kv => kv.Key))
+                {
+                    var parts = new List<string>();
+                    if (row.Value.ClearCondition)
+                        parts.Add("condition cleared (collapses to key 255)");
+                    else if (row.Value.SetInstance > 0)
+                        parts.Add($"condition added (export {row.Value.SetInstance})");
+                    else if (!string.IsNullOrEmpty(row.Value.CloneSourceRel))
+                        parts.Add($"condition cloned ({row.Value.CloneClass} from "
+                            + $"{System.IO.Path.GetFileName(row.Value.CloneSourceRel)})");
+                    var origRow = originals != null && row.Key >= 0 && row.Key < originals.Count
+                        ? originals[row.Key] : null;
+                    foreach (var rt in row.Value.Retarget.OrderBy(kv => kv.Key))
+                    {
+                        int origTarget = -1;
+                        if (origRow != null)
+                        {
+                            int ki = origRow.Keys.IndexOf(rt.Key);
+                            if (ki >= 0 && ki < origRow.TargetTreeIndices.Count)
+                                origTarget = origRow.TargetTreeIndices[ki];
+                        }
+                        parts.Add($"target {rt.Key}: {(origTarget >= 0 ? origTarget.ToString() : "?")} -> {rt.Value}");
+                    }
+                    foreach (var ak in row.Value.AddedKeys.OrderBy(kv => kv.Key))
+                    {
+                        var tn = graph.Nodes.FirstOrDefault(n => n.Id == ak.Value);
+                        parts.Add($"merged link key {ak.Key} → "
+                            + (tn != null ? NodeLabel(tn, ak.Value) : $"#{ak.Value}"));
+                    }
+                    if (parts.Count == 0) continue;
+                    rows.Add(MakeValueRow(
+                        $"Condition row: {nodeName}",
+                        $"row {row.Key + 1}",
+                        string.Join(", ", parts)));
+                }
+            }
+        }
+
+        if (graph.TreeEdgeConditionOverrides != null && graph.TreeEdgeConditionOverrides.Count > 0)
+        {
+            foreach (var edge in graph.Edges
+                .OrderBy(e => e.FromNodeId).ThenBy(e => e.ToNodeId)
+                .ThenBy(e => e.InputName, StringComparer.Ordinal))
+            {
+                // Orphaned edits (link deleted) are ignored by export - skip them here too.
+                string edgeKey = ComboGraph.EdgeConditionKey(edge);
+                if (!graph.TreeEdgeConditionOverrides.TryGetValue(edgeKey, out var ec) || ec == null)
+                    continue;
+                var fromNode = graph.Nodes.FirstOrDefault(n => n.Id == edge.FromNodeId);
+                var toNode = graph.Nodes.FirstOrDefault(n => n.Id == edge.ToNodeId);
+                string fromLabel = fromNode != null ? NodeLabel(fromNode, fromNode.Id) : $"node {edge.FromNodeId}";
+                string toLabel = toNode != null ? NodeLabel(toNode, toNode.Id) : $"node {edge.ToNodeId}";
+                var parts = new List<string>();
+                if (ec.SetInstance > 0)
+                    parts.Add($"condition added (export {ec.SetInstance})");
+                else if (!string.IsNullOrEmpty(ec.CloneSourceRel))
+                    parts.Add($"condition cloned ({ec.CloneClass} from "
+                        + $"{System.IO.Path.GetFileName(ec.CloneSourceRel)})");
+                foreach (var rt in ec.Retarget.OrderBy(kv => kv.Key))
+                {
+                    string dest = rt.Value == TreeRowConditionEdit.TargetBlocked ? "blocked"
+                        : rt.Value == TreeRowConditionEdit.TargetNatural ? "link target"
+                        : rt.Value.ToString();
+                    parts.Add($"target {rt.Key}: {dest}");
+                }
+                if (parts.Count == 0) continue;
+                rows.Add(MakeValueRow(
+                    $"Condition on new link: {fromLabel} -> {toLabel}",
+                    string.IsNullOrEmpty(edge.InputName) ? "input None" : $"input {edge.InputName}",
+                    string.Join(", ", parts)));
+            }
+        }
+        return rows;
+    }
+
     public static string FormatUnitDisplayName(string unitKey)
     {
         var parts = unitKey.Split('|', StringSplitOptions.RemoveEmptyEntries);
@@ -476,6 +847,9 @@ public static class ProjectChangeSummary
         if (props.HitsCount.HasValue && (!vanilla.HitsCount.HasValue || props.HitsCount.Value != vanilla.HitsCount.Value)) count++;
         if (props.MemoryFlushLimit.HasValue && (!vanilla.MemoryFlushLimit.HasValue || Math.Abs(props.MemoryFlushLimit.Value - vanilla.MemoryFlushLimit.Value) > 0.01f)) count++;
         if (UnitPropertiesManager.GetEffectiveFocus(contentPath, variantTag) != (vanilla.ImmuneToFocus ?? false)) count++;
+        if (!string.IsNullOrEmpty(props.ModelOverride)) count++;
+        if (!string.IsNullOrEmpty(props.ModelSet)) count++;
+        if (UnitPropertiesManager.PhaseSwapActive(props)) count++;
         return count;
     }
 
@@ -509,6 +883,41 @@ public static class ProjectChangeSummary
                 entries.Add(MakeValueRow("ImmuneToFocus (shared family)", "-", "-",
                     "One flag covers the whole family, so these variants become immune too: "
                     + string.Join(", ", family)));
+        }
+
+        if (!string.IsNullOrEmpty(props.ModelOverride))
+        {
+            var familyDir = ModelCatalog.FamilyDirForVariant(variantTag);
+            string scope = ModelCatalog.IsFamilyWideScenarioFamily(familyDir)
+                ? "the family's"
+                : "this variant's";
+            entries.Add(MakeValueRow("Model",
+                "(default)",
+                ModelCatalog.DisplayNameForGamePath(props.ModelOverride),
+                $"Points {scope} scenario files (levels, training, void, tutorial) "
+                + $"at {props.ModelOverride} on export."));
+        }
+
+        if (!string.IsNullOrEmpty(props.ModelSet))
+        {
+            var familyDir = ModelCatalog.FamilyDirForVariant(variantTag);
+            entries.Add(MakeValueRow("Model set",
+                "(default)",
+                props.ModelSet!,
+                $"Repoints every {(familyDir ?? "unit")} Character BP (Blueprints/AI) at the "
+                + $"{props.ModelSet} roster on export - same hideout and gender first, round-robin, "
+                + "keeping per-spawn variety."));
+        }
+
+        if (UnitPropertiesManager.PhaseSwapActive(props))
+        {
+            var dbLeaf = PhaseSwapPatcher.DbLeafName(props.PhaseSwapTarget!);
+            entries.Add(MakeValueRow("Phase Swap",
+                "Off",
+                $"On \u2192 {dbLeaf}",
+                $"Appends a Last Man takedown transition to this unit's tier-matched scenario "
+                + $"files: taking the unit down phase-swaps it into {dbLeaf} (Last Man node, "
+                + "Last Man gauge not required). Per-level targets only patch same-token scenarios."));
         }
     }
 }

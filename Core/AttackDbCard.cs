@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text;
 
@@ -73,6 +74,22 @@ public static class AttackDbCard
             ? node.SourceDBPath
             : node.DefaultDBPath;
     }
+
+    /// <summary>
+    /// The panel textbox, the hint line and the change rows all render m_fGameplayRange
+    /// with "0.###" - vanilla cards carry 4+ decimals, so a typed/read-back value can
+    /// differ from vanilla by up to 0.0005 while looking identical on screen.
+    /// </summary>
+    public static string FormatRange(float v)
+        => v.ToString("0.###", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Display equality: two ranges are "the same value" when they render identically at
+    /// the precision the UI shows. Guards every override-vs-vanilla check so a round-trip
+    /// through the 3-decimal textbox never registers as a change (and is stored as null).
+    /// </summary>
+    public static bool SameRange(float a, float b)
+        => FormatRange(a) == FormatRange(b);
 
     public static AttackDbCardValues? ReadDbPath(string contentRoot, string dbPath)
     {

@@ -161,13 +161,53 @@ function clearMesh() {
     if (currentMesh) {
         scene.remove(currentMesh);
         currentMesh.geometry.dispose();
-        if (currentMesh.material) currentMesh.material.dispose();
+        const mats = Array.isArray(currentMesh.material) ? currentMesh.material : [currentMesh.material];
+        const seenTextures = new Set();
+        for (const m of mats) {
+            if (!m) continue;
+            if (m.map && !seenTextures.has(m.map)) {
+                seenTextures.add(m.map);
+                m.map.dispose();
+            }
+            m.dispose();
+        }
         currentMesh = null;
     }
     currentSkeleton = null;
 }
 
-function loadMesh(data, characterName) {
+function loadTexture(url) {
+    return new Promise((resolve) => {
+        if (!url) return resolve(null);
+        new THREE.TextureLoader().load(
+            url,
+            (tex) => resolve(tex),
+            undefined,
+            () => resolve(null)
+        );
+    });
+}
+
+function coverGroups(groups, totalIndices) {
+    const sorted = groups
+        .filter((g) => g && g.count > 0)
+        .slice()
+        .sort((a, b) => a.start - b.start);
+    const final = [];
+    let pos = 0;
+    for (const g of sorted) {
+        const start = Math.max(g.start, pos);
+        const end = g.start + g.count;
+        if (end <= pos) continue;
+        if (start > pos) final.push({ png: null, start: pos, count: start - pos });
+        final.push({ png: g.png, start: start, count: end - start });
+        pos = end;
+    }
+    if (pos < totalIndices) final.push({ png: null, start: pos, count: totalIndices - pos });
+    return final;
+}
+
+async function loadMesh(data, characterName) {
     clearMesh();
     if (characterName && characterName !== lastLoadedCharacter) {
         lastLoadedCharacter = characterName;
@@ -187,6 +227,41 @@ function loadMesh(data, characterName) {
     geometry.setIndex(new THREE.BufferAttribute(indices, 1));
     geometry.setAttribute('skinIndex', new THREE.BufferAttribute(skinIndices, 4));
     geometry.setAttribute('skinWeight', new THREE.BufferAttribute(skinWeights, 4));
+
+    let material;
+    if (Array.isArray(data.materials) && data.materials.length > 0) {
+        const groups = coverGroups(data.materials, indices.length);
+        const textureUrls = [...new Set(groups.map((g) => g.png || ''))];
+        const textures = new Map();
+        await Promise.all(textureUrls.map(async (u) => {
+            textures.set(u, await loadTexture(u));
+        }));
+
+        material = [];
+        groups.forEach((g, i) => {
+            geometry.addGroup(g.start, g.count, i);
+            const tex = g.png ? textures.get(g.png) : null;
+            if (tex) {
+                material.push(new THREE.MeshPhongMaterial({
+                    map: tex,
+                    side: THREE.DoubleSide,
+                    skinning: true
+                }));
+            } else {
+                material.push(new THREE.MeshPhongMaterial({
+                    color: 0xcccccc,
+                    side: THREE.DoubleSide,
+                    skinning: true
+                }));
+            }
+        });
+    } else {
+        material = new THREE.MeshPhongMaterial({
+            color: 0xcccccc,
+            side: THREE.DoubleSide,
+            skinning: true
+        });
+    }
 
     const threeBones = [];
     const boneInverses = [];
@@ -218,12 +293,6 @@ function loadMesh(data, characterName) {
     }
     currentSkeleton.boneInverses = boneInverses;
     currentSkeleton.update();
-
-    const material = new THREE.MeshPhongMaterial({
-        color: 0xcccccc,
-        side: THREE.DoubleSide,
-        skinning: true
-    });
 
     currentMesh = new THREE.SkinnedMesh(geometry, material);
     currentMesh.add(threeBones[0]);
