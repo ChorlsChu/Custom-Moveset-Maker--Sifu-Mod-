@@ -387,8 +387,9 @@ so the data is vanilla). Raw: `--deep` dumps confirm the CUE4Parse-side payload 
   `{outcomeValue -> nodeIndex}`. Multi-outcome is common: key sets seen =
   `{255}`, `{0}`, `{0,1}`, `{0,1,2}`, `{0,1,2,3}`, `{0,1,2,3,4}`, `{0,1,2,3,4,5}`
   (Kuroki `node[47]` routes 6 outcomes; `{0}`-only rows have NO 255 fallback).
-  Keys are condition return values, not booleans — polarity (which of 0/1 is "true")
-  is still an assumption; an in-game check gates the True/False UI labels.
+  Keys are condition return values, not booleans — polarity **verified in-game
+  2026-10-12** (user test: `LastAttackHit`, `IsTargetKnockedDown`): key 0 = True,
+  key 1 = False (UE Blueprint branch pin order). UI labels follow this.
 - **Instance sharing is real** (validates export-keyed param edits): MainChar `exp12/13`
   shared by nodes 30+32, Yang `exp55` by nodes 52+118, Fajar `exp25` by 4 rows across
   nodes 54/64/65/68, `exp70` by 3 rows (nodes 8/18/27).

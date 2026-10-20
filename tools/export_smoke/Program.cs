@@ -60,6 +60,7 @@ internal static class Program
         Run("ConditionEdits", () => TestConditionEdits(seanP1));
         Run("AddCondition", () => TestAddCondition(seanP1, fajarP2));
         Run("AddEdgeCondition", () => TestAddEdgeCondition(seanP1, fajarP2));
+        Run("BpInstanceOuterGate", () => TestBpInstanceOuterGate(seanP1));
         Run("ClearMixupAppend", () => TestClearMixupAppend(seanP1));
         Run("ReplaceAttackWithAction", () => TestReplaceAttackWithAction(seanP1, "replace-atk-action"));
         Run("ReplaceActionWithAttack", () => TestReplaceActionWithAttack(fajarP2, "replace-action-atk"));
@@ -68,6 +69,10 @@ internal static class Program
         Run("StartMultiKeyAddRow", () => TestStartMultiKeyAddRow(fajarP2, seanP1));
         Run("RehydrateKeyModels", TestRehydrateKeyModels);
         Run("ResolveRedirectFinal", TestResolveRedirectFinal);
+        string yangP1 = Path.Combine(ContentRoot, "DB", "AI", "Archetypes", "Yang", "_DB", "Phase1", "Yang_P1_Combo.uasset");
+        if (File.Exists(yangP1)) Run("RedirectMirror", () => TestRedirectMirror(yangP1));
+        Run("AllZeroWarning", () => TestAllZeroWarning(seanP1));
+        Run("ChanceRescale", () => TestChanceRescale(seanP1));
 
         Console.WriteLine();
         if (Failures.Count == 0)
@@ -991,6 +996,19 @@ internal static class Program
         throw new Exception("no m_Nodes array in asset");
     }
 
+    /// <summary>0-based export index of the combo object (the export carrying m_Nodes).</summary>
+    private static int ComboExportIndex(UAsset asset)
+    {
+        for (int i = 0; i < asset.Exports.Count; i++)
+        {
+            if (asset.Exports[i] is not NormalExport ne || ne.Data == null) continue;
+            if (ne.Data.OfType<ArrayPropertyData>()
+                .Any(p => p.Name?.Value?.ToString() == "m_Nodes"))
+                return i;
+        }
+        throw new Exception("no m_Nodes array in asset");
+    }
+
     private static void WalkOwned(NormalExport ne, Action<int, List<PropertyData>> onProps)
     {
         foreach (var p in ne.Data)
@@ -1834,6 +1852,11 @@ internal static class Program
         Expect(ExportClassNameOf(asset, clonedIdx - 1) == clsName,
             $"cloned class {ExportClassNameOf(asset, clonedIdx - 1)} != {clsName}");
         AssertTypedValue(ResolvePath(asset, cloneExp.Data, paramPath)!, cloneVal, "in-memory clone param");
+        // The clone's outer must be the dest combo object - a package outer (0) is
+        // what the game deadlocks on ("Missing Dependency ... waiting for serialization").
+        int mainIdx = ComboExportIndex(asset);
+        Expect(cloneExp.OuterIndex != null && cloneExp.OuterIndex.Index == mainIdx + 1,
+            $"in-memory clone outer {cloneExp.OuterIndex?.Index} != combo export {mainIdx + 1}");
 
         // The added condition only gates in game when the map is keyed by outcome -
         // a lingering {255} entry would make every outcome fall through unused.
@@ -1866,8 +1889,54 @@ internal static class Program
             throw new Exception("reparsed clone export is missing property data");
         Expect(ExportClassNameOf(a2, cloned2 - 1) == clsName, "reparsed clone class mismatch");
         AssertTypedValue(ResolvePath(a2, cloneExp2.Data, paramPath)!, cloneVal, "reparsed clone param");
+        int mainIdx2 = ComboExportIndex(a2);
+        Expect(cloneExp2.OuterIndex != null && cloneExp2.OuterIndex.Index == mainIdx2 + 1,
+            $"reparsed clone outer {cloneExp2.OuterIndex?.Index} != combo export {mainIdx2 + 1}");
         AssertRekeyed("reparsed share row", rowC2, origTC);
         AssertRekeyed("reparsed clone row", rowD2, origTD);
+    }
+
+    /// <summary>
+    /// Export gate: a BP instance (condition/action/event - class import
+    /// BlueprintGeneratedClass) with a package outer (0) is what the game deadlocks on
+    /// ("Missing Dependency ... waiting for serialization"), so the validator must fail
+    /// and remove such a staged file, while a clean file passes untouched.
+    /// </summary>
+    private static void TestBpInstanceOuterGate(string file)
+    {
+        var asset = Load(file);
+        int idx = -1;
+        for (int i = 0; i < asset.Exports.Count; i++)
+        {
+            var e = asset.Exports[i];
+            if (e.ClassIndex == null || e.ClassIndex.Index >= 0) continue;
+            var imp = asset.Imports[-e.ClassIndex.Index - 1];
+            if (string.Equals(imp.ClassName?.Value?.ToString(), "BlueprintGeneratedClass", StringComparison.Ordinal)
+                && e.OuterIndex != null && e.OuterIndex.Index > 0)
+            {
+                idx = i;
+                break;
+            }
+        }
+        Expect(idx >= 0, "no BP instance export in fixture");
+
+        string good = Path.Combine(OutDir, "bp-outer-good.uasset");
+        try { File.Delete(good); } catch { }
+        try { File.Delete(Path.ChangeExtension(good, ".uexp")); } catch { }
+        asset.Write(good);
+        Expect(ComboWriteValidator.Validate(good, asset, "bp-outer-good"),
+            "validator rejected a clean file");
+
+        var saved = asset.Exports[idx].OuterIndex;
+        asset.Exports[idx].OuterIndex = new FPackageIndex(0);
+        string bad = Path.Combine(OutDir, "bp-outer-bad.uasset");
+        try { File.Delete(bad); } catch { }
+        try { File.Delete(Path.ChangeExtension(bad, ".uexp")); } catch { }
+        asset.Write(bad);
+        Expect(!ComboWriteValidator.Validate(bad, asset, "bp-outer-bad"),
+            "validator accepted a package-outer BP instance");
+        Expect(!File.Exists(bad), "validator left the corrupt file on disk");
+        asset.Exports[idx].OuterIndex = saved;
     }
 
     /// <summary>
@@ -2424,5 +2493,279 @@ internal static class Program
             _ => false
         };
         Expect(ok, $"{label}: value {newVal} not found on {p.GetType().Name} ({p.Name?.Value})");
+    }
+
+    /// <summary>
+    /// The Yang dead-end class: vanilla keeps an attack's continuation rows on its
+    /// owning redirect struct (BellyPalm's rows live on the BellyPalm owner, not the
+    /// attack), and the engine continues from the entered struct - falling back to
+    /// the redirect target's rows when the entered struct is empty. A custom
+    /// redirect into a vanilla-owned attack appended with an empty struct therefore
+    /// stopped the combo in-game. The mirror pass must copy the unique owner's rows
+    /// onto the appended struct; a redirect into an attack that carries its own
+    /// rows must stay empty (engine fallback already covers it).
+    /// </summary>
+    private static void TestRedirectMirror(string targetFile)
+    {
+        var asset = Load(targetFile);
+        var (combo, nodes) = ComboOf(asset);
+        int baseCount = nodes.Value.Length;
+
+        int? RedirectOf(StructPropertyData sp) => sp.Value?.OfType<IntPropertyData>()
+            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_NodeRedirect")?.Value;
+        List<List<int>> RowTargets(ArrayPropertyData? rows) => rows?.Value?
+            .OfType<StructPropertyData>()
+            .Select(r => TargetMapOf(r)?.Value?.Select(kvp => kvp.Value switch
+            {
+                IntPropertyData ip => ip.Value,
+                BytePropertyData bp => bp.Value,
+                _ => -1
+            }).ToList() ?? new List<int>())
+            .ToList() ?? new List<List<int>>();
+
+        // Find an empty attack struct (non-redirect, no rows) whose only
+        // rows-carrying redirect is unique - the Yang BellyPalm/ShinKick pattern.
+        int attackIdx = -1, ownerIdx = -1;
+        for (int i = 0; i < baseCount; i++)
+        {
+            if (NodeStructAt(nodes, i) is not StructPropertyData sp) continue;
+            if (RedirectOf(sp) is int ownRedir && ownRedir >= 0) continue;   // attacks only
+            var rows = TransitionsOf(sp);
+            if (rows?.Value == null || rows.Value.Length > 0) continue;
+            var owners = new List<int>();
+            for (int j = 0; j < baseCount; j++)
+            {
+                if (j == i || NodeStructAt(nodes, j) is not StructPropertyData op) continue;
+                if (RedirectOf(op) != i) continue;
+                var orows = TransitionsOf(op);
+                if (orows?.Value == null || orows.Value.Length == 0) continue;
+                owners.Add(j);
+            }
+            if (owners.Count == 1) { attackIdx = i; ownerIdx = owners[0]; break; }
+        }
+        Expect(attackIdx >= 0, "no (empty attack, unique owner) pair in tree - mirror case not covered");
+
+        var ownerRows = TransitionsOf(NodeStructAt(nodes, ownerIdx))!;
+        int ownerRowCount = ownerRows.Value!.Length;
+        var ownerTargets = RowTargets(ownerRows);
+
+        // Case 1: custom redirect into the owned attack - the mirror fills it.
+        var redir1 = new ComboNode
+        {
+            Id = 100,
+            TreeIndex = -1,
+            Kind = ComboNodeKind.UserCreated,
+            IsRedirect = true,
+            DisplayName = "SmokeMirror",
+            RedirectTargetTreeIndex = -1,
+            ResolvedRedirectNodeId = 1
+        };
+        var graph1 = new ComboGraph { Nodes = new List<ComboNode> { BaseNode(1, attackIdx), redir1 } };
+        var r1 = ExportDialog.AppendEnemyAuthoredContent(graph1, asset, combo, nodes, ContentRoot);
+        Expect(r1.nodes == 1, $"mirror case appended {r1.nodes} nodes, expected 1");
+        var mrows = TransitionsOf(NodeStructAt(nodes, baseCount));
+        Expect(mrows?.Value != null && mrows.Value.Length == ownerRowCount,
+            $"mirrored rows {mrows?.Value?.Length ?? -1} != owner rows {ownerRowCount}");
+        var mTargets = RowTargets(mrows);
+        for (int i = 0; i < ownerRowCount; i++)
+            Expect(mTargets[i].SequenceEqual(ownerTargets[i]),
+                $"mirrored row {i} targets [{string.Join(",", mTargets[i])}] != owner [{string.Join(",", ownerTargets[i])}]");
+        string outPath = WriteAndValidate(asset, "redirect-mirror");
+        var a2 = Load(outPath);
+        var (_, n2) = ComboOf(a2);
+        Expect((TransitionsOf(NodeStructAt(n2, baseCount))?.Value?.Length ?? -1) == ownerRowCount,
+            "mirrored rows lost on reparse");
+
+        // Case 2: redirect into an attack that carries its own rows - stays empty,
+        // the engine falls back to the target's rows, so no mirror is needed.
+        int selfRowsIdx = -1;
+        for (int i = 0; i < baseCount; i++)
+        {
+            if (NodeStructAt(nodes, i) is not StructPropertyData sp) continue;
+            if (RedirectOf(sp) is int rd && rd >= 0) continue;
+            bool isAttack = sp.Value?.OfType<StructPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_AttackInfos")?.Value
+                ?.OfType<NamePropertyData>()
+                .Any(p => p.Name?.Value?.ToString() == "m_Attacks"
+                       && p.Value?.Value?.ToString() is string ap && ap != "None") == true;
+            var rows = TransitionsOf(sp);
+            if (isAttack && rows?.Value != null && rows.Value.Length > 0) { selfRowsIdx = i; break; }
+        }
+        Expect(selfRowsIdx >= 0, "no attack-with-own-rows found");
+        var redir2 = new ComboNode
+        {
+            Id = 101,
+            TreeIndex = -1,
+            Kind = ComboNodeKind.UserCreated,
+            IsRedirect = true,
+            DisplayName = "SmokeFallback",
+            RedirectTargetTreeIndex = -1,
+            ResolvedRedirectNodeId = 2
+        };
+        var graph2 = new ComboGraph { Nodes = new List<ComboNode> { BaseNode(2, selfRowsIdx), redir2 } };
+        var r2 = ExportDialog.AppendEnemyAuthoredContent(graph2, asset, combo, nodes, ContentRoot);
+        Expect(r2.nodes == 1, $"fallback case appended {r2.nodes} nodes, expected 1");
+        var frows = TransitionsOf(NodeStructAt(nodes, baseCount + 1));
+        Expect(frows?.Value != null && frows.Value.Length == 0,
+            $"fallback redirect should stay empty, has {frows?.Value?.Length ?? -1} rows");
+    }
+
+    /// <summary>Fully-dead entry: a struct whose live rows all ship at 0% rolls
+    /// nothing in-game (rebalance skips a sum-0 set), so the export warns once per
+    /// struct. Partial zeros - the normal "disable this branch" workflow - stay
+    /// silent.</summary>
+    private static void TestAllZeroWarning(string targetFile)
+    {
+        // All-zero: every row of a struct overridden to 0% -> one warning.
+        var asset = Load(targetFile);
+        var (combo, nodes) = ComboOf(asset);
+        int idx = -1, rows = 0;
+        for (int i = 0; i < nodes.Value.Length; i++)
+        {
+            if (NodeStructAt(nodes, i) is not StructPropertyData sp) continue;
+            var t = TransitionsOf(sp);
+            if (t?.Value == null || t.Value.Length == 0) continue;
+            idx = i; rows = t.Value.Length; break;
+        }
+        Expect(idx >= 0, "no rows-carrying struct found");
+        var graph = new ComboGraph { Nodes = new List<ComboNode> { BaseNode(1, idx) } };
+        graph.TreeRowProbabilityOverrides[idx] =
+            Enumerable.Range(0, rows).ToDictionary(r => r, _ => 0f);
+        int before = ErrorLog.Warnings;
+        _ = ExportDialog.AppendEnemyAuthoredContent(graph, asset, combo, nodes, ContentRoot);
+        Expect(ErrorLog.Warnings > before, "all-0% struct did not warn");
+
+        // Partial zeros: one row at 0, the rest untouched -> no warning.
+        var asset2 = Load(targetFile);
+        var (combo2, nodes2) = ComboOf(asset2);
+        int idx2 = -1;
+        for (int i = 0; i < nodes2.Value.Length; i++)
+        {
+            if (NodeStructAt(nodes2, i) is not StructPropertyData sp) continue;
+            var t = TransitionsOf(sp);
+            if (t?.Value == null || t.Value.Length < 2) continue;
+            idx2 = i; break;
+        }
+        Expect(idx2 >= 0, "no multi-row struct found");
+        var graph2 = new ComboGraph { Nodes = new List<ComboNode> { BaseNode(1, idx2) } };
+        graph2.TreeRowProbabilityOverrides[idx2] = new Dictionary<int, float> { [0] = 0f };
+        int before2 = ErrorLog.Warnings;
+        _ = ExportDialog.AppendEnemyAuthoredContent(graph2, asset2, combo2, nodes2, ContentRoot);
+        Expect(ErrorLog.Warnings == before2, "partial-0% struct warned unexpectedly");
+    }
+
+    /// <summary>Chance-sum guard: a touched struct whose rows don't total 100 (a
+    /// link deleted after probabilities were typed) gets the remainder on the
+    /// largest row - every other typed value stays exact - while exact-100 sets
+    /// pass through untouched, all-zero sets are skipped (the flow warning owns
+    /// them), over-100 sets fall back to a proportional scale, and the rescale
+    /// logs info-only so it never counts toward the warning total.</summary>
+    private static void TestChanceRescale(string targetFile)
+    {
+        static List<float> Probs(ArrayPropertyData rows) => rows.Value?
+            .OfType<StructPropertyData>()
+            .Select(r => r.Value?.OfType<FloatPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_fProbability")?.Value ?? float.NaN)
+            .ToList() ?? new List<float>();
+
+        // Case A: typed rows summing under 100 -> remainder lands on the largest
+        // row only; the other typed row stays exact; warning count unchanged.
+        var asset = Load(targetFile);
+        var (combo, nodes) = ComboOf(asset);
+        int idx = -1, rowCount = 0;
+        for (int i = 0; i < nodes.Value.Length; i++)
+        {
+            if (NodeStructAt(nodes, i) is not StructPropertyData sp) continue;
+            var t = TransitionsOf(sp);
+            if (t?.Value == null || t.Value.Length < 2) continue;
+            idx = i; rowCount = t.Value.Length; break;
+        }
+        Expect(idx >= 0, "no multi-row struct found for rescale test");
+        var graph = new ComboGraph { Nodes = new List<ComboNode> { BaseNode(1, idx) } };
+        var typed = Enumerable.Range(0, rowCount).ToDictionary(r => r, _ => 0f);
+        typed[0] = 40f;
+        typed[1] = 30f;
+        graph.TreeRowProbabilityOverrides[idx] = typed;
+        int before = ErrorLog.Warnings;
+        _ = ExportDialog.AppendEnemyAuthoredContent(graph, asset, combo, nodes, ContentRoot);
+        var pa = Probs(TransitionsOf(NodeStructAt(nodes, idx))!);
+        Expect(Math.Abs(pa.Sum() - 100f) <= 0.01f, $"under-sum rescale total {pa.Sum():0.###} != 100");
+        Expect(Math.Abs(pa[0] - 70f) <= 0.01f, $"largest row {pa[0]:0.###} != 70 (should absorb the missing 30)");
+        Expect(Math.Abs(pa[1] - 30f) <= 0.01f, $"second typed row {pa[1]:0.###} != 30 (must stay exact)");
+        for (int r = 2; r < rowCount; r++)
+            Expect(Math.Abs(pa[r]) <= 0.01f, $"row {r} = {pa[r]:0.###} != 0 (should stay 0)");
+        Expect(ErrorLog.Warnings == before, "PROB RESCALE must be info-only (warning count changed)");
+
+        // Case B: exactly 100 -> values pass through untouched, no warning.
+        var asset2 = Load(targetFile);
+        var (combo2, nodes2) = ComboOf(asset2);
+        int idx2 = -1, rowCount2 = 0;
+        for (int i = 0; i < nodes2.Value.Length; i++)
+        {
+            if (NodeStructAt(nodes2, i) is not StructPropertyData sp) continue;
+            var t = TransitionsOf(sp);
+            if (t?.Value == null || t.Value.Length < 2) continue;
+            idx2 = i; rowCount2 = t.Value.Length; break;
+        }
+        Expect(idx2 >= 0, "no multi-row struct found for exact-100 test");
+        var graph2 = new ComboGraph { Nodes = new List<ComboNode> { BaseNode(1, idx2) } };
+        var exact = Enumerable.Range(0, rowCount2).ToDictionary(r => r, _ => 0f);
+        exact[0] = 100f;
+        graph2.TreeRowProbabilityOverrides[idx2] = exact;
+        int before2 = ErrorLog.Warnings;
+        _ = ExportDialog.AppendEnemyAuthoredContent(graph2, asset2, combo2, nodes2, ContentRoot);
+        var pb = Probs(TransitionsOf(NodeStructAt(nodes2, idx2))!);
+        Expect(Math.Abs(pb[0] - 100f) <= 0.01f, $"exact-100 set was modified: row0 = {pb[0]:0.###}");
+        for (int r = 1; r < rowCount2; r++)
+            Expect(Math.Abs(pb[r]) <= 0.01f, $"exact-100 set row {r} = {pb[r]:0.###} != 0");
+        Expect(ErrorLog.Warnings == before2, "exact-100 set warned unexpectedly");
+
+        // Case C: all-zero set -> rescale skips it, the flow warning still owns it.
+        var asset3 = Load(targetFile);
+        var (combo3, nodes3) = ComboOf(asset3);
+        int idx3 = -1, rowCount3 = 0;
+        for (int i = 0; i < nodes3.Value.Length; i++)
+        {
+            if (NodeStructAt(nodes3, i) is not StructPropertyData sp) continue;
+            var t = TransitionsOf(sp);
+            if (t?.Value == null || t.Value.Length == 0) continue;
+            idx3 = i; rowCount3 = t.Value.Length; break;
+        }
+        Expect(idx3 >= 0, "no rows-carrying struct found for all-zero test");
+        var graph3 = new ComboGraph { Nodes = new List<ComboNode> { BaseNode(1, idx3) } };
+        graph3.TreeRowProbabilityOverrides[idx3] =
+            Enumerable.Range(0, rowCount3).ToDictionary(r => r, _ => 0f);
+        int before3 = ErrorLog.Warnings;
+        _ = ExportDialog.AppendEnemyAuthoredContent(graph3, asset3, combo3, nodes3, ContentRoot);
+        var pc = Probs(TransitionsOf(NodeStructAt(nodes3, idx3))!);
+        for (int r = 0; r < rowCount3; r++)
+            Expect(Math.Abs(pc[r]) <= 0.01f, $"all-zero row {r} = {pc[r]:0.###} (rescale must skip sum-0 sets)");
+        Expect(ErrorLog.Warnings > before3, "all-zero FLOW WARNING must still fire");
+
+        // Case D: typed rows over 100 where the largest row can't absorb the
+        // excess (150+150) -> proportional fallback scales the set to 100.
+        var asset4 = Load(targetFile);
+        var (combo4, nodes4) = ComboOf(asset4);
+        int idx4 = -1, rowCount4 = 0;
+        for (int i = 0; i < nodes4.Value.Length; i++)
+        {
+            if (NodeStructAt(nodes4, i) is not StructPropertyData sp) continue;
+            var t = TransitionsOf(sp);
+            if (t?.Value == null || t.Value.Length < 2) continue;
+            idx4 = i; rowCount4 = t.Value.Length; break;
+        }
+        Expect(idx4 >= 0, "no multi-row struct found for over-100 test");
+        var graph4 = new ComboGraph { Nodes = new List<ComboNode> { BaseNode(1, idx4) } };
+        var over = Enumerable.Range(0, rowCount4).ToDictionary(r => r, _ => 0f);
+        over[0] = 150f;
+        over[1] = 150f;
+        graph4.TreeRowProbabilityOverrides[idx4] = over;
+        int before4 = ErrorLog.Warnings;
+        _ = ExportDialog.AppendEnemyAuthoredContent(graph4, asset4, combo4, nodes4, ContentRoot);
+        var pd = Probs(TransitionsOf(NodeStructAt(nodes4, idx4))!);
+        Expect(Math.Abs(pd.Sum() - 100f) <= 0.01f, $"over-100 proportional fallback total {pd.Sum():0.###} != 100");
+        Expect(Math.Abs(pd[0] - 50f) <= 0.01f, $"over-100 row0 {pd[0]:0.###} != 50 (proportional scale)");
+        Expect(Math.Abs(pd[1] - 50f) <= 0.01f, $"over-100 row1 {pd[1]:0.###} != 50 (proportional scale)");
+        Expect(ErrorLog.Warnings == before4, "over-100 rescale must be info-only (warning count changed)");
     }
 }

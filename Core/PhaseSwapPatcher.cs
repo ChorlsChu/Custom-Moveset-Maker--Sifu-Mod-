@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Text.RegularExpressions;
 using UAssetAPI;
 using UAssetAPI.ExportTypes;
 using UAssetAPI.PropertyTypes;
@@ -26,7 +25,7 @@ public static class PhaseSwapPatcher
 
     private static readonly EngineVersion Eng = EngineVersion.VER_UE4_26;
 
-    public enum Outcome { Patched, SkippedAlreadyPhasing, Failed }
+    public enum Outcome { Patched, Retargeted, SkippedAlreadyPhasing, Failed }
 
     /// <summary>Grunt Last Man donor, loaded once per export. Opaque handle for PatchScenario.</summary>
     public sealed class TemplateBundle
@@ -97,10 +96,13 @@ public static class PhaseSwapPatcher
     }
 
     /// <summary>
-    /// Appends the Last Man node + takedown transition to a staged scenario and re-verifies.
-    /// <paramref name="targetDbRel"/> is the content rel of the moveset DB whose CDO import
-    /// must already exist in the scenario (per-level pairing, e.g. FD Advanced H2 imports
-    /// MiniBoss_H2). Gauge is always off (proven LastMan_B behavior).
+    /// Appends the Last Man node + takedown transition to a staged scenario and re-verifies,
+    /// or - when the scenario already carries a vanilla takedown transition - retargets that
+    /// transition's child node at the chosen CDO instead. <paramref name="targetDbRel"/> is
+    /// the content rel of the moveset DB; its CDO import is created when the scenario doesn't
+    /// already reference it, so cross-level and cross-family targets both work. Appended
+    /// transitions are always gauge-off (proven LastMan_B behavior); retargeted vanilla
+    /// transitions keep their existing gauge/reset flags (already proven in-game as-is).
     /// </summary>
     public static Outcome PatchScenario(string stagedUasset, TemplateBundle template,
         string targetDbRel, out string error)
@@ -110,9 +112,10 @@ public static class PhaseSwapPatcher
         try { asset = new UAsset(stagedUasset, Eng, null, CustomSerializationFlags.None); }
         catch (Exception ex) { error = "load failed: " + ex.Message; return Outcome.Failed; }
 
-        // already phases? vanilla Last Man scenarios (Grunt roster, bosses) stay untouched
+        // vanilla Last Man scenarios (Grunt roster, bosses) already phase - retarget
+        // their existing transition rather than appending a second one.
         if (HasTakedownTransition(asset))
-        { error = "already contains an AIPhaseTransitionTakedown export"; return Outcome.SkippedAlreadyPhasing; }
+            return RetargetScenario(asset, stagedUasset, targetDbRel, out error);
 
         var rootPhase = FindProp(asset.Exports[0], "m_rootPhase") as ObjectPropertyData;
         var nodes = FindArray(asset.Exports[0], "m_PhaseNodes");
@@ -132,16 +135,7 @@ public static class PhaseSwapPatcher
         if (fightNode == null) { error = "shape check failed: no struct phase node"; return Outcome.Failed; }
 
         string targetDbLeaf = DbLeafName(targetDbRel);
-        int miniBossImport = -1;
-        for (int i = 0; i < asset.Imports.Count; i++)
-        {
-            var imp = asset.Imports[i];
-            if (imp.ClassName?.Value?.ToString() == "BlueprintGeneratedClass"
-                && imp.ObjectName?.Value?.ToString() == targetDbLeaf + "_C")
-            { miniBossImport = i; break; }
-        }
-        if (miniBossImport < 0)
-        { error = $"target CDO import not found: {targetDbLeaf}_C"; return Outcome.Failed; }
+        int miniBossImport = EnsureTargetImport(asset, targetDbRel);
 
         // clone context: grunt -> target; memoize the LastMan class import (retarget -> target CDO).
         // m_SyncHitActionLauncher is NOT memoized: Remap -> EnsureImport clones
@@ -215,6 +209,159 @@ public static class PhaseSwapPatcher
         return Outcome.Patched;
     }
 
+    /// <summary>
+    /// Index of the BlueprintGeneratedClass import for {leaf}_C, creating the vanilla-shaped
+    /// Package + class import pair when the scenario doesn't already reference the DB (the
+    /// BPGC's outer is the /Game package import, ClassPackage /Script/CoreUObject - same
+    /// shape every native scenario asset uses for its own DB references).
+    /// </summary>
+    private static int EnsureTargetImport(UAsset asset, string targetDbRel)
+    {
+        string leaf = DbLeafName(targetDbRel);
+        string needle = leaf + "_C";
+        for (int i = 0; i < asset.Imports.Count; i++)
+        {
+            var imp = asset.Imports[i];
+            if (imp.ClassName?.Value?.ToString() == "BlueprintGeneratedClass"
+                && imp.ObjectName?.Value?.ToString() == needle)
+                return i;
+        }
+
+        string packagePath = "/Game/" + targetDbRel.Replace('\\', '/').TrimStart('/');
+        int pkgIdx = -1;
+        for (int i = 0; i < asset.Imports.Count; i++)
+        {
+            var imp = asset.Imports[i];
+            if (imp.ClassName?.Value?.ToString() == "Package"
+                && imp.ObjectName?.Value?.ToString() == packagePath)
+            { pkgIdx = i; break; }
+        }
+        if (pkgIdx < 0)
+        {
+            pkgIdx = asset.Imports.Count;
+            asset.Imports.Add(new UAssetAPI.Import
+            {
+                ClassPackage = FName.FromString(asset, "/Script/CoreUObject"),
+                ClassName = FName.FromString(asset, "Package"),
+                ObjectName = FName.FromString(asset, packagePath),
+                OuterIndex = new FPackageIndex(0),
+                PackageName = FName.FromString(asset, "None"),
+            });
+        }
+
+        int classIdx = asset.Imports.Count;
+        asset.Imports.Add(new UAssetAPI.Import
+        {
+            ClassPackage = FName.FromString(asset, "/Script/CoreUObject"),
+            ClassName = FName.FromString(asset, "BlueprintGeneratedClass"),
+            ObjectName = FName.FromString(asset, needle),
+            OuterIndex = FPackageIndex.FromImport(pkgIdx),
+            PackageName = FName.FromString(asset, "None"),
+        });
+        return classIdx;
+    }
+
+    /// <summary>
+    /// Retargets every takedown transition's child (Last Man) node at the target CDO -
+    /// the mode for scenarios that already phase (vanilla Grunt roster). Gauge/reset flags
+    /// on the transition are left as vanilla shipped them (already proven in-game). Returns
+    /// SkippedAlreadyPhasing when every takedown child already targets the chosen DB.
+    /// </summary>
+    private static Outcome RetargetScenario(UAsset asset, string stagedUasset,
+        string targetDbRel, out string error)
+    {
+        error = "";
+        string targetDbLeaf = DbLeafName(targetDbRel);
+
+        var nodes = FindArray(asset.Exports[0], "m_PhaseNodes");
+        if (nodes?.Value == null || nodes.Value.Length == 0)
+        { error = "shape check failed: no m_PhaseNodes"; return Outcome.Failed; }
+
+        // child-node archetype property of every takedown transition entry
+        var archProps = new List<ObjectPropertyData>();
+        foreach (var sn in nodes.Value.OfType<StructPropertyData>())
+        {
+            var trans = FindArray(sn, "m_PhaseTransitions");
+            if (trans?.Value == null) continue;
+            foreach (var t in trans.Value.OfType<StructPropertyData>())
+            {
+                var to = FindProp(t, "m_TransitionObject") as ObjectPropertyData;
+                if (to?.Value == null || to.Value.Index <= 0) continue;
+                int expIdx = to.Value.Index - 1;
+                if (expIdx >= asset.Exports.Count || asset.Exports[expIdx] is not NormalExport te) continue;
+                var cls = te.ClassIndex;
+                if (cls.Index >= 0) continue;
+                if (asset.Imports[-cls.Index - 1].ObjectName.Value?.ToString() != "AIPhaseTransitionTakedown")
+                    continue;
+
+                var child = (FindProp(t, "m_iChildNodeIndex") as IntPropertyData)?.Value ?? -1;
+                if (child < 0 || child >= nodes.Value.Length || nodes.Value[child] is not StructPropertyData cn)
+                    continue;
+                var arch = FindProp(cn, "m_PhaseArchetype") as ObjectPropertyData;
+                if (arch?.Value == null) continue;
+                archProps.Add(arch);
+            }
+        }
+        if (archProps.Count == 0)
+        { error = "no takedown transition entries found on phase nodes"; return Outcome.Failed; }
+
+        int targetImport = EnsureTargetImport(asset, targetDbRel);
+        var targetIdx = FPackageIndex.FromImport(targetImport);
+        int changed = 0;
+        foreach (var arch in archProps)
+        {
+            if (arch.Value?.Index == targetIdx.Index) continue;
+            arch.Value = targetIdx;
+            changed++;
+        }
+        if (changed == 0)
+        { error = $"takedown phase already targets {targetDbLeaf}"; return Outcome.SkippedAlreadyPhasing; }
+
+        try { asset.Write(stagedUasset); }
+        catch (Exception ex) { error = "write failed: " + ex.Message; return Outcome.Failed; }
+
+        UAsset post;
+        try { post = new UAsset(stagedUasset, Eng, null, CustomSerializationFlags.None); }
+        catch (Exception ex) { error = "reopen failed: " + ex.Message; return Outcome.Failed; }
+        if (!VerifyRetarget(post, targetDbLeaf))
+        { error = "VERIFY FAILED after write"; return Outcome.Failed; }
+        return Outcome.Retargeted;
+    }
+
+    /// <summary>Reopen check for retarget: every takedown child node points at {leaf}_C.</summary>
+    private static bool VerifyRetarget(UAsset post, string targetDbLeaf)
+    {
+        var nodes = FindArray(post.Exports[0], "m_PhaseNodes");
+        if (nodes?.Value == null || nodes.Value.Length == 0) return false;
+        bool any = false;
+        foreach (var sn in nodes.Value.OfType<StructPropertyData>())
+        {
+            var trans = FindArray(sn, "m_PhaseTransitions");
+            if (trans?.Value == null) continue;
+            foreach (var t in trans.Value.OfType<StructPropertyData>())
+            {
+                var to = FindProp(t, "m_TransitionObject") as ObjectPropertyData;
+                if (to?.Value == null || to.Value.Index <= 0) continue;
+                int expIdx = to.Value.Index - 1;
+                if (expIdx >= post.Exports.Count || post.Exports[expIdx] is not NormalExport te) continue;
+                var cls = te.ClassIndex;
+                if (cls.Index >= 0) continue;
+                if (post.Imports[-cls.Index - 1].ObjectName.Value?.ToString() != "AIPhaseTransitionTakedown")
+                    continue;
+
+                var child = (FindProp(t, "m_iChildNodeIndex") as IntPropertyData)?.Value ?? -1;
+                if (child < 0 || child >= nodes.Value.Length || nodes.Value[child] is not StructPropertyData cn)
+                    return false;
+                var arch = FindProp(cn, "m_PhaseArchetype") as ObjectPropertyData;
+                if (arch?.Value == null || arch.Value.Index >= 0) return false;
+                if (post.Imports[-arch.Value.Index - 1].ObjectName.Value?.ToString() != targetDbLeaf + "_C")
+                    return false;
+                any = true;
+            }
+        }
+        return any;
+    }
+
     private static bool Verify(UAsset post, string targetDbLeaf, int expectNodeIdx, int expectExportIdx, int expectFightIdx)
     {
         if (post.Exports.Count <= expectExportIdx) return false;
@@ -267,29 +414,43 @@ public static class PhaseSwapPatcher
         return false;
     }
 
-    /// <summary>
-    /// Target-vs-scenario token match: a per-level DB (name has H\d) only pairs with scenarios
-    /// carrying the same level token; an arena-only DB (name has Arena, no H\d) only with arena
-    /// scenarios; a tokenless DB pairs with every tier scenario of the family.
-    /// </summary>
-    public static bool ScenarioMatchesTarget(string scenarioRel, string targetDbRel)
-    {
-        string rel = scenarioRel.ToLowerInvariant();
-        string leaf = DbLeafName(targetDbRel).ToLowerInvariant();
-
-        var level = Regex.Match(leaf, @"h\d");
-        if (level.Success) return rel.Contains(level.Value);
-
-        if (leaf.Contains("arena")) return rel.Contains("arena");
-        return true;
-    }
-
     /// <summary>"DB/.../BP_X_Y" -> "BP_X_Y".</summary>
     public static string DbLeafName(string relOrName)
     {
         var s = relOrName.Replace('\\', '/').TrimEnd('/');
         int idx = s.LastIndexOf('/');
         return idx >= 0 ? s[(idx + 1)..] : s;
+    }
+
+    public enum ProbeResult { SelfSwap, Ok }
+
+    /// <summary>
+    /// Pre-staging probe: SelfSwap when the scenario's root phase already IS the target DB
+    /// (a self-pairing adds nothing). Everything else is Ok - the target-CDO import is no
+    /// longer required to exist (PatchScenario creates it) and the level-token match retired
+    /// with per-variant scope, so the probe is just this one guard. A missing/unreadable
+    /// file returns Ok too: the stage loop reports it by name.
+    /// </summary>
+    public static ProbeResult ProbeScenario(string uassetPath, string targetDbRel)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(uassetPath) || !File.Exists(uassetPath))
+                return ProbeResult.Ok;
+
+            var asset = new UAsset(uassetPath, Eng, null, CustomSerializationFlags.None);
+            string needle = DbLeafName(targetDbRel) + "_C";
+
+            var rootPhase = FindProp(asset.Exports[0], "m_rootPhase") as ObjectPropertyData;
+            if (rootPhase?.Value != null && rootPhase.Value.Index < 0
+                && asset.Imports[-rootPhase.Value.Index - 1].ObjectName?.Value?.ToString() == needle)
+                return ProbeResult.SelfSwap;
+            return ProbeResult.Ok;
+        }
+        catch
+        {
+            return ProbeResult.Ok;
+        }
     }
 
     // ---- property helpers ----

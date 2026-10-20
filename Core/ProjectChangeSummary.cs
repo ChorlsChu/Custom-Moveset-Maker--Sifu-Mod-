@@ -35,7 +35,8 @@ public static class ProjectChangeSummary
     public const string AttackDbCategoryKey = "__attackdbs";
 
     public static bool HasAttackDbTuning(ComboNode n)
-        => n != null && (n.AttackBuildupFrames.HasValue || n.AttackGameplayRange.HasValue);
+        => n != null && (n.AttackBuildupFrames.HasValue || n.AttackGameplayRange.HasValue
+            || (n.HitEdits != null && n.HitEdits.Any(e => e != null && !e.IsEmpty())));
 
     public static bool GraphHasAttackDbTuning(ComboGraph? graph)
         => graph != null && graph.Nodes.Any(HasAttackDbTuning);
@@ -201,8 +202,62 @@ public static class ProjectChangeSummary
                     vanilla != null && vanilla.HasRange ? AttackDbCard.FormatRange(vanilla.Range) : "?",
                     AttackDbCard.FormatRange(n.AttackGameplayRange.Value)));
             }
+            if (n.HitEdits != null)
+            {
+                var hitCard = AttackHitCard.ReadDbPath(contentDir, cardPath);
+                if (hitCard == null || hitCard.Windows.Count == 0)
+                    hitCard = AttackHitCard.ReadDbPath(CustomAssets.Root, cardPath);
+                foreach (var e in n.HitEdits.Where(e => e != null && !e.IsEmpty()).OrderBy(e => e.Index))
+                {
+                    var vanillaWin = hitCard != null && e.Index >= 0 && e.Index < hitCard.Windows.Count
+                        ? hitCard.Windows[e.Index] : null;
+                    rows.Add(BuildHitEditRow($"{name} hit {e.Index + 1}", e, vanillaWin));
+                }
+            }
         }
         return rows;
+    }
+
+    private static object BuildHitEditRow(string title, AttackHitEdit e, AttackHitWindowInfo? vanillaWin)
+    {
+        var parts = new List<string>();
+        void Field(string label, string? now, string? was)
+        {
+            if (now == null) return;
+            parts.Add(was == null ? $"{label} {now}" : $"{label} {was} → {now}");
+        }
+        if (e.FrameLo.HasValue || e.FrameHi.HasValue)
+        {
+            string was = vanillaWin != null ? $"{vanillaWin.FrameLo}-{vanillaWin.FrameHi}" : "?";
+            string now = $"{e.FrameLo ?? (vanillaWin?.FrameLo ?? 0)}-{e.FrameHi ?? (vanillaWin?.FrameHi ?? 0)}";
+            parts.Add($"frames {was} → {now}");
+        }
+        Field("damage", e.Damage?.ToString("0.###"), vanillaWin?.Damage?.ToString("0.###"));
+        Field("structure", e.StructureDamage?.ToString("0.###"), vanillaWin?.StructureDamage?.ToString("0.###"));
+        Field("dmg on hit", e.DamageOnHit?.ToString("0.###"), vanillaWin?.Damage?.ToString("0.###"));
+        Field("dmg on guard", e.DamageOnGuard?.ToString("0.###"), vanillaWin?.GuardDamage?.ToString("0.###"));
+        Field("dmg on deflect", e.DamageOnDeflect?.ToString("0.###"), vanillaWin?.DeflectDamage?.ToString("0.###"));
+        Field("struct on hit", e.StructureDamageOnHit?.ToString("0.###"), vanillaWin?.StructureDamage?.ToString("0.###"));
+        Field("struct on guard", e.StructureDamageOnGuard?.ToString("0.###"), vanillaWin?.GuardStructureDamage?.ToString("0.###"));
+        Field("struct on deflect", e.StructureDamageOnDeflect?.ToString("0.###"), vanillaWin?.DeflectStructureDamage?.ToString("0.###"));
+        Field("knockback", e.KnockbackDistance?.ToString("0.###"), vanillaWin?.KnockbackDistance?.ToString("0.###"));
+        Field("super dizzy", e.SuperDizzyDamage?.ToString("0.###"), vanillaWin?.SuperDizzyDamage?.ToString("0.###"));
+        Field("stun", e.StunFrames?.ToString(), vanillaWin?.StunFrames?.ToString());
+        Field("freeze", e.FreezeFrames?.ToString(), vanillaWin?.FreezeFrames?.ToString());
+        void BoolField(string label, bool? now, bool? was)
+        {
+            if (!now.HasValue) return;
+            string n = now.Value ? "On" : "Off";
+            parts.Add(was.HasValue ? $"{label} {(was.Value ? "On" : "Off")} → {n}" : $"{label} {n}");
+        }
+        BoolField("parriable", e.Parriable, vanillaWin?.Parriable);
+        BoolField("lethal", e.Lethal, vanillaWin?.Lethal);
+        BoolField("break structure", e.BreakStructure, vanillaWin?.BreakStructure);
+        BoolField("dizzy on parry", e.DizzyOnParry, vanillaWin?.DizzyOnParry);
+        BoolField("dizzy on avoid", e.DizzyOnAvoid, vanillaWin?.DizzyOnAvoid);
+        Field("attack power", e.AttackPower, vanillaWin?.AttackPower);
+        Field("property level", e.PropertyLevel?.ToString(), vanillaWin?.PropertyLevel?.ToString());
+        return MakeValueRow(title, "", string.Join(", ", parts));
     }
 
     public static List<UnitReview> BuildFromUnitCaches(
@@ -847,8 +902,8 @@ public static class ProjectChangeSummary
         if (props.HitsCount.HasValue && (!vanilla.HitsCount.HasValue || props.HitsCount.Value != vanilla.HitsCount.Value)) count++;
         if (props.MemoryFlushLimit.HasValue && (!vanilla.MemoryFlushLimit.HasValue || Math.Abs(props.MemoryFlushLimit.Value - vanilla.MemoryFlushLimit.Value) > 0.01f)) count++;
         if (UnitPropertiesManager.GetEffectiveFocus(contentPath, variantTag) != (vanilla.ImmuneToFocus ?? false)) count++;
-        if (!string.IsNullOrEmpty(props.ModelOverride)) count++;
-        if (!string.IsNullOrEmpty(props.ModelSet)) count++;
+        if (UnitPropertiesManager.EnableModelFeature && !string.IsNullOrEmpty(props.ModelOverride)) count++;
+        if (UnitPropertiesManager.EnableModelFeature && !string.IsNullOrEmpty(props.ModelSet)) count++;
         if (UnitPropertiesManager.PhaseSwapActive(props)) count++;
         return count;
     }
@@ -885,7 +940,7 @@ public static class ProjectChangeSummary
                     + string.Join(", ", family)));
         }
 
-        if (!string.IsNullOrEmpty(props.ModelOverride))
+        if (UnitPropertiesManager.EnableModelFeature && !string.IsNullOrEmpty(props.ModelOverride))
         {
             var familyDir = ModelCatalog.FamilyDirForVariant(variantTag);
             string scope = ModelCatalog.IsFamilyWideScenarioFamily(familyDir)
@@ -898,7 +953,7 @@ public static class ProjectChangeSummary
                 + $"at {props.ModelOverride} on export."));
         }
 
-        if (!string.IsNullOrEmpty(props.ModelSet))
+        if (UnitPropertiesManager.EnableModelFeature && !string.IsNullOrEmpty(props.ModelSet))
         {
             var familyDir = ModelCatalog.FamilyDirForVariant(variantTag);
             entries.Add(MakeValueRow("Model set",

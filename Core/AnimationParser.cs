@@ -205,7 +205,79 @@ public class ComboNode
     // registry entry export writes into this node's m_AttackInfos slots, after
     // clearing m_AIAttackAction / m_Event. Empty for Action/Event replacements.
     public string ReplacedAttackCardRel { get; set; } = "";
+    // Per-window hit tuning on this node's attack card (damage, parry, frames, ...).
+    // Null = leave every window vanilla. Edits are a property of the shared card
+    // file, so they propagate across nodes pointing at the same card (same rules
+    // as AttackBuildupFrames / AttackGameplayRange).
+    public List<AttackHitEdit>? HitEdits { get; set; }
     }
+
+/// <summary>
+/// One hit-window override on an attack card's m_HitBoxes[i]. Index is the window
+/// position on the card; every field is null = leave the card/row value vanilla.
+/// Frame bounds live on the card (m_FrameRange.m_Anim), the rest live on the
+/// window's HitBoxData table row (m_OnHitImpact fields + top-level bools).
+/// </summary>
+public class AttackHitEdit
+{
+    public int Index { get; set; }
+    public int? FrameLo { get; set; }
+    public int? FrameHi { get; set; }
+    public float? Damage { get; set; }
+    public float? StructureDamage { get; set; }
+    // Per-impact overrides for Damage / StructureDamage. Null = use the mirror
+    // value above (Damage / StructureDamage) for that impact path. The game
+    // reads m_OnHitImpact when the victim is hit, m_OnGuardImpact while they
+    // guard, and m_OnDeflectImpact on deflect - each with its own floats.
+    public float? DamageOnHit { get; set; }
+    public float? DamageOnGuard { get; set; }
+    public float? DamageOnDeflect { get; set; }
+    public float? StructureDamageOnHit { get; set; }
+    public float? StructureDamageOnGuard { get; set; }
+    public float? StructureDamageOnDeflect { get; set; }
+    public float? KnockbackDistance { get; set; }
+    public float? SuperDizzyDamage { get; set; }
+    public int? StunFrames { get; set; }
+    public int? FreezeFrames { get; set; }
+    public bool? Parriable { get; set; }
+    public bool? Lethal { get; set; }
+    public bool? BreakStructure { get; set; }
+    public bool? DizzyOnParry { get; set; }
+    public bool? DizzyOnAvoid { get; set; }
+    /// <summary>m_eAttackPower (Light / Medium / Strong) as set by the Hit reaction dropdown.</summary>
+    public string? AttackPower { get; set; }
+    /// <summary>First m_AttackPropertyLevel.m_Level (0 flinch, 1/3/4/15 knockdown tiers).</summary>
+    public int? PropertyLevel { get; set; }
+
+    public bool IsEmpty()
+        => !FrameLo.HasValue && !FrameHi.HasValue
+        && !Damage.HasValue && !StructureDamage.HasValue && !KnockbackDistance.HasValue
+        && !DamageOnHit.HasValue && !DamageOnGuard.HasValue && !DamageOnDeflect.HasValue
+        && !StructureDamageOnHit.HasValue && !StructureDamageOnGuard.HasValue && !StructureDamageOnDeflect.HasValue
+        && !SuperDizzyDamage.HasValue
+        && !StunFrames.HasValue && !FreezeFrames.HasValue
+        && !Parriable.HasValue && !Lethal.HasValue && !BreakStructure.HasValue
+        && !DizzyOnParry.HasValue && !DizzyOnAvoid.HasValue
+        && string.IsNullOrEmpty(AttackPower) && !PropertyLevel.HasValue;
+
+    public AttackHitEdit Clone() => (AttackHitEdit)MemberwiseClone();
+
+    public static List<AttackHitEdit>? CloneList(List<AttackHitEdit>? edits)
+    {
+        if (edits == null) return null;
+        var copy = new List<AttackHitEdit>(edits.Count);
+        foreach (var e in edits) copy.Add(e.Clone());
+        return copy;
+    }
+
+    /// <summary>Drops empty edits and returns null when nothing survives.</summary>
+    public static List<AttackHitEdit>? Prune(List<AttackHitEdit>? edits)
+    {
+        if (edits == null) return null;
+        var kept = edits.Where(e => e != null && !e.IsEmpty()).Select(e => e.Clone()).ToList();
+        return kept.Count == 0 ? null : kept;
+    }
+}
 
 public class ComboEdge
 {
@@ -536,6 +608,12 @@ public class ComboGraph
     // Retarget sentinels per TreeRowConditionEdit.TargetBlocked/TargetNatural; edits
     // whose edge no longer exists are orphans and are pruned on commit / ignored on export.
     public Dictionary<string, TreeRowConditionEdit> TreeEdgeConditionOverrides { get; set; } = new();
+    // Retarget provenance: which redirect last re-routed each row/edge outcome key, so a
+    // re-retarget moves only the entries that redirect owns (their effective target is
+    // the redirect's PREVIOUS destination by then, not the redirect). Keys:
+    // ComboGraph.RowRetargetKey / EdgeRetargetKey. Null on old saves; cleared with the
+    // condition maps on reset.
+    public Dictionary<string, int>? RetargetProvenance { get; set; } = new();
     // Vanilla conduit nodes (m_NodeRedirect passthroughs) stripped from the graph at
     // parse time: raw file index -> raw downstream file indices it routed to. Display
     // annotation only - rows keep their raw conduit target and export keeps it too
@@ -546,6 +624,14 @@ public class ComboGraph
     /// one row per new (from, to, input) link, save/load/parse independent.</summary>
     public static string EdgeConditionKey(ComboEdge e)
         => $"{e.FromNodeId}>{e.ToNodeId}|{e.InputName}";
+
+    /// <summary>Provenance key for a row-condition outcome retargeted by a redirect.</summary>
+    public static string RowRetargetKey(int structIdx, int rowIdx, byte key)
+        => $"R:{structIdx}:{rowIdx}:{key}";
+
+    /// <summary>Provenance key for an edge-condition outcome retargeted by a redirect.</summary>
+    public static string EdgeRetargetKey(string edgeKey, byte key)
+        => $"E:{edgeKey}:{key}";
 
     /// <summary>
     /// Re-resolves every transition's TargetNodeId/TargetName against this graph's
@@ -818,6 +904,9 @@ public class ModdedApplyResult
     public int CondInstances { get; set; }
     public int CondParamWrites { get; set; }
     public int CondSkipped { get; set; }
+    // Rows whose modded target is a retargeted redirect's destination - the editor's
+    // retarget data-swap baked into the mod; imported as a Retarget override.
+    public int CondRetargets { get; set; }
     public int StartEntriesChanged { get; set; }
     public int StartTransitionsChanged { get; set; }
     public int StartStructuralSkipped { get; set; }
@@ -3574,7 +3663,7 @@ public class AnimationParser : IDisposable
         if (!isMainChar && moddedStartEntries is { Count: > 0 })
             ApplyModdedStartEntries(vanillaGraph, moddedStartEntries, modToVanilla, result);
 
-        LogDebug($"[IMPORT] ApplyModdedComboToVanilla: {moveChanges} moves, {retargetChanges} retargets, {unmatched} unmatched, {surfaced} surfaced, {result.AiChanges} AI payload(s), {result.ChanceOverrides} chance override(s), {result.CondClears + result.CondInstances} cond rewire(s), {result.CondParamWrites} cond param(s), {result.StartTransitionsChanged} start row(s) ({weaponName})");
+        LogDebug($"[IMPORT] ApplyModdedComboToVanilla: {moveChanges} moves, {retargetChanges} retargets, {unmatched} unmatched, {surfaced} surfaced, {result.AiChanges} AI payload(s), {result.ChanceOverrides} chance override(s), {result.CondClears + result.CondInstances} cond rewire(s), {result.CondRetargets} retarget swap(s), {result.CondParamWrites} cond param(s), {result.StartTransitionsChanged} start row(s) ({weaponName})");
         return result;
     }
 
@@ -3708,24 +3797,38 @@ public class AnimationParser : IDisposable
                     vanillaCondParamsByExport[r.ConditionInstanceIndex] = r.ConditionParamList;
             }
         }
-
         bool SignatureMatches(TreeRowInfo vRow, ModdedTransitionRowInfo mRow)
         {
             if (!string.Equals(vRow.InputName, mRow.InputName, StringComparison.OrdinalIgnoreCase))
                 return false;
             if (vRow.Keys.Count != mRow.Keys.Count) return false;
             for (int i = 0; i < mRow.Keys.Count; i++)
-                if (vRow.Keys[i] != mRow.Keys[i]) return false;
+                if (vRow.Keys[i] != mRow.Keys[i])
+                    return false;
             for (int i = 0; i < mRow.Keys.Count && i < mRow.TargetTreeIndices.Count; i++)
             {
                 int mt = mRow.TargetTreeIndices[i];
                 if (mt < 0) continue;
                 if (!modToVanilla.TryGetValue(mt, out int vt)) continue;
                 if (i < vRow.TargetTreeIndices.Count && vRow.TargetTreeIndices[i] >= 0 &&
-                    vRow.TargetTreeIndices[i] != vt)
+                    vRow.TargetTreeIndices[i] != vt &&
+                    !IsRedirectSwapDestination(vRow.TargetTreeIndices[i], vt))
                     return false;
             }
             return true;
+        }
+
+        // The editor's retarget data-swap: a row the mod points at the retargeted
+        // redirect's DESTINATION while vanilla points at the redirect itself is the
+        // swap baked in, not a restructured row - accepted as a signature match and
+        // applied below as a Retarget override.
+        bool IsRedirectSwapDestination(int vanillaTarget, int mappedModded)
+        {
+            if (vanillaTarget < 0 || mappedModded < 0 || vanillaTarget == mappedModded)
+                return false;
+            var redir = graph.Nodes.FirstOrDefault(n => n.IsRedirect && n.TreeIndex == vanillaTarget);
+            return redir != null && redir.ResolvedRedirectNodeId >= 0
+                && graph.Nodes.Any(n => n.Id == redir.ResolvedRedirectNodeId && n.TreeIndex == mappedModded);
         }
 
         void DiffNode(int vTree, ModdedComboNodeInfo m)
@@ -3806,6 +3909,25 @@ public class AnimationParser : IDisposable
                         result.CondSkipped++;
                         LogDebug($"[IMPORT] COND SKIP tree[{vTree}] row {rowIdx}: no vanilla {mRow.ConditionClass} export to share");
                     }
+                }
+
+                // Retarget data-swap keys: the mod points these at the retargeted
+                // redirect's destination - record the swap as a Retarget override so
+                // the row routes there like the editor's ApplyRetarget does.
+                for (int i = 0; i < mRow.Keys.Count && i < mRow.TargetTreeIndices.Count; i++)
+                {
+                    int mt = mRow.TargetTreeIndices[i];
+                    if (mt < 0) continue;
+                    if (!modToVanilla.TryGetValue(mt, out int vt)) continue;
+                    int vt0 = i < vRow.TargetTreeIndices.Count ? vRow.TargetTreeIndices[i] : -1;
+                    if (vt0 < 0 || vt == vt0 || !IsRedirectSwapDestination(vt0, vt)) continue;
+                    if (!graph.TreeRowConditionOverrides.TryGetValue(vTree, out var cMap))
+                        graph.TreeRowConditionOverrides[vTree] = cMap = new Dictionary<int, TreeRowConditionEdit>();
+                    if (!cMap.TryGetValue(rowIdx, out var cedit))
+                        cMap[rowIdx] = cedit = new TreeRowConditionEdit();
+                    // A cleared row routes on its single surviving key (255).
+                    cedit.Retarget[cedit.ClearCondition ? (byte)255 : mRow.Keys[i]] = vt;
+                    result.CondRetargets++;
                 }
             }
         }

@@ -288,8 +288,28 @@ public partial class StartEntriesDialog : Window
             ToolTip = "Divide 100% evenly across all rows. Overwrites manually typed values - "
                 + "use Σ→100% to keep ratios instead."
         };
-        normBtn.Click += (_, _) => { NormalizeTo100(entry); Rebuild(); };
-        evenBtn.Click += (_, _) => { EvenSplit(entry); Rebuild(); };
+        normBtn.Click += (_, _) =>
+        {
+            NormalizeTo100(entry);
+            Rebuild();
+        };
+        evenBtn.Click += (_, _) =>
+        {
+            EvenSplit(entry);
+            Rebuild();
+        };
+        var resetBtn = new Button
+        {
+            Content = "Reset",
+            Style = (Style)FindResource("DarkButton"),
+            FontSize = 11,
+            Padding = new Thickness(8, 3, 8, 3),
+            Margin = new Thickness(6, 0, 0, 0),
+            IsEnabled = entry.VanillaIndex >= 0 && (entry.Removed || entry.IsModified()),
+            ToolTip = "Restore this entry to vanilla: rows keep their original "
+                + "probability/targets/keys, deleted rows come back, new rows are dropped."
+        };
+        resetBtn.Click += (_, _) => ResetEntry(entry);
 
         foreach (var t in entry.Transitions)
         {
@@ -341,9 +361,12 @@ public partial class StartEntriesDialog : Window
         };
         if (!canAdd)
         {
-            addBtn.ToolTip = "Entries containing a condition-routed single-key row (a key other than 255 "
-                + "on a one-target row) can't take a new row - the export clone would inherit that "
-                + "condition and the new row would not be unconditional.";
+            addBtn.ToolTip = liveRows.Count == 0
+                ? "Vanilla-empty ticket (no transitions to clone). Export builds new rows by cloning "
+                  + "the first vanilla transition as a template, so there is nothing to add here."
+                : "Entries containing a condition-routed single-key row (a key other than 255 "
+                  + "on a one-target row) can't take a new row - the export clone would inherit that "
+                  + "condition and the new row would not be unconditional.";
         }
         else
         {
@@ -377,6 +400,7 @@ public partial class StartEntriesDialog : Window
         actionBar.Children.Add(addBtn);
         actionBar.Children.Add(normBtn);
         actionBar.Children.Add(evenBtn);
+        actionBar.Children.Add(resetBtn);
         rowsPanel.Children.Add(actionBar);
         sp.Children.Add(rowsPanel);
 
@@ -419,6 +443,7 @@ public partial class StartEntriesDialog : Window
             ToolTip = "Probability this target is picked when the ticket fires. Vanilla entries always sum to 100% per entry."
         };
         var normalBorder = BorderBrushInput;
+        InputFilter.ApplyFloat(probBox);
         probBox.TextChanged += (_, _) =>
         {
             if (float.TryParse(probBox.Text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && v >= 0)
@@ -981,6 +1006,43 @@ public partial class StartEntriesDialog : Window
         Rebuild();
     }
 
+    /// <summary>Restores one entry to its vanilla baseline: un-deletes removed rows,
+    /// drops new rows, and reverts every surviving row's probability/targets/keys
+    /// from the Original* parse-time snapshots (per-key lists included).</summary>
+    private void ResetEntry(StartEntry entry)
+    {
+        entry.Removed = false;
+        entry.Transitions.RemoveAll(t => t.OriginalIndex < 0);
+        foreach (var t in entry.Transitions)
+        {
+            t.Probability = t.OriginalProbability;
+            t.TargetNodeId = t.OriginalTargetNodeId;
+            t.TargetTreeIndex = t.OriginalTargetTreeIndex;
+            t.TargetName = t.OriginalTargetName;
+            t.Removed = false;
+            // Per-key restore only when the key list itself is intact - a row whose
+            // keys were trimmed by node deletion can't safely re-grow to the full
+            // original list (the parallel lists would misalign).
+            if (t.KeyCount > 1
+                && t.Keys.Count == t.KeyCount
+                && t.OriginalKeyTargetTreeIndices.Count == t.KeyCount)
+            {
+                t.KeyTargetTreeIndices = new List<int>(t.OriginalKeyTargetTreeIndices);
+                t.KeyTargetNodeIds = t.KeyTargetTreeIndices
+                    .Select(ti => _graph.Nodes.FirstOrDefault(n => n.TreeIndex == ti)?.Id ?? -1)
+                    .ToList();
+                t.KeyTargetNames = t.KeyTargetTreeIndices
+                    .Select(ti => NodeName(_graph.Nodes.FirstOrDefault(n => n.TreeIndex == ti)))
+                    .ToList();
+                t.TargetSummary = string.Join(", ",
+                    t.Keys.Zip(t.KeyTargetTreeIndices, (k2, v2) => $"{k2}→{v2}"));
+            }
+        }
+        txtAuthorHint.Text = $"Reset '{entry.Label}' to vanilla.";
+        txtAuthorHint.Foreground = GreenBrush;
+        Rebuild();
+    }
+
     private void AddTransition(StartEntry entry)
     {
         var first = entry.Transitions.FirstOrDefault(t => !t.Removed);
@@ -1037,10 +1099,29 @@ public partial class StartEntriesDialog : Window
     private static float LiveSum(StartEntry entry)
         => entry.Transitions.Where(t => !t.Removed).Sum(t => t.Probability);
 
+    /// <summary>True when any live row is new or its probability differs from the
+    /// vanilla value - the OK gate validates sums only for entries the user actually
+    /// touched, so vanilla oddities (e.g. a 200% total) never block.</summary>
+    private static bool ProbabilitiesTouched(StartEntry entry)
+        => entry.Transitions.Any(t => !t.Removed
+            && (t.OriginalIndex < 0 || Math.Abs(t.Probability - t.OriginalProbability) > 0.001f));
+
     private void RefreshEntryHeader(StartEntry entry, TextBlock sumText, Button normBtn, Button evenBtn)
     {
         float sum = LiveSum(entry);
         int live = entry.Transitions.Count(t => !t.Removed);
+        if (live == 0)
+        {
+            // Vanilla-empty entry (some units ship tickets with an empty
+            // m_Transitions array) - not an error, nothing to rebalance.
+            sumText.Text = "no transitions (vanilla)";
+            sumText.Foreground = GrayBrush;
+            sumText.ToolTip = "Vanilla ships this ticket with an empty transitions array. "
+                + "The entry is kept as-is on export.";
+            normBtn.IsEnabled = false;
+            evenBtn.IsEnabled = false;
+            return;
+        }
         bool ok = Math.Abs(sum - 100f) <= 0.5f;
         sumText.Text = $"Σ {sum:0.###}%  ·  {live} row{(live == 1 ? "" : "s")}";
         sumText.Foreground = ok ? GreenBrush : RedBrush;
@@ -1057,7 +1138,11 @@ public partial class StartEntriesDialog : Window
         var liveEntries = _entries.Where(e => !e.Removed).ToList();
         int noTarget = liveEntries.Sum(e => e.Transitions.Count(t =>
             !t.Removed && t.TargetNodeId < 0 && t.TargetTreeIndex < 0));
-        int badSum = liveEntries.Count(e => Math.Abs(LiveSum(e) - 100f) > 0.5f);
+        // Vanilla-empty entries (0 transitions, kept as-is on export) are excluded
+        // from the sum warning - their Σ is legitimately 0, not a user edit.
+        int badSum = liveEntries.Count(e =>
+            e.Transitions.Count(t => !t.Removed) > 0
+            && Math.Abs(LiveSum(e) - 100f) > 0.5f);
         int edited = _entries.Sum(e => e.Removed ? 1 : e.Transitions.Count(t => t.IsModified()));
         int added = liveEntries.Count(e => e.VanillaIndex < 0);
         int deleted = _entries.Count(e => e.Removed);
@@ -1119,12 +1204,6 @@ public partial class StartEntriesDialog : Window
     {
         foreach (var entry in _entries.Where(en => !en.Removed))
         {
-            if (entry.Transitions.Count(t => !t.Removed) == 0)
-            {
-                txtStatus.Text = $"'{entry.Label}': an entry needs at least one transition.";
-                txtStatus.Foreground = RedBrush;
-                return;
-            }
             foreach (var t in entry.Transitions.Where(t => !t.Removed))
             {
                 if (t.TargetNodeId < 0 && t.TargetTreeIndex < 0)
@@ -1146,6 +1225,30 @@ public partial class StartEntriesDialog : Window
                     }
                 }
             }
+        }
+
+        // OK gate: touched entries must sum to 100%. Only probability-edited or new
+        // rows count as touched, so untouched vanilla entries never block - even
+        // ones with unusual vanilla totals. One MessageBox lists every offender.
+        var touchedBad = new List<(string Name, float Sum)>();
+        foreach (var entry in _entries.Where(en => !en.Removed))
+        {
+            if (!ProbabilitiesTouched(entry)) continue;
+            float sum = LiveSum(entry);
+            if (Math.Abs(sum - 100f) <= 0.5f) continue;
+            touchedBad.Add((string.IsNullOrEmpty(entry.Label) ? $"Entry {entry.VanillaIndex + 1}" : entry.Label, sum));
+        }
+        if (touchedBad.Count > 0)
+        {
+            txtStatus.Text = "Fix start-entry probabilities (must sum to 100%) before saving.";
+            txtStatus.Foreground = RedBrush;
+            MessageBox.Show(this,
+                "These start entries were edited but their probabilities don't sum to 100%:\n\n"
+                + string.Join("\n", touchedBad.Select(b => $"  {b.Name}: {b.Sum:0.###}%"))
+                + "\n\nUse Σ→100% or Even split on each, then press OK again. "
+                + "Untouched entries are never blocked.",
+                "Start entry probabilities", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
         }
 
         if (Same(_graph.StartEntries, _entries))

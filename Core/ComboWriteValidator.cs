@@ -50,10 +50,33 @@ public static class ComboWriteValidator
             int importCount = check.Imports.Count;
             foreach (var export in check.Exports)
             {
+                // BP instances (condition/action/event clones) must outer to an export -
+                // typically the combo object. A package outer (0) is what the game
+                // deadlocks on ("Missing Dependency ... waiting for serialization").
+                if (export.ClassIndex != null && export.ClassIndex.Index < 0
+                    && -export.ClassIndex.Index - 1 < importCount)
+                {
+                    var cls = check.Imports[-export.ClassIndex.Index - 1];
+                    if (string.Equals(cls.ClassName?.Value?.ToString(), "BlueprintGeneratedClass",
+                            StringComparison.Ordinal))
+                    {
+                        int oi = export.OuterIndex?.Index ?? 0;
+                        if (oi <= 0 || oi > exportCount)
+                            errors.Add($"{export.ObjectName?.Value?.ToString() ?? "export"}: "
+                                + $"BP instance outer {oi} (must be an export, {exportCount} present)");
+                    }
+                }
                 if (export is NormalExport ne && ne.Data != null)
                     WalkProps(ne.Data, actual, errors, export.ObjectName?.Value?.ToString() ?? "export",
                         exportCount, importCount);
             }
+
+            // Preload slice integrity: an export's Class/Template (and any import Super)
+            // must sit inside its own sc/cc slices - the class import create-arc is what
+            // UE's event-driven loader orders creation by; a donor-indexed slice ships
+            // the wrong arcs and races ("Missing Dependency ... waiting for serialization"
+            // -> fatal AsyncLoading.cpp:2752). Every dep must also be in range.
+            CheckPreloadSlices(check, errors);
 
             if (errors.Count > 0)
             {
@@ -68,6 +91,58 @@ public static class ComboWriteValidator
         {
             Fail(tag, uassetPath, $"reparse failed: {ex.Message}");
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Preload slice integrity per export. On reparse only the 4 dependency lists are
+    /// reachable (fed/size tail fields are internal to UAssetAPI); the writer rebuilds
+    /// fed/sizes from the lists, so contiguity is structural - what can still go wrong
+    /// is a donor-indexed slice (the AssetCloner bug): the class/template import then
+    /// names a different import than the destination's, UE builds no create-arc for the
+    /// clone, and loading fatals ("Missing Dependency ... waiting for serialization").
+    /// Empty slices (fed=-1 on disk) are allowed - other exports' arcs cover the shared
+    /// imports - but a non-empty slice MUST contain the export's own Class/Template
+    /// (and import Super), and every dep must be in range.
+    /// </summary>
+    private static void CheckPreloadSlices(UAsset asset, List<string> errors)
+    {
+        int importCount = asset.Imports.Count;
+        int exportCount = asset.Exports.Count;
+        foreach (var export in asset.Exports)
+        {
+            string name = export.ObjectName?.Value?.ToString() ?? "export";
+            var slice = new HashSet<int>();
+            CollectSlice(export.SerializationBeforeSerializationDependencies, "sc");
+            CollectSlice(export.CreateBeforeSerializationDependencies, "cc");
+            CollectSlice(export.SerializationBeforeCreateDependencies, "scc");
+            CollectSlice(export.CreateBeforeCreateDependencies, "ccc");
+            if (slice.Count == 0) continue;
+
+            CheckArc(export.ClassIndex?.Index ?? 0, "ClassIndex");
+            CheckArc(export.TemplateIndex?.Index ?? 0, "TemplateIndex");
+            CheckArc(export.SuperIndex?.Index ?? 0, "SuperIndex");
+
+            void CollectSlice(List<FPackageIndex>? deps, string label)
+            {
+                if (deps == null) return;
+                foreach (var dep in deps)
+                {
+                    int v = dep.Index;
+                    bool ok = v < 0 ? -v - 1 < importCount : v > 0 && v <= exportCount;
+                    if (!ok)
+                        errors.Add($"{name}: {label} dependency {v} out of range "
+                            + $"(imports {importCount}, exports {exportCount})");
+                    slice.Add(v);
+                }
+            }
+
+            void CheckArc(int idx, string label)
+            {
+                if (idx < 0 && !slice.Contains(idx))
+                    errors.Add($"{name}: {label} {idx} missing from preload slice "
+                        + "(class/template create-arc - loader would race the clone)");
+            }
         }
     }
 

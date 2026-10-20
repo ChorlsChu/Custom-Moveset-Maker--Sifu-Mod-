@@ -42,6 +42,7 @@ internal static class AssetCloner
         private readonly Dictionary<int, FPackageIndex> _exportMemo = new();
         private readonly Dictionary<int, FPackageIndex> _importMemo = new();
         private readonly bool _sameAsset;
+        private FPackageIndex? _dstMain;
 
         public Context(UAsset src, UAsset dst)
         {
@@ -51,6 +52,28 @@ internal static class AssetCloner
         }
 
         public void Fail(string why) => Failure ??= why;
+
+        /// <summary>
+        /// Destination combo-object export (the one carrying m_Nodes). References to a
+        /// source combo object - condition/action instances outer to it - must land here;
+        /// writing them as package-outer (FPackageIndex 0) produces an invalid instance the
+        /// game deadlocks on ("Missing Dependency ... waiting for serialization").
+        /// </summary>
+        public FPackageIndex DstMainExport
+        {
+            get
+            {
+                if (_dstMain == null)
+                    for (int i = 0; i < Dst.Exports.Count; i++)
+                        if (Dst.Exports[i] is NormalExport ne && ne.Data != null
+                            && ne.Data.Any(p => string.Equals(p.Name?.Value?.ToString(), "m_Nodes", StringComparison.Ordinal)))
+                        {
+                            _dstMain = FPackageIndex.FromExport(i);
+                            break;
+                        }
+                return _dstMain ?? new FPackageIndex(0);
+            }
+        }
 
         private static bool SameAsset(UAsset a, UAsset b)
         {
@@ -80,7 +103,7 @@ internal static class AssetCloner
                 if (imp == null) Fail($"source import {-pi.Index} cannot be re-created");
                 return imp ?? new FPackageIndex(0);
             }
-            if (IsComboTreeExport(pi.Index - 1)) return new FPackageIndex(0);
+            if (IsComboTreeExport(pi.Index - 1)) return DstMainExport;
             var exp = EnsureExport(pi.Index - 1);
             if (exp == null) Fail($"source export {pi.Index} cannot be cloned");
             return exp ?? new FPackageIndex(0);
@@ -103,7 +126,25 @@ internal static class AssetCloner
             if (_sameAsset) return pi;
             if (pi.Index == 0) return new FPackageIndex(0);
             if (pi.Index < 0) return EnsureImport(-pi.Index - 1) ?? new FPackageIndex(0);
+            if (IsComboTreeExport(pi.Index - 1)) return DstMainExport;
             return EnsureExport(pi.Index - 1) ?? new FPackageIndex(0);
+        }
+
+        /// <summary>Remaps one preload-dependency list into a NEW list (the memberwise
+        /// clone shares the donor's List instances - mutating them would corrupt the
+        /// cached source asset when the same donor export is cloned twice). Strict:
+        /// an unmappable entry fails the whole clone so no wrong-index slice ships.</summary>
+        private List<FPackageIndex> RemapDeps(List<FPackageIndex>? src)
+        {
+            var res = new List<FPackageIndex>(src?.Count ?? 0);
+            if (src == null) return res;
+            foreach (var dep in src)
+            {
+                var mapped = Remap(dep);
+                if (mapped == null || Failure != null) return res;
+                res.Add(mapped);
+            }
+            return res;
         }
 
         public FPackageIndex? EnsureImport(int srcIdx)
@@ -181,6 +222,19 @@ internal static class AssetCloner
             clone.OuterIndex = Remap(exp.OuterIndex) ?? new FPackageIndex(0);
             clone.SuperIndex = RemapTolerant(exp.SuperIndex);
             clone.TemplateIndex = RemapTolerant(exp.TemplateIndex);
+            // Preload dependency slices travel with the clone: the memberwise copy keeps
+            // the donor's raw indices, which name the WRONG imports/exports here and drop
+            // the class/template create-arcs UE's event-driven loader orders export
+            // creation by ("Missing Dependency ... still waiting for serialization").
+            // UAssetAPI's writer rebuilds FirstExportDependency/sizes from these lists.
+            clone.SerializationBeforeSerializationDependencies =
+                RemapDeps(exp.SerializationBeforeSerializationDependencies);
+            clone.CreateBeforeSerializationDependencies =
+                RemapDeps(exp.CreateBeforeSerializationDependencies);
+            clone.SerializationBeforeCreateDependencies =
+                RemapDeps(exp.SerializationBeforeCreateDependencies);
+            clone.CreateBeforeCreateDependencies =
+                RemapDeps(exp.CreateBeforeCreateDependencies);
             if (Failure != null) return null;
             clone.ObjectName = FName.FromString(Dst, UniqueObjectName(exp.ObjectName, exp.TemplateIndex));
             clone.SerialSize = 0;

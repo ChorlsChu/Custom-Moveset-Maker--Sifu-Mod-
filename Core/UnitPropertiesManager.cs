@@ -27,6 +27,14 @@ public class UnitProperties
 
 public static class UnitPropertiesManager
 {
+    /// <summary>
+    /// Master switch for the custom-model feature (pickers, import, export passes,
+    /// summary rows). Hidden out of the UI while the defense/props pipeline is the
+    /// focus; flip to true to bring the whole feature back. Deliberately not `const`
+    /// so the guarded branches stay reachable (no CS0162 churn when toggling).
+    /// </summary>
+    public static readonly bool EnableModelFeature = false;
+
     private static readonly Dictionary<string, string> ArchetypePaths = new()
     {
         ["Grunt_Base"] = "DB/AI/Archetypes/Grunt/_Base/BP_Grunt_ArchetypeDB_Base",
@@ -162,6 +170,34 @@ public static class UnitPropertiesManager
         return File.Exists(vanilla) ? vanilla : null;
     }
 
+    private static bool ValueDiffers(float? propsValue, float? vanillaValue)
+        => propsValue.HasValue && (!vanillaValue.HasValue || Math.Abs(propsValue.Value - vanillaValue.Value) > 0.01f);
+
+    private static bool ValueDiffers(int? propsValue, int? vanillaValue)
+        => propsValue.HasValue && (!vanillaValue.HasValue || propsValue.Value != vanillaValue.Value);
+
+    /// <summary>
+    /// ArchetypeDB payload (m_fHealth / m_fStructure) differs from vanilla.
+    /// </summary>
+    public static bool HasArchValueChanges(string contentPath, string variantTag, UnitProperties props)
+    {
+        var vanilla = Read(contentPath, variantTag);
+        return ValueDiffers(props.Health, vanilla.Health)
+            || ValueDiffers(props.Structure, vanilla.Structure);
+    }
+
+    /// <summary>
+    /// Contextual-defense payload (m_fMemoryLimit / m_uiHitsCount / m_fMemoryFlushLimit)
+    /// differs from vanilla.
+    /// </summary>
+    public static bool HasDefenseValueChanges(string contentPath, string variantTag, UnitProperties props)
+    {
+        var vanilla = Read(contentPath, variantTag);
+        return ValueDiffers(props.MemoryLimit, vanilla.MemoryLimit)
+            || ValueDiffers(props.HitsCount, vanilla.HitsCount)
+            || ValueDiffers(props.MemoryFlushLimit, vanilla.MemoryFlushLimit);
+    }
+
     public static bool HasChanges(string contentPath, string variantTag, UnitProperties props)
     {
         var vanilla = Read(contentPath, variantTag);
@@ -170,25 +206,24 @@ public static class UnitPropertiesManager
             || (props.MemoryLimit.HasValue && (!vanilla.MemoryLimit.HasValue || Math.Abs(props.MemoryLimit.Value - vanilla.MemoryLimit.Value) > 0.01f))
             || (props.HitsCount.HasValue && (!vanilla.HitsCount.HasValue || props.HitsCount.Value != vanilla.HitsCount.Value))
             || (props.MemoryFlushLimit.HasValue && (!vanilla.MemoryFlushLimit.HasValue || Math.Abs(props.MemoryFlushLimit.Value - vanilla.MemoryFlushLimit.Value) > 0.01f))
-            || !string.IsNullOrEmpty(props.ModelOverride)
-            || !string.IsNullOrEmpty(props.ModelSet)
             || PhaseSwapActive(props)
             || FocusChanged(contentPath, variantTag, props);
     }
 
+    /// <summary>
+    /// Export gate for <see cref="ExportDialog"/>.PatchUnitProperties: true ONLY when a
+    /// payload value the patcher actually writes (HP/structure or defense thresholds)
+    /// differs from vanilla. The earlier FocusChanged/PhaseSwap/Model clauses dragged
+    /// vanilla-equal units (Grunt / FlashKick with ImmuneToFocus checked) into the patcher,
+    /// which copied+re-saved their ContextualDefense files and flattened EVERY
+    /// AttackMemoryInfluenceTest threshold in them to the single UI value - destroying the
+    /// influence conditions that select parry/avoid (in game those units collapsed to the
+    /// Dash_S fallback). Focus/phase/model passes stage their own files from the
+    /// HasChanges-based capture, so dropping the clauses here loses nothing.
+    /// </summary>
     public static bool HasWritableChanges(string contentPath, string variantTag, UnitProperties props)
-    {
-        var vanilla = Read(contentPath, variantTag);
-        return (props.Health.HasValue && (!vanilla.Health.HasValue || Math.Abs(props.Health.Value - vanilla.Health.Value) > 0.01f))
-            || (props.Structure.HasValue && (!vanilla.Structure.HasValue || Math.Abs(props.Structure.Value - vanilla.Structure.Value) > 0.01f))
-            || (props.MemoryLimit.HasValue && (!vanilla.MemoryLimit.HasValue || Math.Abs(props.MemoryLimit.Value - vanilla.MemoryLimit.Value) > 0.01f))
-            || (props.HitsCount.HasValue && (!vanilla.HitsCount.HasValue || props.HitsCount.Value != vanilla.HitsCount.Value))
-            || (props.MemoryFlushLimit.HasValue && (!vanilla.MemoryFlushLimit.HasValue || Math.Abs(props.MemoryFlushLimit.Value - vanilla.MemoryFlushLimit.Value) > 0.01f))
-            || !string.IsNullOrEmpty(props.ModelOverride)
-            || !string.IsNullOrEmpty(props.ModelSet)
-            || PhaseSwapActive(props)
-            || FocusChanged(contentPath, variantTag, props);
-    }
+        => HasArchValueChanges(contentPath, variantTag, props)
+            || HasDefenseValueChanges(contentPath, variantTag, props);
 
     /// <summary>Checked with a target picked - the only state the phase-swap export pass writes.</summary>
     public static bool PhaseSwapActive(UnitProperties props)
@@ -928,13 +963,17 @@ public static class UnitPropertiesManager
     }
 
     /// <summary>
-    /// Phase-swap pass: for each unit with PhaseSwap on and a target DB picked, stages that
-    /// variant's tier-matched scenarios (token-filtered against the target name) and appends a
-    /// Last Man takedown transition retargeted at the chosen DB's CDO - the proven LastMan_B
-    /// behavior (gauge off, Grunt launcher cloned). Runs after the model pass; when a scenario
-    /// is already staged it patches that copy in place so both edits survive in one file.
-    /// Scenarios that already phase (vanilla Grunt roster, bosses) are skipped. Returns the
-    /// staged scenario rel-paths that now carry the transition.
+    /// Phase-swap pass: for each unit with PhaseSwap on and a target DB picked, stages every
+    /// scenario of the variant's tier (ModelCatalog.ScenarioRelsForVariant - the same
+    /// tier-filtered scan the model pass uses) and either appends a Last Man takedown
+    /// transition at the target CDO (scenarios that never phased - FD roster; target import
+    /// created when missing) or retargets the existing vanilla takedown transition's child
+    /// node at that CDO (Grunt roster and anything else that already phases). Any target is
+    /// accepted, cross-family included - pairing is by variant, not by level token. Boss
+    /// (family-wide) families stay excluded. Runs after the model pass; when a scenario is
+    /// already staged it patches that copy in place so both edits survive in one file.
+    /// Scenarios whose root phase IS the target (self-swap) are skipped. Returns the staged
+    /// scenario rel-paths that now carry the transition.
     /// </summary>
     public static List<string> ApplyPhaseSwaps(
         string vanillaContentDir,
@@ -967,15 +1006,27 @@ public static class UnitPropertiesManager
             var rels = ModelCatalog.ScenarioRelsForVariant(vanillaContentDir, tag);
             if (rels.Count == 0)
             {
-                onLog?.Invoke($"[PHASE-SWAP] No scenario files matched variant {kvp.Key} - not written");
+                onLog?.Invoke($"[PHASE-SWAP] No scenario files found for variant tier {tag} - not written");
                 continue;
             }
 
             string targetDb = props.PhaseSwapTarget!;
+            string dbLeaf = PhaseSwapPatcher.DbLeafName(targetDb);
             int matched = 0;
+            var selfSwap = new List<string>();
             foreach (var rel in rels)
             {
-                if (!PhaseSwapPatcher.ScenarioMatchesTarget(rel, targetDb)) continue;
+                var probe = PhaseSwapPatcher.ProbeScenario(
+                    Path.Combine(vanillaContentDir,
+                        rel.Replace('/', Path.DirectorySeparatorChar) + ".uasset"),
+                    targetDb);
+                if (probe == PhaseSwapPatcher.ProbeResult.SelfSwap)
+                {
+                    selfSwap.Add(rel);
+                    onLog?.Invoke($"[PHASE-SWAP] skipped {rel}: root phase already {dbLeaf} (self-swap)");
+                    continue;
+                }
+
                 matched++;
                 if (wanted.TryGetValue(rel, out var existing))
                 {
@@ -986,9 +1037,14 @@ public static class UnitPropertiesManager
                 wanted[rel] = (targetDb, kvp.Key);
             }
 
-            string dbLeaf = PhaseSwapPatcher.DbLeafName(targetDb);
             if (matched == 0)
-                onLog?.Invoke($"[PHASE-SWAP] Target {dbLeaf} matched none of {tag}'s {rels.Count} scenario(s) - not written");
+            {
+                var reasons = new List<string>();
+                if (selfSwap.Count > 0) reasons.Add($"root phase already {dbLeaf}: {string.Join(", ", selfSwap)}");
+                if (reasons.Count == 0)
+                    reasons.Add($"no scenario files; candidates: {string.Join(", ", rels)}");
+                onLog?.Invoke($"[PHASE-SWAP] Target {dbLeaf} matched none of {tag}'s {rels.Count} scenario(s) - not written ({string.Join("; ", reasons)})");
+            }
             else
                 onLog?.Invoke($"[PHASE-SWAP] {kvp.Key} -> {dbLeaf}: {matched} scenario file(s) queued");
         }
@@ -1041,6 +1097,12 @@ public static class UnitPropertiesManager
                 onLog?.Invoke($"[PHASE-SWAP] patched {rel} -> {PhaseSwapPatcher.DbLeafName(targetDb)} (Last Man, no gauge)");
                 continue;
             }
+            if (outcome == PhaseSwapPatcher.Outcome.Retargeted)
+            {
+                written.Add(rel);
+                onLog?.Invoke($"[PHASE-SWAP] retargeted {rel} -> {PhaseSwapPatcher.DbLeafName(targetDb)} (existing Last Man)");
+                continue;
+            }
 
             // Failed writes may have left a corrupt file; skip leaves any earlier staged copy
             // (e.g. the model pass's mesh-patched one) untouched unless we staged it just now.
@@ -1050,7 +1112,7 @@ public static class UnitPropertiesManager
                 try { var u = Path.ChangeExtension(stagedUasset, ".uexp"); if (File.Exists(u)) File.Delete(u); } catch { }
             }
             onLog?.Invoke(outcome == PhaseSwapPatcher.Outcome.SkippedAlreadyPhasing
-                ? $"[PHASE-SWAP] skipped {rel}: already has a Last Man transition"
+                ? $"[PHASE-SWAP] skipped {rel}: {error}"
                 : $"[PHASE-SWAP] patch failed for {rel} (variant {ownerTag}): {error}");
         }
 
@@ -1854,31 +1916,36 @@ public static class UnitPropertiesManager
                 try
                 {
                     var asset = new UAsset(uassetPath, EngineVersion.VER_UE4_26, null, CustomSerializationFlags.None);
+                    // Mirror ReadDefenseAsset's first-hit semantics: write each field only to the
+                    // FIRST export that carries it. A blanket loop over every export flattens the
+                    // per-influence-test tuning (e.g. FlashKick's 14 AttackMemoryInfluenceTest
+                    // exports with distinct m_fMemoryLimit values) and breaks the family's defense.
                     bool modified = false;
+                    bool mlWritten = false, flWritten = false, hcWritten = false;
 
                     foreach (var exp in asset.Exports)
                     {
                         if (exp is not NormalExport ne) continue;
 
-                        if (props.MemoryLimit.HasValue)
+                        if (props.MemoryLimit.HasValue && !mlWritten)
                         {
                             var ml = ne.Data.OfType<FloatPropertyData>()
                                 .FirstOrDefault(p => p.Name.Value.ToString() == "m_fMemoryLimit");
-                            if (ml != null) { ml.Value = props.MemoryLimit.Value; modified = true; }
+                            if (ml != null) { ml.Value = props.MemoryLimit.Value; modified = mlWritten = true; }
                         }
 
-                        if (props.HitsCount.HasValue)
+                        if (props.HitsCount.HasValue && !hcWritten)
                         {
                             var hc = ne.Data.OfType<BytePropertyData>()
                                 .FirstOrDefault(p => p.Name.Value.ToString() == "m_uiHitsCount");
-                            if (hc != null) { hc.Value = (byte)props.HitsCount.Value; modified = true; }
+                            if (hc != null) { hc.Value = (byte)props.HitsCount.Value; modified = hcWritten = true; }
                         }
 
-                        if (props.MemoryFlushLimit.HasValue)
+                        if (props.MemoryFlushLimit.HasValue && !flWritten)
                         {
                             var fl = ne.Data.OfType<FloatPropertyData>()
                                 .FirstOrDefault(p => p.Name.Value.ToString() == "m_fMemoryFlushLimit");
-                            if (fl != null) { fl.Value = props.MemoryFlushLimit.Value; modified = true; }
+                            if (fl != null) { fl.Value = props.MemoryFlushLimit.Value; modified = flWritten = true; }
                         }
                     }
 

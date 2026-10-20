@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("dump_unit_props")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+51e45b860ba0cdd091aea1fd7c8fc5d7aa17cd6b")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+3e8370e19f38c585caec6327ed5bcb63931c7057")]
 [assembly: System.Reflection.AssemblyProductAttribute("dump_unit_props")]
 [assembly: System.Reflection.AssemblyTitleAttribute("dump_unit_props")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

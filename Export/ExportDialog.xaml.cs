@@ -53,6 +53,9 @@ public partial class ExportDialog : Window
     private readonly Dictionary<string, HashSet<string>> _expandedSections = new(StringComparer.OrdinalIgnoreCase);
     private string? _currentExportVariant;
     private readonly HashSet<string> _writtenArenaPaths = new(StringComparer.OrdinalIgnoreCase);
+    // Anim/card refs from each unit's exported graph that may carry a foreign family's
+    // BP_Voice_Preview override - drained by the voice-fix pass after the combo staging.
+    private readonly List<VoiceArchetypeFixer.VoiceRef> _voiceAnimRefs = new();
     // Set while an export runs whenever anything it stages or references resolves to
     // the CustomAssets folder; gates the bulk StageCustomAssetsFiles at the end.
     private static bool _exportUsesCustomAssets;
@@ -867,6 +870,7 @@ public partial class ExportDialog : Window
 
             var fileEntries = new List<(string src, string dest)>();
             _writtenArenaPaths.Clear();
+            _voiceAnimRefs.Clear();
             _exportUsesCustomAssets = false;
             _currentExportVariant = null;
 
@@ -906,6 +910,7 @@ public partial class ExportDialog : Window
                     _activeVariant = _currentExportVariant;
 
                     await PatchComboAndStanceForCurrentState(fileEntries, gameRoot, outputPath);
+                    CollectVoiceAnimRefs(_currentExportVariant);
                 }
 
                 _modifiedNodes = savedMod;
@@ -932,6 +937,7 @@ public partial class ExportDialog : Window
             {
                 _currentExportVariant = _activeVariant;
                 await PatchComboAndStanceForCurrentState(fileEntries, gameRoot, outputPath);
+                CollectVoiceAnimRefs(_currentExportVariant);
                 _currentExportVariant = null;
 
                 if (_unitProps != null && !string.IsNullOrEmpty(_activeVariant)
@@ -946,6 +952,31 @@ public partial class ExportDialog : Window
             // two values into its payload in place. Runs after every unit so a card shared by two
             // units is written exactly once.
             PatchAttackDbFields(fileEntries, gameRoot, outputPath);
+
+            // Cross-family voice bleed: an appended, swapped, or AI-replaced move can carry
+            // another family's BP_Voice_Preview notify, which force-flips the performer's
+            // Wwise voice switch - and it sticks for every later move (a Grunt given the
+            // Bodyguard Disarm starts growling like a Bodyguard). Stage a same-path
+            // neutralized copy of each override anim so the notify never fires and every
+            // unit (MainChar included) keeps its own assigned voice.
+            if (_voiceAnimRefs.Count > 0)
+            {
+                var voiceStagedContent = Path.Combine(outputPath, "Sifu", "Content");
+                var voiceWritten = VoiceArchetypeFixer.ApplyVoiceFixes(
+                    gameRoot, voiceStagedContent, _voiceAnimRefs,
+                    msg => ErrorLog.Write("EXPORT", new Exception(msg)));
+
+                foreach (var voiceRel in voiceWritten)
+                {
+                    var voiceOut = Path.Combine(voiceStagedContent,
+                        voiceRel.Replace('/', Path.DirectorySeparatorChar) + ".uasset");
+                    if (fileEntries.Any(e => e.src == voiceOut)) continue;
+                    fileEntries.Add((voiceOut, $"../../../Sifu/Content/{voiceRel}.uasset"));
+                    var voiceUexp = Path.ChangeExtension(voiceOut, ".uexp");
+                    if (File.Exists(voiceUexp))
+                        fileEntries.Add((voiceUexp, $"../../../Sifu/Content/{voiceRel}.uexp"));
+                }
+            }
 
             // The flag is family-wide and its owner file is frequently another unit's own ArchetypeDB,
             // so every unit's "copy vanilla into staging" has to land first - patching focus per unit
@@ -981,8 +1012,9 @@ public partial class ExportDialog : Window
             // staged by another pass - run last so no later copy overwrites the patched mesh links.
             // The model-set (roster swap) pass shares the same Blueprint extraction (it needs
             // each target family's Character BPs from Blueprints/AI/<family>).
-            bool anyModelPick = focusProps.Values.Any(p =>
-                !string.IsNullOrEmpty(p?.ModelOverride) || !string.IsNullOrEmpty(p?.ModelSet));
+            bool anyModelPick = UnitPropertiesManager.EnableModelFeature
+                && focusProps.Values.Any(p =>
+                    !string.IsNullOrEmpty(p?.ModelOverride) || !string.IsNullOrEmpty(p?.ModelSet));
             if (anyModelPick)
             {
                 var rosterBpDirs = focusProps.Values
@@ -1417,6 +1449,51 @@ public partial class ExportDialog : Window
             lines.Add($"\"{rel}\" \"{dest}\"");
         }
         return (lines, deadZone);
+    }
+
+    /// <summary>
+    /// Cross-family voice bleed collection. Walks the unit's graph for every attack node
+    /// whose anim or card comes from outside the vanilla tree (appended/imported nodes,
+    /// in-place anim swaps, AI-replace payload cards) and records those paths - the
+    /// voice-fix pass then stages a neutralized copy of any that carry a foreign family's
+    /// BP_Voice_Preview override. Vanilla nodes are skipped: vanilla trees only ever
+    /// reference their own family, so they cannot leak a foreign voice.
+    /// </summary>
+    private void CollectVoiceAnimRefs(string? variantTag)
+    {
+        if (_graph == null) return;
+        foreach (var n in _graph.Nodes)
+        {
+            if (n.Removed || n.IsRedirect || n.IsActionNode || n.IsEventNode) continue;
+            bool crossFamily = n.Kind != ComboNodeKind.Vanilla
+                || !string.IsNullOrEmpty(n.ReplacedAttackCardRel)
+                || (!string.IsNullOrEmpty(n.AnimPath) && !string.IsNullOrEmpty(n.VanillaAnimPath)
+                    && !string.Equals(n.AnimPath, n.VanillaAnimPath, StringComparison.OrdinalIgnoreCase));
+            if (!crossFamily) continue;
+
+            if (!string.IsNullOrEmpty(n.AnimPath)
+                && n.AnimPath.Contains("Game/Animations/", StringComparison.OrdinalIgnoreCase))
+            {
+                _voiceAnimRefs.Add(new VoiceArchetypeFixer.VoiceRef(variantTag,
+                    GamePathToContentRel(n.AnimPath), IsCard: false));
+            }
+            if (!string.IsNullOrEmpty(n.ReplacedAttackCardRel))
+            {
+                _voiceAnimRefs.Add(new VoiceArchetypeFixer.VoiceRef(variantTag,
+                    GamePathToContentRel(n.ReplacedAttackCardRel), IsCard: true));
+            }
+            // Cross-family nodes with no direct anim (card-only / AI-action sourced) still
+            // resolve their attack through the card's m_Attack.m_Animation - expand it.
+            if (n.Kind != ComboNodeKind.Vanilla && string.IsNullOrEmpty(n.AnimPath))
+            {
+                string db = !string.IsNullOrEmpty(n.SourceDBPath) ? n.SourceDBPath : n.DefaultDBPath;
+                if (!string.IsNullOrEmpty(db) && MoveInfo.IsAttackDbGamePath(db))
+                {
+                    _voiceAnimRefs.Add(new VoiceArchetypeFixer.VoiceRef(variantTag,
+                        GamePathToContentRel(db), IsCard: true));
+                }
+            }
+        }
     }
 
     private async System.Threading.Tasks.Task PatchComboAndStanceForCurrentState(
@@ -2757,6 +2834,11 @@ public partial class ExportDialog : Window
                                         Directory.CreateDirectory(arenaOutDir);
                                         var arenaOutUasset = Path.Combine(arenaOutDir, Path.GetFileName(arenaComboRelFromContent) + ".uasset");
                                         arenaAsset.Write(arenaOutUasset);
+                                        // Same gate as MAIN/ENEMY: a failed slice is deleted and never
+                                        // packed (validator removes .uasset/.uexp, game keeps vanilla).
+                                        if (!ComboWriteValidator.Validate(arenaOutUasset, arenaAsset,
+                                                $"ARENA {arenaFileName}"))
+                                            continue;
                                         _writtenArenaPaths.Add(arenaOutUasset);
                                         var arenaOutUexp = Path.ChangeExtension(arenaOutUasset, ".uexp");
 
@@ -3165,6 +3247,7 @@ public partial class ExportDialog : Window
         }
 
         var targetPkgs = new HashSet<string>(swaps.Select(s => s.newFullPath), StringComparer.Ordinal);
+        var sourceNames = new HashSet<string>(swaps.Select(s => s.oldShortName), StringComparer.Ordinal);
 
         bool PlanOne((string oldShortName, string newShortName, string newFullPath) s)
         {
@@ -3177,6 +3260,7 @@ public partial class ExportDialog : Window
                 {
                     if (FinalObjName(i) == s.newShortName && FinalPkgName(i) == s.newFullPath)
                     {
+                        if (sourceNames.Contains(NameOf(i))) continue;
                         owner = i;
                         break;
                     }
@@ -3236,7 +3320,8 @@ public partial class ExportDialog : Window
         }
 
         var pending = new List<(string oldShortName, string newShortName, string newFullPath)>(swaps);
-        for (int pass = 0; pass < 3 && pending.Count > 0; pass++)
+        int maxPasses = Math.Max(3, swaps.Count + 1);
+        for (int pass = 0; pass < maxPasses && pending.Count > 0; pass++)
         {
             var next = new List<(string oldShortName, string newShortName, string newFullPath)>();
             foreach (var s in pending)
@@ -3247,7 +3332,8 @@ public partial class ExportDialog : Window
                     next.Add(s);
             }
 
-            if (pass == 2)
+            if (next.Count == 0) break;
+            if (pass == maxPasses - 1 || next.Count == pending.Count)
             {
                 foreach (var s in next)
                 {
@@ -3255,6 +3341,7 @@ public partial class ExportDialog : Window
                     ErrorLog.Write("EXPORT", new Exception(
                         $"  [{label}] SWAP SKIP: '{s.oldShortName}' -> '{s.newShortName}' ({s.newFullPath}) could not be resolved safely"));
                 }
+                break;
             }
             pending = next;
         }
@@ -3442,10 +3529,18 @@ public partial class ExportDialog : Window
     {
         try
         {
+            // Per-file guards: a unit only reaches the patcher when at least one payload
+            // value differs (HasWritableChanges), but HP edits must not also stage the
+            // ContextualDefense file and defense edits must not stage the ArchetypeDB -
+            // staging either one unconditionally re-saves files the user never touched.
+            bool stageArch = UnitPropertiesManager.HasArchValueChanges(_contentPath, variantTag, props);
+            bool stageDefense = UnitPropertiesManager.HasDefenseValueChanges(_contentPath, variantTag, props);
+            if (!stageArch && !stageDefense) return;
+
             var eng = EngineVersion.VER_UE4_26;
 
             var archRel = UnitPropertiesManager.ResolveArchetypePath(variantTag);
-            if (archRel != null)
+            if (stageArch && archRel != null)
             {
                 var vanillaPath = ResolveStageSource(gameRoot, archRel)
                     ?? Path.Combine(gameRoot, archRel + ".uasset");
@@ -3483,7 +3578,7 @@ public partial class ExportDialog : Window
             }
 
             var defRel = UnitPropertiesManager.ResolveContextDefensePath(variantTag);
-            if (defRel != null)
+            if (stageDefense && defRel != null)
             {
                 var vanillaDefPath = ResolveStageSource(gameRoot, defRel)
                     ?? Path.Combine(gameRoot, defRel + ".uasset");
@@ -3495,7 +3590,13 @@ public partial class ExportDialog : Window
                     File.Copy(vanillaDefPath, outPath, true);
 
                     var defAsset = new UAsset(vanillaDefPath, eng, null, CustomSerializationFlags.None);
+                    // Mirror ReadDefenseAsset's first-hit semantics: each defense field is read
+                    // from the FIRST export that carries it, so the write must target that same
+                    // export only. A blanket loop over every export flattens the per-influence-test
+                    // tuning (FlashKick ships 14 AttackMemoryInfluenceTest exports with distinct
+                    // m_fMemoryLimit values) down to one value and breaks the family's defense.
                     bool modified = false;
+                    bool mlWritten = false, flWritten = false, hcWritten = false;
                     foreach (var exp in defAsset.Exports)
                     {
                         if (exp is not UAssetAPI.ExportTypes.NormalExport ne2) continue;
@@ -3504,13 +3605,13 @@ public partial class ExportDialog : Window
                             if (d is UAssetAPI.PropertyTypes.Objects.FloatPropertyData fp)
                             {
                                 var n = fp.Name.Value.ToString();
-                                if (n == "m_fMemoryLimit" && props.MemoryLimit.HasValue) { fp.Value = props.MemoryLimit.Value; modified = true; }
-                                else if (n == "m_fMemoryFlushLimit" && props.MemoryFlushLimit.HasValue) { fp.Value = props.MemoryFlushLimit.Value; modified = true; }
+                                if (n == "m_fMemoryLimit" && props.MemoryLimit.HasValue && !mlWritten) { fp.Value = props.MemoryLimit.Value; modified = mlWritten = true; }
+                                else if (n == "m_fMemoryFlushLimit" && props.MemoryFlushLimit.HasValue && !flWritten) { fp.Value = props.MemoryFlushLimit.Value; modified = flWritten = true; }
                             }
-                            else if (d is UAssetAPI.PropertyTypes.Objects.BytePropertyData bp && bp.Name.Value.ToString() == "m_uiHitsCount" && props.HitsCount.HasValue)
+                            else if (d is UAssetAPI.PropertyTypes.Objects.BytePropertyData bp && bp.Name.Value.ToString() == "m_uiHitsCount" && props.HitsCount.HasValue && !hcWritten)
                             {
                                 bp.Value = (byte)props.HitsCount.Value;
-                                modified = true;
+                                modified = hcWritten = true;
                             }
                         }
                     }
@@ -3555,6 +3656,8 @@ public partial class ExportDialog : Window
         }
 
         var byCard = new Dictionary<string, ComboNode>(StringComparer.OrdinalIgnoreCase);
+        // HitBoxData table rel -> (row name -> edit + owning node) - one PatchRows per table.
+        var hitRowEdits = new Dictionary<string, Dictionary<string, (AttackHitEdit Edit, string NodeName)>>(StringComparer.OrdinalIgnoreCase);
         foreach (var graph in graphs)
         {
             foreach (var node in graph.Nodes)
@@ -3614,7 +3717,112 @@ public partial class ExportDialog : Window
 
             ErrorLog.Write("EXPORT", new Exception(
                 $"  ATTACKDB: {node.DisplayName} -> {rel} buildup={node.AttackBuildupFrames?.ToString() ?? "-"} range={node.AttackGameplayRange?.ToString() ?? "-"}"));
+
+            // Hit-window edits: frame bounds rewrite the staged card via UAssetAPI;
+            // row fields collect per HitBoxData table and patch once after the loop.
+            var edits = AttackHitEdit.Prune(node.HitEdits);
+            if (edits == null) continue;
+
+            if (edits.Any(AttackHitCard.HasCardFields))
+            {
+                if (!AttackHitCard.PatchCardFrames(vanillaUasset, outUasset, destBase,
+                        edits, fileEntries, out var ferr, baseUexp))
+                {
+                    ErrorLog.Write("EXPORT", new Exception($"  HITFRAMES FAIL: {node.DisplayName} ({rel}): {ferr}"));
+                    continue;
+                }
+                ErrorLog.Write("EXPORT", new Exception(
+                    $"  HITFRAMES: {node.DisplayName} -> {rel} "
+                    + string.Join(", ", edits.Where(AttackHitCard.HasCardFields)
+                        .Select(e => $"hit{e.Index + 1} {e.FrameLo?.ToString() ?? "-"}-{e.FrameHi?.ToString() ?? "-"}"))));
+            }
+
+            foreach (var e in edits.Where(AttackHitCard.HasRowFields))
+            {
+                var winInfo = ReadHitWindowInfo(gameRoot, rel, e.Index);
+                string tableRel = winInfo?.TableRel ?? "";
+                string rowName = winInfo?.RowName ?? "";
+                if (string.IsNullOrEmpty(tableRel) || string.IsNullOrEmpty(rowName))
+                {
+                    ErrorLog.Write("EXPORT", new Exception(
+                        $"  HITROW SKIP: {node.DisplayName} hit{e.Index + 1} - cannot resolve table/row"));
+                    continue;
+                }
+                if (!hitRowEdits.TryGetValue(tableRel, out var perRow))
+                {
+                    perRow = new Dictionary<string, (AttackHitEdit Edit, string NodeName)>(StringComparer.Ordinal);
+                    hitRowEdits[tableRel] = perRow;
+                }
+                if (perRow.TryGetValue(rowName, out var existing))
+                {
+                    ErrorLog.Write("EXPORT", new Exception(
+                        $"  HITROW CONFLICT: {tableRel} row '{rowName}' set by both "
+                        + $"'{existing.NodeName}' and '{node.DisplayName}' - keeping first"));
+                    continue;
+                }
+                perRow[rowName] = (e, node.DisplayName);
+                if (winInfo != null && winInfo.SharedRow)
+                {
+                    ErrorLog.Write("EXPORT", new Exception(
+                        $"  HITROW SHARED: {tableRel} row '{rowName}' may be used by other attacks"));
+                }
+            }
         }
+
+        foreach (var tableKvp in hitRowEdits)
+        {
+            string tableRel = tableKvp.Key;
+            string relFs = tableRel.Replace('/', Path.DirectorySeparatorChar);
+            string baseUasset = ResolveStageSource(gameRoot, relFs)
+                ?? Path.Combine(gameRoot, relFs + ".uasset");
+            string outUasset = Path.Combine(outputPath, "Sifu", "Content", relFs + ".uasset");
+            string destBase = "../../../Sifu/Content/" + tableRel;
+
+            var rowEdits = new Dictionary<string, AttackHitEdit>(StringComparer.Ordinal);
+            foreach (var rowKvp in tableKvp.Value)
+                rowEdits[rowKvp.Key] = rowKvp.Value.Edit;
+
+            if (!AttackHitCard.PatchRows(baseUasset, outUasset, destBase, rowEdits, fileEntries, out var rerr))
+            {
+                ErrorLog.Write("EXPORT", new Exception($"  HITROW FAIL: {tableRel}: {rerr}"));
+                continue;
+            }
+            foreach (var rowKvp in tableKvp.Value)
+            {
+                var e = rowKvp.Value.Edit;
+                var fields = new List<string>();
+                if (e.Damage.HasValue) fields.Add($"damage {e.Damage.Value:0.###}");
+                if (e.StructureDamage.HasValue) fields.Add($"structure {e.StructureDamage.Value:0.###}");
+                if (e.DamageOnHit.HasValue) fields.Add($"dmgHit {e.DamageOnHit.Value:0.###}");
+                if (e.DamageOnGuard.HasValue) fields.Add($"dmgGuard {e.DamageOnGuard.Value:0.###}");
+                if (e.DamageOnDeflect.HasValue) fields.Add($"dmgDeflect {e.DamageOnDeflect.Value:0.###}");
+                if (e.StructureDamageOnHit.HasValue) fields.Add($"strHit {e.StructureDamageOnHit.Value:0.###}");
+                if (e.StructureDamageOnGuard.HasValue) fields.Add($"strGuard {e.StructureDamageOnGuard.Value:0.###}");
+                if (e.StructureDamageOnDeflect.HasValue) fields.Add($"strDeflect {e.StructureDamageOnDeflect.Value:0.###}");
+                if (e.KnockbackDistance.HasValue) fields.Add($"knockback {e.KnockbackDistance.Value:0.###}");
+                if (e.SuperDizzyDamage.HasValue) fields.Add($"superDizzy {e.SuperDizzyDamage.Value:0.###}");
+                if (e.StunFrames.HasValue) fields.Add($"stun {e.StunFrames.Value}");
+                if (e.FreezeFrames.HasValue) fields.Add($"freeze {e.FreezeFrames.Value}");
+                if (e.Parriable.HasValue) fields.Add($"parriable {(e.Parriable.Value ? "on" : "off")}");
+                if (e.Lethal.HasValue) fields.Add($"lethal {(e.Lethal.Value ? "on" : "off")}");
+                if (e.BreakStructure.HasValue) fields.Add($"break {(e.BreakStructure.Value ? "on" : "off")}");
+                if (e.DizzyOnParry.HasValue) fields.Add($"dizzyParry {(e.DizzyOnParry.Value ? "on" : "off")}");
+                if (e.DizzyOnAvoid.HasValue) fields.Add($"dizzyAvoid {(e.DizzyOnAvoid.Value ? "on" : "off")}");
+                if (!string.IsNullOrEmpty(e.AttackPower)) fields.Add($"power {e.AttackPower}");
+                if (e.PropertyLevel.HasValue) fields.Add($"level {e.PropertyLevel.Value}");
+                ErrorLog.Write("EXPORT", new Exception(
+                    $"  HITROW: {tableRel}: {rowKvp.Key} {string.Join(" ", fields)}"));
+            }
+        }
+    }
+
+    /// <summary>Window metadata (table + row) for a card's hit window, or null when unreadable.</summary>
+    private static AttackHitWindowInfo? ReadHitWindowInfo(string gameRoot, string cardRel, int index)
+    {
+        var card = AttackHitCard.ReadDbPath(gameRoot, cardRel)
+            ?? AttackHitCard.ReadDbPath(CustomAssets.Root, cardRel);
+        if (card == null || index < 0 || index >= card.Windows.Count) return null;
+        return card.Windows[index];
     }
 
     internal static bool PatchDbAnimation(string vanillaDbPath, string newAnimPath, string outputDbPath, EngineVersion eng)
@@ -4293,6 +4501,67 @@ public partial class ExportDialog : Window
     }
 
     /// <summary>
+    /// Chance-sum guard for touched structs: a set whose m_fProbability rows don't
+    /// total 100 (typically a link deleted after probabilities were typed) leaves a
+    /// dead roll zone in-game, so the remainder goes onto the largest row - the
+    /// other typed values stay exact. Extreme over-100 totals fall back to a
+    /// proportional scale when the largest row can't absorb the excess. All-zero
+    /// sets (sum 0) are the all-dead case the flow warning covers and stay untouched;
+    /// only structs in <paramref name="touchedStructs"/> are scanned - untouched
+    /// vanilla always sums to 100. Returns structs fixed; each fix logs an info
+    /// line (no WARNING marker - the shipped result is correct).
+    /// </summary>
+    public static int NormalizeChanceSums(ArrayPropertyData nodesArr, HashSet<int>? touchedStructs)
+    {
+        if (touchedStructs == null || touchedStructs.Count == 0 || nodesArr?.Value == null) return 0;
+        int fixedStructs = 0;
+        foreach (int structIdx in touchedStructs)
+        {
+            if (structIdx < 0 || structIdx >= nodesArr.Value.Length) continue;
+            if (nodesArr.Value[structIdx] is not StructPropertyData nodeSp || nodeSp.Value == null) continue;
+            var trans = nodeSp.Value.OfType<StructPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Transitions")?.Value
+                ?.OfType<ArrayPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Transitions");
+            if (trans?.Value == null || trans.Value.Length == 0) continue;
+
+            var probs = new List<FloatPropertyData>();
+            float sum = 0f;
+            foreach (var row in trans.Value)
+            {
+                if (row is not StructPropertyData rowSp || rowSp.Value == null) continue;
+                var prob = rowSp.Value.OfType<FloatPropertyData>()
+                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_fProbability");
+                if (prob == null) continue;
+                probs.Add(prob);
+                sum += prob.Value;
+            }
+            if (probs.Count == 0 || sum <= 0.01f) continue;   // all-zero: intentional-dead, warned elsewhere
+            if (Math.Abs(sum - TreeChanceMath.SumTarget) <= 0.01f) continue;
+
+            var beforeStr = probs.Select(p => p.Value.ToString("0.###")).ToList();
+            float delta = TreeChanceMath.SumTarget - sum;
+            var biggest = probs.OrderByDescending(p => p.Value).First();
+            if (biggest.Value + delta >= 0f)
+            {
+                biggest.Value += delta;
+            }
+            else
+            {
+                foreach (var p in probs) p.Value = p.Value * TreeChanceMath.SumTarget / sum;
+            }
+            fixedStructs++;
+            string dispName = nodeSp.Value.OfType<NamePropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Name")?.Value?.Value?.ToString() ?? "?";
+            var afterStr = probs.Select(p => p.Value.ToString("0.###")).ToList();
+            ErrorLog.Write("EXPORT", new Exception(
+                $"  PROB RESCALE tree[{structIdx}] '{dispName}': sum {sum:0.###}% -> 100% "
+                + $"[{string.Join(", ", beforeStr)}] -> [{string.Join(", ", afterStr)}]"));
+        }
+        return fixedStructs;
+    }
+
+    /// <summary>
     /// Writes user condition edits into m_Nodes rows. Row pass first: Retarget rewrites
     /// m_TargetNodes values per outcome key; ClearCondition empties m_ConditionInstance
     /// to a null reference - the vanilla "instance ref empty" layout - and collapses the
@@ -4350,6 +4619,15 @@ public partial class ExportDialog : Window
                 srcCache[srcPath] = src;
             }
             if (src == null) return null;
+            if (edit.CloneSourceExport >= 0 && edit.CloneSourceExport < src.Exports.Count)
+            {
+                string srcName = src.Exports[edit.CloneSourceExport].ObjectName?.Value?.ToString() ?? "";
+                if (Regex.IsMatch(srcName, "_Copy_[0-9A-F]{32}"))
+                    ErrorLog.Write("EXPORT", new Exception(
+                        $"  COND CLONE DIRTY SOURCE: {edit.CloneSourceRel}#{edit.CloneSourceExport} "
+                        + $"('{srcName}') carries previous-export _Copy_ chains - the content root "
+                        + "copy is not clean vanilla; re-extract it to stop clone stacking"));
+            }
             if (!ctxCache.TryGetValue(srcPath, out var ctx))
             {
                 ctx = new AssetCloner.Context(src, asset);
@@ -5399,10 +5677,13 @@ public partial class ExportDialog : Window
             // exist yet, so the edge pass stays null exactly like the old standalone call).
             int chanceAborted = ApplyChanceOverrides(graph, enemyNodesArr);
             int condAborted = ApplyConditionOverrides(graph, enemyAsset, enemyNodesArr, gameRoot);
+            int rescaledAborted = NormalizeChanceSums(enemyNodesArr,
+                graph.TreeRowProbabilityOverrides == null
+                    ? null : new HashSet<int>(graph.TreeRowProbabilityOverrides.Keys));
             if (chanceAborted + condAborted > 0)
                 ErrorLog.Write("EXPORT", new Exception(
                     $"Condition overrides: {condAborted} edit(s) applied (template-less abort)"));
-            return (0, 0, skipped, 0, chanceAborted + condAborted, 0);
+            return (0, 0, skipped, 0, chanceAborted + condAborted + rescaledAborted, 0);
         }
 
         // Registry: path -> attack object, keyed like the m_Attacks slots (/Game/...X.X).
@@ -6096,9 +6377,111 @@ public partial class ExportDialog : Window
                     $"  PROB REBALANCE tree[{s}]: [{string.Join(", ", beforeStr)}] -> [{string.Join(", ", afterStr)}]"));
             }
         }
+        // Chance-sum guard: touched structs (overrides or appends) whose rows don't
+        // total 100 - typically a link deleted after probabilities were typed - get
+        // the remainder on the largest row. Runs before the mirror pass so mirrored
+        // rows inherit already-fixed owner values; untouched vanilla is never scanned.
+        var chanceTouchedStructs = new HashSet<int>(appendedStructs);
+        if (graph.TreeRowProbabilityOverrides != null)
+            foreach (int k in graph.TreeRowProbabilityOverrides.Keys) chanceTouchedStructs.Add(k);
+        int chanceSumsRescaled = NormalizeChanceSums(enemyNodesArr, chanceTouchedStructs);
+        // Phase A3: redirect continuation mirror. Vanilla keeps an attack's
+        // continuation rows on its owning redirect struct (BellyPalm's rows live on
+        // the BellyPalm owner, not the attack), and the engine continues from the
+        // rows of the entered struct - falling back to the redirect target's rows
+        // when the entered struct is empty. A custom redirect into a vanilla-owned
+        // attack therefore dead-ends: its own struct is empty, the attack struct is
+        // empty, and the owner's rows sit unreachable. Mirror the unique owner's
+        // final rows onto any such empty redirect struct so every entry point plays
+        // the same continuation. Intended combo enders (no rows anywhere) stay
+        // untouched; ambiguous multi-owner cases warn and stay empty.
+        int redirectsMirrored = 0;
+        int flowWarnings = 0;
+        int? NodeRedirectOf(StructPropertyData sp) =>
+            sp.Value?.OfType<IntPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_NodeRedirect")?.Value;
+        for (int i = 0; i < enemyNodesArr.Value.Length; i++)
+        {
+            if (enemyNodesArr.Value[i] is not StructPropertyData sp || sp.Value == null) continue;
+            var rows = TransitionsArray(sp);
+            if (rows?.Value == null || rows.Value.Length > 0) continue;
+            int target = NodeRedirectOf(sp) ?? -1;
+            if (target < 0 || target >= enemyNodesArr.Value.Length || target == i) continue;
+            if (enemyNodesArr.Value[target] is not StructPropertyData tp || tp.Value == null) continue;
+            var targetRows = TransitionsArray(tp);
+            if (targetRows?.Value == null || targetRows.Value.Length > 0) continue;
+            StructPropertyData? owner = null;
+            int ownerIdx = -1;
+            bool ambiguous = false;
+            for (int j = 0; j < baseCount && j < enemyNodesArr.Value.Length; j++)
+            {
+                if (j == i) continue;
+                if (enemyNodesArr.Value[j] is not StructPropertyData op || op.Value == null) continue;
+                if ((NodeRedirectOf(op) ?? -1) != target) continue;
+                var orows = TransitionsArray(op);
+                if (orows?.Value == null || orows.Value.Length == 0) continue;
+                if (owner != null) { ambiguous = true; break; }
+                owner = op; ownerIdx = j;
+            }
+            string dispName = sp.Value.OfType<NamePropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Name")?.Value?.Value?.ToString() ?? "?";
+            if (ambiguous)
+            {
+                flowWarnings++;
+                ErrorLog.Write("EXPORT", new Exception(
+                    $"  FLOW WARNING: tree[{i}] '{dispName}' -> tree[{target}] stops here - "
+                    + $"tree[{target}] has no rows and multiple row owners exist (mirror ambiguous)"));
+                continue;
+            }
+            if (owner == null) continue;   // true combo ender: no continuation anywhere, silent
+            var ownerRows = TransitionsArray(owner)!;
+            bool ownerHasLiveRow = ownerRows.Value.Any(r => r is StructPropertyData rs && rs.Value != null
+                && (rs.Value.OfType<FloatPropertyData>()
+                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_fProbability")?.Value ?? 0f) > 0.001f);
+            if (!ownerHasLiveRow)
+            {
+                flowWarnings++;
+                ErrorLog.Write("EXPORT", new Exception(
+                    $"  FLOW WARNING: tree[{i}] '{dispName}' -> tree[{target}] stops here - "
+                    + $"tree[{target}] has no rows and owner tree[{ownerIdx}] rows are all 0%"));
+                continue;
+            }
+            rows.Value = ownerRows.Value.Select(r => ClonePropSameAsset(r)).ToArray();
+            redirectsMirrored++;
+            ErrorLog.Write("EXPORT", new Exception(
+                $"  REDIRECT MIRROR: tree[{i}] '{dispName}' -> tree[{target}] inherits "
+                + $"tree[{ownerIdx}] rows ({rows.Value.Length})"));
+        }
+        // Flow warning for fully-dead entries: a struct whose live rows all ship at
+        // 0% rolls nothing in-game (rebalance skips a sum-0 set), so entering it
+        // always stops. Partial zeros are the normal "disable this branch" workflow
+        // and stay silent - only the all-zero case is a surprise.
+        for (int i = 0; i < enemyNodesArr.Value.Length; i++)
+        {
+            if (enemyNodesArr.Value[i] is not StructPropertyData sp || sp.Value == null) continue;
+            var arr = TransitionsArray(sp);
+            if (arr?.Value == null || arr.Value.Length == 0) continue;
+            int liveRows = 0, zeroRows = 0;
+            foreach (var row in arr.Value)
+            {
+                if (row is not StructPropertyData rsp || rsp.Value == null) continue;
+                float prob = rsp.Value.OfType<FloatPropertyData>()
+                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_fProbability")?.Value ?? -1f;
+                liveRows++;
+                if (prob >= 0f && prob <= 0.001f) zeroRows++;
+            }
+            if (liveRows == 0 || zeroRows != liveRows) continue;
+            string dispName = sp.Value.OfType<NamePropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Name")?.Value?.Value?.ToString() ?? "?";
+            flowWarnings++;
+            ErrorLog.Write("EXPORT", new Exception(
+                $"  FLOW WARNING: tree[{i}] '{dispName}' ships all {liveRows} rows at 0% "
+                + $"- flow always stops here"));
+        }
         // The chances count also carries condition-edit writes so a conditions-only
         // change trips the enemy write gate (2486) like a chance-only one does.
-        int chancesWritten = chanceOverridesPatched + chanceStructsRebalanced + conditionEditsApplied;
+        int chancesWritten = chanceOverridesPatched + chanceStructsRebalanced
+            + conditionEditsApplied + chanceSumsRescaled;
 
         // Start entries (m_ComboStartNodesContainer): patch after node/link appends so
         // ResolveIndex knows the final tree indices of user-created targets.
@@ -6107,10 +6490,12 @@ public partial class ExportDialog : Window
             (startPatched, startSkipped) = PatchStartEntries(graph, enemyAsset, enemyComboExport, ResolveIndex, dropUnclaimed: customReplace);
 
         ErrorLog.Write("EXPORT", new Exception(
-            $"APPEND: {appendedNodes} nodes, {appendedLinks} links, {startPatched} start-entry rows, " +
-            $"{chanceOverridesPatched} chance overrides, {chanceStructsRebalanced} structs rebalanced, " +
-            $"{conditionEditsApplied} condition edits, {replacedPayloads} payload replaces, " +
-            $"{skipped + startSkipped} skipped (base={baseCount})"));
+            $"APPEND: {appendedNodes} nodes, {appendedLinks} links, {startPatched} start-entry rows, "
+            + $"{chanceOverridesPatched} chance overrides, {chanceStructsRebalanced} structs rebalanced, "
+            + $"{chanceSumsRescaled} chance sums rescaled, "
+            + $"{conditionEditsApplied} condition edits, {redirectsMirrored} redirects mirrored, "
+            + $"{flowWarnings} flow warnings, {replacedPayloads} payload replaces, "
+            + $"{skipped + startSkipped} skipped (base={baseCount})"));
         return (appendedNodes, appendedLinks, skipped, startPatched, chancesWritten, replacedPayloads);
     }
 
@@ -6234,6 +6619,9 @@ public partial class ExportDialog : Window
                 {
                     var ts = assetRows[t.OriginalIndex];
                     if (ts.Value == null) { skipped++; continue; }
+                    // Pre-mutation snapshot: the key-loss guard restores this if the patch
+                    // below would leave the row with missing m_TargetNodes keys.
+                    var tsOriginal = ClonePropSameAsset(ts) as StructPropertyData;
 
                     var prob = ts.Value.OfType<FloatPropertyData>()
                         .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_fProbability");
@@ -6247,6 +6635,13 @@ public partial class ExportDialog : Window
                     // conditional maps patch per key from the dialog's parallel lists.
                     var map = ts.Value.OfType<MapPropertyData>()
                         .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_TargetNodes");
+                    static byte MapKeyByte(PropertyData k) => k is BytePropertyData b ? b.Value
+                        : k is IntPropertyData ik ? (byte)ik.Value : (byte)255;
+
+                    bool modelOk = t.Keys.Count == t.KeyCount
+                        && t.KeyTargetTreeIndices.Count == t.KeyCount
+                        && t.KeyTargetNodeIds.Count == t.KeyCount;
+
                     if (map?.Value != null && map.Value.Count == 1)
                     {
                         int? want = ResolveStartTargetTree(t, resolveIndex);
@@ -6267,51 +6662,74 @@ public partial class ExportDialog : Window
                                 $"  START SKIP: '{entry.Label}' row {t.OriginalIndex + 1} target {want} exceeds byte key"));
                         }
                     }
-                    else if (map?.Value != null && map.Value.Count > 1)
+                    else if (map?.Value != null && map.Value.Count > 1 && modelOk)
                     {
-                        // Keys whose per-key model is missing (old saves) and values that
-                        // already equal the resolved target pass through untouched.
-                        if (t.Keys.Count == t.KeyCount
-                            && t.KeyTargetTreeIndices.Count == t.KeyCount
-                            && t.KeyTargetNodeIds.Count == t.KeyCount)
+                        // Subset rebuild: node deletion may have trimmed the model's key
+                        // list - drop the map entries for keys the model no longer holds
+                        // (condition instance stays), then patch the survivors per key.
+                        if (t.KeyCount < map.Value.Count)
                         {
+                            var dropIdx = new List<int>();
+                            int xi = 0;
                             foreach (var kvp in map.Value)
                             {
-                                byte mk = kvp.Key is BytePropertyData mkb ? mkb.Value
-                                    : kvp.Key is IntPropertyData mki ? (byte)mki.Value
-                                    : (byte)255;
-                                int ki = t.Keys.IndexOf(mk);
-                                if (ki < 0) continue;
-                                int mnodeId = t.KeyTargetNodeIds[ki];
-                                int mtreeIdx = t.KeyTargetTreeIndices[ki];
-                                int? mwant = mnodeId >= 0 ? resolveIndex(mnodeId)
-                                    : mtreeIdx >= 0 ? mtreeIdx : null;
-                                if (mwant == null)
-                                {
-                                    skipped++;
-                                    ErrorLog.Write("EXPORT", new Exception(
-                                        $"  START SKIP: '{entry.Label}' row {t.OriginalIndex + 1} key {mk} target unresolvable (node {mnodeId})"));
-                                    continue;
-                                }
-                                int mcur = kvp.Value is IntPropertyData miv ? miv.Value
-                                    : kvp.Value is BytePropertyData mbv ? mbv.Value : -1;
-                                if (mcur == mwant.Value) continue;
-                                if (kvp.Value is IntPropertyData mip)
-                                    mip.Value = mwant.Value;
-                                else if (kvp.Value is BytePropertyData mbp && mwant.Value <= 255)
-                                    mbp.Value = (byte)mwant.Value;
-                                else
-                                {
-                                    skipped++;
-                                    ErrorLog.Write("EXPORT", new Exception(
-                                        $"  START SKIP: '{entry.Label}' row {t.OriginalIndex + 1} key {mk} target {mwant} exceeds byte key"));
-                                    continue;
-                                }
-                                entryPatched++;
-                                ErrorLog.Write("EXPORT", new Exception(
-                                    $"  START KEY: '{entry.Label}' row {t.OriginalIndex + 1} key {mk}: {mcur} -> {mwant.Value}"));
+                                if (!t.Keys.Contains(MapKeyByte(kvp.Key))) dropIdx.Add(xi);
+                                xi++;
                             }
+                            for (int di = dropIdx.Count - 1; di >= 0; di--)
+                                map.Value.RemoveAt(dropIdx[di]);
+                            entryPatched++;
+                            ErrorLog.Write("EXPORT", new Exception(
+                                $"  START KEYS: '{entry.Label}' row {t.OriginalIndex + 1} rebuilt map to {t.KeyCount} key(s) (trimmed by node deletion)"));
                         }
+                        foreach (var kvp in map.Value)
+                        {
+                            byte mk = MapKeyByte(kvp.Key);
+                            int ki = t.Keys.IndexOf(mk);
+                            if (ki < 0) continue;
+                            int mnodeId = t.KeyTargetNodeIds[ki];
+                            int mtreeIdx = t.KeyTargetTreeIndices[ki];
+                            int? mwant = mnodeId >= 0 ? resolveIndex(mnodeId)
+                                : mtreeIdx >= 0 ? mtreeIdx : null;
+                            if (mwant == null)
+                            {
+                                skipped++;
+                                ErrorLog.Write("EXPORT", new Exception(
+                                    $"  START SKIP: '{entry.Label}' row {t.OriginalIndex + 1} key {mk} target unresolvable (node {mnodeId})"));
+                                continue;
+                            }
+                            int mcur = kvp.Value is IntPropertyData miv ? miv.Value
+                                : kvp.Value is BytePropertyData mbv ? mbv.Value : -1;
+                            if (mcur == mwant.Value) continue;
+                            if (kvp.Value is IntPropertyData mip)
+                                mip.Value = mwant.Value;
+                            else if (kvp.Value is BytePropertyData mbp && mwant.Value <= 255)
+                                mbp.Value = (byte)mwant.Value;
+                            else
+                            {
+                                skipped++;
+                                ErrorLog.Write("EXPORT", new Exception(
+                                    $"  START SKIP: '{entry.Label}' row {t.OriginalIndex + 1} key {mk} target {mwant} exceeds byte key"));
+                                continue;
+                            }
+                            entryPatched++;
+                            ErrorLog.Write("EXPORT", new Exception(
+                                $"  START KEY: '{entry.Label}' row {t.OriginalIndex + 1} key {mk}: {mcur} -> {mwant.Value}"));
+                        }
+                    }
+                    // Key-loss guard: with a valid per-key model the patch never removes
+                    // keys (the subset rebuild keeps exactly the model's keys) - if the
+                    // map lost any anyway, restore the pre-patch row instead of shipping
+                    // a silently trimmed map.
+                    if (map?.Value != null && modelOk && map.Value.Count > 1
+                        && (map.Value.Count != t.KeyCount
+                            || t.Keys.Any(k => !map.Value.Any(kvp => MapKeyByte(kvp.Key) == k))))
+                    {
+                        skipped++;
+                        ErrorLog.Write("EXPORT", new Exception(
+                            $"  START KEYLOSS: '{entry.Label}' row {t.OriginalIndex + 1} - map lost model keys, original row kept"));
+                        rebuilt.Add(tsOriginal ?? ts);
+                        continue;
                     }
                     rebuilt.Add(ts);
                 }
@@ -6374,7 +6792,14 @@ public partial class ExportDialog : Window
             }
 
             float sum = live.Sum(x => x.Probability);
-            if (Math.Abs(sum - 100f) > 0.5f)
+            // Some vanilla tickets intentionally use totals other than 100 (for
+            // example, Custom Combo 2 can be 200).  Warn only when the user has
+            // changed this entry's probability makeup; retarget-only edits do not
+            // alter the engine's existing selection behavior.
+            bool probabilitiesTouched = entry.Transitions.Any(t => t.Removed)
+                || live.Any(t => t.OriginalIndex < 0
+                    || Math.Abs(t.Probability - t.OriginalProbability) > 0.001f);
+            if (probabilitiesTouched && Math.Abs(sum - 100f) > 0.5f)
                 ErrorLog.Write("EXPORT", new Exception(
                     $"  START WARNING: '{entry.Label}' probabilities sum to {sum:0.###}% (vanilla always sums to 100)"));
 

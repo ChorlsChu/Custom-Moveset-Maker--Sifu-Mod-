@@ -60,6 +60,9 @@ public class SavedUnitCache
     // Condition edits on rows that only exist after export (new-link rows), keyed by
     // ComboGraph.EdgeConditionKey. Null on old saves.
     public Dictionary<string, TreeRowConditionEdit>? TreeEdgeConditionOverrides { get; set; }
+    // Which redirect last re-routed each row/edge outcome key (retarget data-swap
+    // provenance). Null on old saves.
+    public Dictionary<string, int>? RetargetProvenance { get; set; }
     // Stripped conduit routing (raw file index -> downstream indices); display
     // annotation only. Null on old saves.
     public Dictionary<int, List<int>>? ConduitTargets { get; set; }
@@ -78,6 +81,17 @@ public class UnitCacheEntry
     public bool NeedsEdgeOwnerBackfill { get; set; }
 }
 
+/// <summary>
+/// One CustomAssets asset embedded in the project file so a save travels without the
+/// CustomAssets folder. Rel is the content-relative .uasset stem ('/' separators);
+/// Parts maps the companion extension (".uasset"/".uexp"/".ubulk"/".uptnl") to base64.
+/// </summary>
+public class SavedCustomFile
+{
+    public string Rel { get; set; } = "";
+    public Dictionary<string, string>? Parts { get; set; }
+}
+
 public class EditorProject
 {
     public string Name { get; set; } = "CustomMoveset";
@@ -93,6 +107,9 @@ public class EditorProject
     public Dictionary<string, SavedUnitCache>? UnitCaches { get; set; }
     // Present only while the project is a custom moveset; old saves deserialize null.
     public CustomMovesetInfo? CustomMoveset { get; set; }
+    // CustomAssets files the saved graphs reference (anims, attack cards, the
+    // HitBoxData tables behind them). Null/absent on old saves - load is a no-op.
+    public List<SavedCustomFile>? CustomFilePayloads { get; set; }
 }
 
 public static class ProjectManager
@@ -174,6 +191,7 @@ public static class ProjectManager
                 TreeConditionParamOverrides = graph.TreeConditionParamOverrides,
                 TreeRowConditionOverrides = graph.TreeRowConditionOverrides,
                 TreeEdgeConditionOverrides = graph.TreeEdgeConditionOverrides,
+                RetargetProvenance = graph.RetargetProvenance,
                 ConduitTargets = graph.ConduitTargets,
                 CustomNodes = graph.Nodes
                     .Where(n => n.TreeIndex == -1 && !n.IsRoot)
@@ -195,8 +213,78 @@ public static class ProjectManager
             project.UnitCaches[kvp.Key] = saved;
         }
 
+        project.CustomFilePayloads = CollectCustomFilePayloads(caches);
+
         string json = JsonConvert.SerializeObject(project, Formatting.Indented);
         File.WriteAllText(filePath, json);
+    }
+
+    /// <summary>
+    /// Embeds every CustomAssets file the saved graphs reference - node anims, attack
+    /// cards (DefaultDBPath/SourceDBPath/ReplacedAttackCardRel) and the HitBoxData
+    /// tables behind those cards - so the project restores on a machine without the
+    /// CustomAssets folder. References that don't resolve to a CustomAssets file are
+    /// vanilla content and are skipped. Returns null when nothing is embedded.
+    /// </summary>
+    public static List<SavedCustomFile>? CollectCustomFilePayloads(Dictionary<string, UnitCacheEntry>? caches)
+    {
+        try
+        {
+            if (caches == null || caches.Count == 0 || !Directory.Exists(CustomAssets.Root))
+                return null;
+
+            var stems = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kvp in caches)
+            {
+                var graph = kvp.Value.Graph;
+                if (graph?.Nodes == null) continue;
+                foreach (var node in graph.Nodes)
+                {
+                    void AddRef(string gamePath)
+                    {
+                        if (string.IsNullOrEmpty(gamePath)) return;
+                        var rel = AttackDbCard.GamePathToContentRel(gamePath);
+                        if (string.IsNullOrEmpty(rel)) return;
+                        if (File.Exists(CustomAssets.FileForContentRel(rel + ".uasset")))
+                            stems.Add(rel);
+                    }
+
+                    AddRef(node.AnimPath);
+                    AddRef(node.DefaultDBPath);
+                    AddRef(node.SourceDBPath);
+                    AddRef(node.ReplacedAttackCardRel);
+
+                    var card = AttackDbCard.EffectiveCardPath(node);
+                    if (string.IsNullOrEmpty(card)) continue;
+                    var hit = AttackHitCard.ReadDbPath(CustomAssets.Root, card);
+                    if (hit == null) continue;
+                    foreach (var w in hit.Windows)
+                        if (!string.IsNullOrEmpty(w.TableRel))
+                            AddRef(w.TableRel);
+                }
+            }
+            if (stems.Count == 0) return null;
+
+            var payload = new List<SavedCustomFile>();
+            foreach (var stem in stems)
+            {
+                var parts = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var ext in new[] { ".uasset", ".uexp", ".ubulk", ".uptnl" })
+                {
+                    var file = CustomAssets.FileForContentRel(stem + ext);
+                    if (!File.Exists(file)) continue;
+                    parts[ext] = Convert.ToBase64String(File.ReadAllBytes(file));
+                }
+                if (parts.Count > 0)
+                    payload.Add(new SavedCustomFile { Rel = stem, Parts = parts });
+            }
+            return payload.Count > 0 ? payload : null;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("PROJECT", ex);
+            return null;
+        }
     }
 
     public static (EditorProject project, Dictionary<string, string> swaps, List<ComboEdge> edges, Dictionary<int, Point> positions, List<SavedCustomNode> customNodes, Dictionary<string, int> redirectMods) Load(string filePath)
@@ -246,6 +334,7 @@ public static class ProjectManager
                 TreeConditionParamOverrides = saved.TreeConditionParamOverrides ?? new Dictionary<int, Dictionary<string, string>>(),
                 TreeRowConditionOverrides = saved.TreeRowConditionOverrides ?? new Dictionary<int, Dictionary<int, TreeRowConditionEdit>>(),
                 TreeEdgeConditionOverrides = saved.TreeEdgeConditionOverrides ?? new Dictionary<string, TreeRowConditionEdit>(),
+                RetargetProvenance = saved.RetargetProvenance ?? new Dictionary<string, int>(),
                 ConduitTargets = saved.ConduitTargets ?? new Dictionary<int, List<int>>()
             };
 

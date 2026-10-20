@@ -594,7 +594,7 @@ public static class ModelCatalog
                         {
                             Rel = rel[..^".uasset".Length],
                             Family = family,
-                            DisplayName = PhaseTargetDisplayName(leaf),
+                            DisplayName = PhaseTargetDisplayName(leaf, family),
                         });
                     }
                 }
@@ -615,19 +615,99 @@ public static class ModelCatalog
         }
     }
 
-    /// <summary>"BP_FireDisciple_ArchetypeDB_MiniBoss_H5" -> "MiniBoss_H5"; names without the
-    /// ArchetypeDB segment keep everything after BP_ (e.g. "Grunt_Miniboss_DB").</summary>
-    private static string PhaseTargetDisplayName(string leaf)
+    /// <summary>
+    /// "BP_FireDisciple_ArchetypeDB_MiniBoss_H5" -> "H5 (MiniBoss)"; "Yang_P3_Wude_ArchetypeDB" -> "P3 (Wude)".
+    /// Drops the BP_ prefix and ArchetypeDB / LastMan Db / Miniboss Db marker segments, splits Arena*
+    /// compounds, strips the leading family token, then formats the rest as
+    /// "&lt;level&gt; &lt;extras&gt; (&lt;tier&gt;)" - a bare H-level implies "(Advanced)".
+    /// </summary>
+    private static string PhaseTargetDisplayName(string leaf, string family)
     {
         var name = leaf.StartsWith("BP_", StringComparison.OrdinalIgnoreCase) ? leaf[3..] : leaf;
-        const string marker = "ArchetypeDB";
-        int idx = name.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-        if (idx >= 0)
+
+        // marker segments: ArchetypeDB (removed), LastManDB -> LastMan, standalone DB/Db (removed)
+        var tokens = new List<string>();
+        foreach (var tok in name.Split('_', StringSplitOptions.RemoveEmptyEntries))
         {
-            int start = idx + marker.Length;
-            if (start < name.Length && name[start] == '_') start++;
-            if (start < name.Length) return name[start..];
+            if (string.Equals(tok, "ArchetypeDB", StringComparison.OrdinalIgnoreCase)) continue;
+            if (string.Equals(tok, "DB", StringComparison.OrdinalIgnoreCase)) continue;
+            if (tok.Length > 2 && tok.EndsWith("DB", StringComparison.OrdinalIgnoreCase))
+            {
+                tokens.Add(tok[..^2]);
+                continue;
+            }
+            tokens.Add(tok);
         }
-        return name;
+
+        // Arena compounds: ArenaMiniBoss -> Arena + MiniBoss
+        var split = new List<string>(tokens.Count);
+        foreach (var tok in tokens)
+        {
+            if (tok.Length > 5 && tok.StartsWith("Arena", StringComparison.OrdinalIgnoreCase))
+            {
+                split.Add("Arena");
+                split.Add(tok[5..]);
+            }
+            else split.Add(tok);
+        }
+        tokens = split;
+
+        // Strip one leading family (or stray non-tier) token, but never empty the list.
+        if (tokens.Count > 1
+            && (string.Equals(tokens[0], family, StringComparison.OrdinalIgnoreCase)
+                || (!IsPhaseTierToken(tokens[0]) && !IsPhaseLevelToken(tokens[0]))))
+            tokens.RemoveAt(0);
+
+        if (tokens.Count == 0) return name;
+
+        // tier token -> parenthesised suffix
+        string? tier = null;
+        int tierIdx = tokens.FindIndex(IsPhaseTierToken);
+        if (tierIdx >= 0)
+        {
+            tier = PhaseTierDisplay(tokens[tierIdx]);
+            tokens.RemoveAt(tierIdx);
+        }
+
+        // level tokens sort to the front of the head, the rest keep their order
+        var head = tokens.Where(IsPhaseLevelToken)
+            .Concat(tokens.Where(t => !IsPhaseLevelToken(t)))
+            .ToList();
+
+        if (tier == null)
+        {
+            var levels = head.Where(IsPhaseLevelToken).ToList();
+            var others = head.Where(t => !IsPhaseLevelToken(t)).ToList();
+            if (head.Count == 1 && levels.Count == 1) return $"{head[0]} (Advanced)"; // bare H-level
+            if (levels.Count == 1 && others.Count == 1) return $"{levels[0]} ({others[0]})";
+            return string.Join(" ", head);
+        }
+        return head.Count == 0 ? tier : $"{string.Join(" ", head)} ({tier})";
+    }
+
+    private static bool IsPhaseTierToken(string t) =>
+        string.Equals(t, "Base", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(t, "Adv", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(t, "Advanced", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(t, "MiniBoss", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(t, "LastMan", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(t, "Stronger", StringComparison.OrdinalIgnoreCase);
+
+    private static string PhaseTierDisplay(string t) =>
+        string.Equals(t, "Adv", StringComparison.OrdinalIgnoreCase) ? "Advanced"
+        : string.Equals(t, "Advanced", StringComparison.OrdinalIgnoreCase) ? "Advanced"
+        : string.Equals(t, "MiniBoss", StringComparison.OrdinalIgnoreCase) ? "MiniBoss"
+        : string.Equals(t, "LastMan", StringComparison.OrdinalIgnoreCase) ? "LastMan"
+        : string.Equals(t, "Stronger", StringComparison.OrdinalIgnoreCase) ? "Stronger"
+        : "Base";
+
+    private static bool IsPhaseLevelToken(string t)
+    {
+        if (t.Length < 2) return false;
+        if (t.StartsWith("Phase", StringComparison.OrdinalIgnoreCase))
+            return t.Length > 5 && t.Skip(5).All(char.IsDigit);
+        char c = char.ToUpperInvariant(t[0]);
+        if (c != 'H' && c != 'P') return false;
+        return t.Skip(1).All(char.IsDigit);
     }
 }

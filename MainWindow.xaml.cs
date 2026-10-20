@@ -79,11 +79,14 @@ public static class ErrorLog
     private static bool LooksLikeWarning(Exception ex)
         => ex.StackTrace != null || MessageLooksLikeWarning(ex.Message);
 
+    private static readonly System.Text.RegularExpressions.Regex _warningMarker =
+        new(@"\bWARNING\b|\bFAIL\b|\bError\b",
+            System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>Word-boundary match: "FLOW WARNING:" counts, but progress lines that
+    /// merely mention a count ("... 0 flow warnings ...") do not.</summary>
     private static bool MessageLooksLikeWarning(string? message)
-        => message != null
-        && (message.Contains("WARNING", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("FAIL", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("Error", StringComparison.OrdinalIgnoreCase));
+        => message != null && _warningMarker.IsMatch(message);
 }
 
 public partial class MainWindow : Window
@@ -274,6 +277,15 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        InputFilter.ApplyInt(txtAttackBuildup);
+        InputFilter.ApplyFloat(txtAttackRange);
+        InputFilter.ApplyInt(txtDelayWinLo);
+        InputFilter.ApplyInt(txtDelayWinHi);
+        InputFilter.ApplyFloat(txtUnitHealth);
+        InputFilter.ApplyFloat(txtUnitStructure);
+        InputFilter.ApplyFloat(txtMemoryLimit);
+        InputFilter.ApplyInt(txtHitsCount);
+        InputFilter.ApplyFloat(txtFlushLimit);
         _settingsPath = Path.Combine(
             AppDomain.CurrentDomain.BaseDirectory, "settings.json");
         _searchDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
@@ -1502,6 +1514,109 @@ public partial class MainWindow : Window
         bool tuned = node.AttackBuildupFrames.HasValue || node.AttackGameplayRange.HasValue;
         string baselineLabel = customCard ? "custom card" : "vanilla";
         txtAttackDbHint.Text = $"{baselineLabel}: {FormatAttackDbVanilla(vanilla)}" + (tuned ? " - edited" : "");
+        int hitEdited = 0;
+        if (node.HitEdits != null)
+        {
+            foreach (var e in node.HitEdits) if (!e.IsEmpty()) hitEdited++;
+        }
+        if (hitEdited > 0)
+            txtAttackDbHint.Text += $" · {hitEdited} hit window(s) edited";
+    }
+
+    private void AttackHitWindows_Click(object sender, RoutedEventArgs e)
+    {
+        CommitAttackDbPanel();
+        var node = ResolveAttackPanelNode();
+        if (node == null) return;
+        string cardPath = AttackDbCard.EffectiveCardPath(node);
+        if (string.IsNullOrEmpty(cardPath) || node.IsRedirect) return;
+
+        var card = AttackHitCard.ReadDbPath(AttackDbContentDir(), cardPath);
+        if (card == null || card.Windows.Count == 0)
+            card = AttackHitCard.ReadDbPath(CustomAssets.Root, cardPath);
+        if (card == null || card.Windows.Count == 0)
+        {
+            txtStatus.Text = "No readable hit windows on this card";
+            return;
+        }
+
+        // Display-only armor read from the node's effective anim (CustomAssets-first);
+        // any failure degrades to "unknown" rather than blocking the dialog (Phase 1).
+        // Skipped while the Armor section is hidden behind ShowArmorSection.
+        List<ArmorNotifyInfo>? armor = null;
+        if (AttackDbEditorDialog.ShowArmorSection)
+        {
+            try
+            {
+                var animFile = ArmorNotifyReader.ResolveAnimFile(AttackDbContentDir(), node.AnimPath);
+                if (animFile != null) armor = ArmorNotifyReader.Read(animFile);
+            }
+            catch { armor = null; }
+        }
+
+        var dialog = new AttackDbEditorDialog(card, node.HitEdits, armor) { Owner = this };
+        bool? ok = dialog.ShowDialog();
+        if (ok != true) return;
+
+        var newEdits = AttackHitEdit.Prune(dialog.Result);
+        bool same = (node.HitEdits == null && newEdits == null)
+            || (node.HitEdits != null && newEdits != null && EditsEqual(node.HitEdits, newEdits));
+        if (same) return;
+
+        PushUndo("Hit window edits");
+        node.HitEdits = newEdits;
+        PropagateAttackDbTuning(node);
+        SaveCurrentUnitToCache();
+        txtStatus.Text = newEdits == null
+            ? $"Hit window edits restored to vanilla on {node.DisplayName}"
+            : $"Hit window edits set on {node.DisplayName} ({newEdits.Count} window(s))";
+        UpdateAttackDbPanel(node);
+    }
+
+    /// <summary>Ordinal equality over every field of two prune-safe edit lists (same Index order).</summary>
+    private static bool EditsEqual(List<AttackHitEdit> a, List<AttackHitEdit> b)
+    {
+        if (a.Count != b.Count) return false;
+        for (int i = 0; i < a.Count; i++)
+        {
+            var x = a[i];
+            var y = b[i];
+            if (x.Index != y.Index
+                || x.FrameLo != y.FrameLo || x.FrameHi != y.FrameHi
+                || x.Damage != y.Damage || x.StructureDamage != y.StructureDamage
+                || x.DamageOnHit != y.DamageOnHit || x.DamageOnGuard != y.DamageOnGuard
+                || x.DamageOnDeflect != y.DamageOnDeflect
+                || x.StructureDamageOnHit != y.StructureDamageOnHit
+                || x.StructureDamageOnGuard != y.StructureDamageOnGuard
+                || x.StructureDamageOnDeflect != y.StructureDamageOnDeflect
+                || x.KnockbackDistance != y.KnockbackDistance
+                || x.SuperDizzyDamage != y.SuperDizzyDamage
+                || x.StunFrames != y.StunFrames || x.FreezeFrames != y.FreezeFrames
+                || x.Parriable != y.Parriable || x.Lethal != y.Lethal
+                || x.BreakStructure != y.BreakStructure
+                || x.DizzyOnParry != y.DizzyOnParry || x.DizzyOnAvoid != y.DizzyOnAvoid
+                || !string.Equals(x.AttackPower, y.AttackPower, StringComparison.Ordinal)
+                || x.PropertyLevel != y.PropertyLevel)
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// The hit-window edits another node already holds for this card. Null when nobody
+    /// edited it yet (or the only holders are this node).
+    /// </summary>
+    private List<AttackHitEdit>? FindSharedHitEdits(string cardPath, ComboNode exclude)
+    {
+        if (string.IsNullOrEmpty(cardPath)) return null;
+        foreach (var n in EnumerateAllGraphNodes())
+        {
+            if (ReferenceEquals(n, exclude) || n.IsRedirect) continue;
+            if (!string.Equals(AttackDbCard.EffectiveCardPath(n), cardPath, StringComparison.OrdinalIgnoreCase)) continue;
+            if (n.HitEdits != null && n.HitEdits.Count > 0)
+                return AttackHitEdit.CloneList(n.HitEdits);
+        }
+        return null;
     }
 
     /// <summary>
@@ -1811,6 +1926,85 @@ public partial class MainWindow : Window
         string idx = node.TreeIndex >= 0 ? $"[{node.TreeIndex}]" : "[new]";
         txtStatus.Text = $"Jumped to {idx} {node.DisplayName} - close Start Entries to interact";
         ShowToast($"Jumped to {idx} {node.DisplayName}");
+    }
+
+    private System.Windows.Threading.DispatcherTimer? _redirectHighlightTimer;
+
+    /// <summary>Canvas menu: flash every redirect that points at this node, plus this
+    /// node's own redirect target when it is one, and light the connecting edges for
+    /// a moment - the "where does this actually enter/continue" answer in one glance.
+    /// Restores the prior selection highlight when the flash window ends.</summary>
+    private void HighlightConnectedRedirects_Click(object sender, RoutedEventArgs e)
+    {
+        if (_comboGraph == null || sender is not MenuItem mi || mi.Tag is not ComboNode node) return;
+
+        var matches = _comboGraph.Nodes
+            .Where(n => n.IsRedirect && n.ResolvedRedirectNodeId == node.Id)
+            .ToList();
+        var incoming = matches.Where(n => !n.Removed).ToList();
+        int hidden = matches.Count - incoming.Count;
+
+        int savedSelected = _selectedNodeId;
+        var savedChain = new HashSet<int>(_chainNodeIds);
+
+        var chain = new HashSet<int> { node.Id };
+        foreach (var r in incoming) chain.Add(r.Id);
+
+        string suffix = "";
+        if (node.IsRedirect)
+        {
+            var fwd = _comboGraph.Nodes.FirstOrDefault(n => n.Id == node.ResolvedRedirectNodeId);
+            if (fwd != null)
+            {
+                chain.Add(fwd.Id);
+                suffix = $", forwards to {fwd.DisplayName}";
+                if (_nodeBorders.TryGetValue(fwd.Id, out var fwdBorder)) PlayFusionAnimation(fwdBorder);
+            }
+        }
+
+        _selectedNodeId = node.Id;
+        _chainNodeIds.Clear();
+        foreach (var id in chain) _chainNodeIds.Add(id);
+        ApplySelectionStyles();
+
+        foreach (var r in incoming)
+            if (_nodeBorders.TryGetValue(r.Id, out var rb)) PlayFusionAnimation(rb);
+        if (_nodeBorders.TryGetValue(node.Id, out var nb)) PlayFusionAnimation(nb);
+
+        // Pan only when the node sits outside the viewport - no jarring jump for a
+        // highlight the user can already see.
+        if (_nodePositions.TryGetValue(node.Id, out var pos))
+        {
+            double viewL = -_comboTranslate.X, viewT = -_comboTranslate.Y;
+            double viewR = viewL + comboBorder.ActualWidth, viewB = viewT + comboBorder.ActualHeight;
+            bool offscreen = pos.X + NODE_WIDTH < viewL || pos.X > viewR
+                          || pos.Y + NODE_HEIGHT < viewT || pos.Y > viewB;
+            if (offscreen)
+            {
+                double cx = comboBorder.ActualWidth / 2.0;
+                double cy = comboBorder.ActualHeight / 2.0;
+                _comboTranslate.X = cx - (pos.X + NODE_WIDTH / 2.0);
+                _comboTranslate.Y = cy - (pos.Y + NODE_HEIGHT / 2.0);
+            }
+        }
+
+        string hiddenPart = hidden > 0 ? $", {hidden} hidden" : "";
+        if (incoming.Count == 0 && !node.IsRedirect)
+            ShowToast($"No redirects into {node.DisplayName}");
+        else
+            ShowToast($"{incoming.Count} redirects → {node.DisplayName}{hiddenPart}{suffix}");
+
+        _redirectHighlightTimer?.Stop();
+        _redirectHighlightTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+        _redirectHighlightTimer.Tick += (s, ev) =>
+        {
+            _redirectHighlightTimer.Stop();
+            _selectedNodeId = savedSelected;
+            _chainNodeIds.Clear();
+            foreach (var id in savedChain) _chainNodeIds.Add(id);
+            ApplySelectionStyles();
+        };
+        _redirectHighlightTimer.Start();
     }
 
     private void ComputeSelectionChain()
@@ -2908,6 +3102,39 @@ public partial class MainWindow : Window
         var (project, swaps, savedEdges, savedPositions, customNodes, redirectMods) =
             await Task.Run(() => ProjectManager.Load(filePath));
 
+        // Embedded CustomAssets files restore before anything reads the custom root.
+        // Conflicts (same rel, different content) ask the user all-or-nothing; Cancel
+        // aborts the load with zero writes.
+        if (project.CustomFilePayloads is { Count: > 0 })
+        {
+            UpdateLoading("Restoring custom files...", $"{project.CustomFilePayloads.Count} embedded");
+            var restore = await Task.Run(() => CustomFileRestore.Apply(
+                project.CustomFilePayloads, CustomAssets.Root, CustomRestoreStrategy.Ask,
+                conflicts => Dispatcher.Invoke(() =>
+                {
+                    var dlg = new Custom.CustomAssetsConflictDialog { Owner = this };
+                    dlg.SetConflicts(conflicts);
+                    dlg.ShowDialog();
+                    return dlg.Choice;
+                })));
+            if (restore.Cancelled)
+            {
+                txtStatus.Text = "Project load cancelled - file(s) exist in CustomAssets";
+                return (null, null, false);
+            }
+            if (restore.Restored > 0 || restore.Replaced > 0)
+            {
+                try { _parser.MountCustomIntoProvider(CustomAssets.Root); } catch { }
+                try { RegisterCustomMoves(); FilterMoves(); } catch { }
+                ErrorLog.Write("PROJECT", new Exception(
+                    $"Custom files: {restore.Restored} restored, {restore.Replaced} replaced, "
+                    + $"{restore.SkippedIdentical} already matched, {restore.SkippedConflicts} conflict(s) kept"));
+            }
+            if (restore.Conflicts.Count > 0)
+                txtStatus.Text = $"Custom files: {restore.Restored} restored, {restore.Replaced} replaced, "
+                    + $"{restore.SkippedConflicts} kept existing";
+        }
+
         _customMoveset = project.CustomMoveset;
         if (_customMoveset != null)
         {
@@ -3954,6 +4181,7 @@ public partial class MainWindow : Window
                                 ActiveWeapon = null,
                                 Props = props
                             };
+                            ApplySharedCardTuningToGraph(graph);
                         }
                         ErrorLog.Write("IMPORT", new Exception($"Unit props applied to {unitKey}"));
                     }
@@ -4145,8 +4373,9 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Reads the imported mod's attack cards from the overlay root and stores
-    /// m_iWantedBuildupFrames / m_fGameplayRange on each node whose card differs from vanilla.
-    /// Returns how many nodes picked up a tuning change.
+    /// m_iWantedBuildupFrames / m_fGameplayRange diffs plus per-window hit-box diffs
+    /// (frames on the card, the rest from the HitBoxData row) on each node whose card
+    /// differs from vanilla. Returns how many nodes picked up a tuning change.
     /// </summary>
     private int ApplyAttackDbImport(ComboGraph graph, string? overlayContentRoot)
     {
@@ -4154,6 +4383,8 @@ public partial class MainWindow : Window
 
         string vanillaRoot = AttackDbContentDir();
         int tuned = 0;
+        int hitTuned = 0;
+        var sharedRowCards = new List<string>();
         foreach (var node in graph.Nodes)
         {
             if (node.IsRedirect || string.IsNullOrEmpty(node.DefaultDBPath)) continue;
@@ -4167,23 +4398,46 @@ public partial class MainWindow : Window
 
             var vanilla = AttackDbCard.ReadDbPath(vanillaRoot, modCard);
 
+            // Pure custom card (absent from vanilla content): the mod's file itself
+            // carries its values and lands in CustomAssets via the import harvest -
+            // no per-field buildup/range edits against a missing baseline.
+            if (vanilla == null) continue;
+
             int? buildup = null;
             float? range = null;
-            if (modVals.HasBuildup && (vanilla == null || !vanilla.HasBuildup || vanilla.Buildup != modVals.Buildup))
+            if (modVals.HasBuildup && (!vanilla.HasBuildup || vanilla.Buildup != modVals.Buildup))
                 buildup = modVals.Buildup;
-            if (modVals.HasRange && (vanilla == null || !vanilla.HasRange
+            if (modVals.HasRange && (!vanilla.HasRange
                 || !AttackDbCard.SameRange(vanilla.Range, modVals.Range)))
                 range = modVals.Range;
-            if (buildup == null && range == null) continue;
+
+            var modHit = AttackHitCard.ReadDbPath(overlayContentRoot, modCard);
+            var hitEdits = AttackHitCard.DiffAgainst(AttackHitCard.ReadDbPath(vanillaRoot, modCard), modHit);
+
+            if (buildup == null && range == null && hitEdits == null) continue;
 
             node.AttackBuildupFrames = buildup;
             node.AttackGameplayRange = range;
-            tuned++;
+            if (buildup != null || range != null) tuned++;
+
+            if (hitEdits != null)
+            {
+                node.HitEdits = hitEdits;
+                hitTuned++;
+                if (modHit != null && hitEdits.Any(e => AttackHitCard.HasRowFields(e)
+                        && e.Index < modHit.Windows.Count && modHit.Windows[e.Index].SharedRow))
+                    sharedRowCards.Add(Path.GetFileName(AttackDbCard.GamePathToContentRel(modCard)));
+            }
         }
 
         if (tuned > 0)
             ErrorLog.Write("IMPORT", new Exception($"AttackDB tuning picked up on {tuned} node(s) in '{graph.WeaponName}'"));
-        return tuned;
+        if (hitTuned > 0)
+            ErrorLog.Write("IMPORT", new Exception($"AttackDB hit-window tuning picked up on {hitTuned} node(s) in '{graph.WeaponName}'"
+                + (sharedRowCards.Count > 0
+                    ? $" (shared HitBoxData row with other attacks: {string.Join(", ", sharedRowCards.Distinct())})"
+                    : "")));
+        return tuned + hitTuned;
     }
 
     private static string? FindContentRootUnder(string root)
@@ -5316,6 +5570,10 @@ public partial class MainWindow : Window
                         ctxMenu.Items.Add(retargetItem);
                     }
 
+                    var highlightRedirectsItem = new MenuItem { Header = "Highlight connected redirects", Tag = node };
+                    highlightRedirectsItem.Click += HighlightConnectedRedirects_Click;
+                    ctxMenu.Items.Add(highlightRedirectsItem);
+
                     var deleteItem = new MenuItem { Header = isCustomNode ? "Delete Node" : "Remove Node", Tag = node };
                     deleteItem.Click += DeleteNodeMenuItem_Click;
                     ctxMenu.Items.Add(deleteItem);
@@ -6188,10 +6446,23 @@ public partial class MainWindow : Window
                 searchPaths.Add(p);
         }
 
-        AddSearchPath(sourceNode?.DefaultDBPath);
-        AddSearchPath(sourceNode?.SourceDBPath);
+        // Replacement-aware order: a replaced node must land on the card/item that
+        // replaced it, never the vanilla DefaultDBPath (which never changes on a
+        // drop). 1) payload-replaced attack card, 2) the drop's own identity (a
+        // replace sets AnimPath = move.FullPath), 3) the current card
+        // (SourceDBPath when swapped, else default), 4) anim->DB map,
+        // 5) vanilla card as fallback, 6) caller animPath last resort.
+        // Vanilla nodes are unaffected: AnimPath == DefaultAnimPath skips step 2
+        // and step 3 resolves to DefaultDBPath - same jump as before.
+        AddSearchPath(sourceNode?.ReplacedAttackCardRel);
+        if (sourceNode != null
+            && !string.Equals(sourceNode.AnimPath, sourceNode.DefaultAnimPath,
+                StringComparison.OrdinalIgnoreCase))
+            AddSearchPath(sourceNode.AnimPath);
+        AddSearchPath(AttackDbCard.EffectiveCardPath(sourceNode));
         if (_parser.AnimToDbPath.TryGetValue(animPath, out var mappedDb))
             AddSearchPath(mappedDb);
+        AddSearchPath(sourceNode?.DefaultDBPath);
         AddSearchPath(animPath);
 
         if (!string.IsNullOrEmpty(txtSearch.Text))
@@ -6740,6 +7011,14 @@ public partial class MainWindow : Window
                 }
                 if (node.Name == "MainChar_Stance")
                     ShowToast("Combat Stance — not in library");
+                else if (node.ReplacedByAiNode && node.ReplacedAiKind == "Attack"
+                    && !string.IsNullOrEmpty(node.ReplacedAttackCardRel))
+                    await FindCardInLibrary(node.ReplacedAttackCardRel, node);
+                else if (node.ReplacedByAiNode && node.ReplacedAiKind == "Action")
+                    await HandleActionNodeClickAsync(node);
+                else if (node.ReplacedByAiNode && node.ReplacedAiKind == "Event")
+                    txtStatus.Text = $"Event: {(string.IsNullOrEmpty(node.ReplacedAiClass) ? node.DisplayName : node.ReplacedAiClass)}"
+                        + " - events fire gameplay logic and have no animation";
                 else if (node.IsActionNode)
                     await HandleActionNodeClickAsync(node);
                 else if (node.IsEventNode)
@@ -6820,7 +7099,12 @@ public partial class MainWindow : Window
             txtStatus.Text = $"Resolving action '{node.ActionClass}'...";
             await EnsureAiCatalogAsync();
         }
-        string className = string.IsNullOrEmpty(node.ActionClass) ? node.DisplayName : node.ActionClass;
+        // An AI-replaced node keeps its original ActionClass; the replacing class
+        // lives in ReplacedAiClass - preview through the one that actually runs.
+        string className = node.ReplacedByAiNode && node.ReplacedAiKind == "Action"
+            && !string.IsNullOrEmpty(node.ReplacedAiClass)
+                ? node.ReplacedAiClass
+                : string.IsNullOrEmpty(node.ActionClass) ? node.DisplayName : node.ActionClass;
         var info = _aiNodes.FirstOrDefault(n =>
             n.Kind == "Action" &&
             (string.Equals(n.ClassName, className, StringComparison.OrdinalIgnoreCase) ||
@@ -6884,6 +7168,7 @@ public partial class MainWindow : Window
         int oldTargetId = redirectNode.ResolvedRedirectNodeId;
         redirectNode.ResolvedRedirectNodeId = newTarget.Id;
         MoveOwnedRedirectRows(redirectNode, oldTargetId, newTarget.Id);
+        SwapRedirectRowConditions(redirectNode, newTarget);
 
         RenderComboGraph();
         txtStatus.Text = $"Retargeted '{redirectNode.DisplayName}' → '{newTarget.DisplayName}'";
@@ -6923,6 +7208,208 @@ public partial class MainWindow : Window
                     IsNewLink = o.IsNewLink
                 });
             }
+        }
+    }
+
+    /// <summary>
+    /// Data swap on retarget (user-confirmed): outcome keys whose effective target is
+    /// the redirect itself - a vanilla m_TargetNodes value, a Retarget entry, or a
+    /// node-id entry - are rewritten to the new play target. RF's Conditions &amp;
+    /// Chances option therefore becomes the destination, accepting that rows which
+    /// used to branch on the redirect's own transition rows now branch on the
+    /// destination's. Provenance records which redirect moved each key so a later
+    /// re-retarget can move them again even though their effective target is no
+    /// longer the redirect.
+    /// </summary>
+    private void SwapRedirectRowConditions(ComboNode redirectNode, ComboNode newTarget)
+    {
+        if (_comboGraph == null || redirectNode.TreeIndex < 0) return;
+        BackfillTreeRows(); // effective-target math needs the vanilla row snapshot
+        _comboGraph.RetargetProvenance ??= new Dictionary<string, int>();
+        var prov = _comboGraph.RetargetProvenance;
+        int redirectTree = redirectNode.TreeIndex;
+        int newTree = newTarget.TreeIndex;
+
+        foreach (var structKvp in _comboGraph.TreeRowConditionOverrides)
+        {
+            _comboGraph.TreeRows.TryGetValue(structKvp.Key, out var vanilla);
+            foreach (var rowKvp in structKvp.Value)
+            {
+                var edit = rowKvp.Value;
+                TreeRowInfo? vr = vanilla?.FirstOrDefault(r => r.RowIndex == rowKvp.Key);
+
+                if (edit.ClearCondition)
+                {
+                    // A cleared row routes on its single surviving key (255).
+                    int survivor = -1;
+                    if (vr != null && vr.Keys.Count > 0)
+                    {
+                        int ki = vr.Keys.IndexOf(0);
+                        survivor = ki >= 0 && ki < vr.TargetTreeIndices.Count
+                            ? vr.TargetTreeIndices[ki]
+                            : vr.TargetTreeIndices.Count > 0 ? vr.TargetTreeIndices[0] : -1;
+                    }
+                    if (edit.Retarget.TryGetValue(255, out var rt255) && rt255 >= 0) survivor = rt255;
+                    if (survivor == redirectTree && newTree >= 0)
+                    {
+                        edit.Retarget[255] = newTree;
+                        edit.RetargetNodeIds.Remove(255);
+                        prov[ComboGraph.RowRetargetKey(structKvp.Key, rowKvp.Key, 255)] = redirectNode.Id;
+                    }
+                }
+                else
+                {
+                    var keys = new HashSet<byte>(edit.Retarget.Keys);
+                    if (vr != null) foreach (var k in vr.Keys) keys.Add(k);
+                    foreach (byte key in keys)
+                    {
+                        int vanillaT = -1;
+                        if (vr != null)
+                        {
+                            int ki = vr.Keys.IndexOf(key);
+                            if (ki >= 0 && ki < vr.TargetTreeIndices.Count) vanillaT = vr.TargetTreeIndices[ki];
+                        }
+                        int eff = edit.Retarget.TryGetValue(key, out var rt) && rt >= 0 ? rt : vanillaT;
+                        if (eff == redirectTree && newTree >= 0)
+                        {
+                            edit.Retarget[key] = newTree;
+                            prov[ComboGraph.RowRetargetKey(structKvp.Key, rowKvp.Key, key)] = redirectNode.Id;
+                        }
+                    }
+                }
+
+                foreach (byte key in edit.RetargetNodeIds.Keys.ToList())
+                {
+                    if (edit.RetargetNodeIds[key] == redirectNode.Id)
+                    {
+                        edit.RetargetNodeIds[key] = newTarget.Id;
+                        prov[ComboGraph.RowRetargetKey(structKvp.Key, rowKvp.Key, key)] = redirectNode.Id;
+                    }
+                }
+                foreach (byte key in edit.AddedKeys.Keys.ToList())
+                {
+                    if (edit.AddedKeys[key] == redirectNode.Id)
+                    {
+                        edit.AddedKeys[key] = newTarget.Id;
+                        prov[ComboGraph.RowRetargetKey(structKvp.Key, rowKvp.Key, key)] = redirectNode.Id;
+                    }
+                }
+            }
+        }
+
+        foreach (var edgeKvp in _comboGraph.TreeEdgeConditionOverrides)
+        {
+            var edit = edgeKvp.Value;
+            foreach (byte key in edit.Retarget.Keys.ToList())
+            {
+                if (edit.Retarget[key] == redirectTree && newTree >= 0)
+                {
+                    edit.Retarget[key] = newTree;
+                    prov[ComboGraph.EdgeRetargetKey(edgeKvp.Key, key)] = redirectNode.Id;
+                }
+            }
+            foreach (byte key in edit.RetargetNodeIds.Keys.ToList())
+            {
+                if (edit.RetargetNodeIds[key] == redirectNode.Id)
+                {
+                    edit.RetargetNodeIds[key] = newTarget.Id;
+                    prov[ComboGraph.EdgeRetargetKey(edgeKvp.Key, key)] = redirectNode.Id;
+                }
+            }
+            foreach (byte key in edit.AddedKeys.Keys.ToList())
+            {
+                if (edit.AddedKeys[key] == redirectNode.Id)
+                {
+                    edit.AddedKeys[key] = newTarget.Id;
+                    prov[ComboGraph.EdgeRetargetKey(edgeKvp.Key, key)] = redirectNode.Id;
+                }
+            }
+        }
+
+        // Re-retarget: entries this redirect moved earlier point at the previous
+        // destination now, so the equality pass above misses them - force them onto
+        // the new target; stale claims (row edit reverted) just drop.
+        foreach (var p in prov.Where(kv => kv.Value == redirectNode.Id).ToList())
+        {
+            string pk = p.Key;
+            if (pk.StartsWith("R:", StringComparison.Ordinal))
+            {
+                var parts = pk.Split(':');
+                if (parts.Length != 4 || !int.TryParse(parts[1], out int st)
+                    || !int.TryParse(parts[2], out int ri) || !byte.TryParse(parts[3], out byte key))
+                    continue;
+                if (!_comboGraph.TreeRowConditionOverrides.TryGetValue(st, out var rows)
+                    || !rows.TryGetValue(ri, out var edit))
+                    continue;
+                if (edit.RetargetNodeIds.ContainsKey(key))
+                    edit.RetargetNodeIds[key] = newTarget.Id;
+                else if (edit.AddedKeys.ContainsKey(key))
+                    edit.AddedKeys[key] = newTarget.Id;
+                else if (edit.Retarget.ContainsKey(key) && newTree >= 0)
+                    edit.Retarget[key] = newTree;
+                else
+                    prov.Remove(pk); // row edit reverted - the claim is stale
+            }
+            else if (pk.StartsWith("E:", StringComparison.Ordinal))
+            {
+                var parts = pk.Split(':');
+                if (parts.Length != 3 || !byte.TryParse(parts[2], out byte key)) continue;
+                if (!_comboGraph.TreeEdgeConditionOverrides.TryGetValue(parts[1], out var edit))
+                    continue;
+                if (edit.RetargetNodeIds.ContainsKey(key))
+                    edit.RetargetNodeIds[key] = newTarget.Id;
+                else if (edit.AddedKeys.ContainsKey(key))
+                    edit.AddedKeys[key] = newTarget.Id;
+                else if (edit.Retarget.ContainsKey(key) && newTree >= 0)
+                    edit.Retarget[key] = newTree;
+                else
+                    prov.Remove(pk);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reset-to-vanilla for a redirect: rows this redirect's retargets moved (the
+    /// data swap's provenance claims) drop their override entries so routing falls
+    /// back to the vanilla m_TargetNodes values - which still name the redirect.
+    /// </summary>
+    private void RevertRedirectRowConditions(ComboNode redirectNode)
+    {
+        if (_comboGraph?.RetargetProvenance == null || redirectNode.TreeIndex < 0) return;
+        var prov = _comboGraph.RetargetProvenance;
+        foreach (var p in prov.Where(kv => kv.Value == redirectNode.Id).ToList())
+        {
+            string pk = p.Key;
+            if (pk.StartsWith("R:", StringComparison.Ordinal))
+            {
+                var parts = pk.Split(':');
+                if (parts.Length != 4 || !int.TryParse(parts[1], out int st)
+                    || !int.TryParse(parts[2], out int ri) || !byte.TryParse(parts[3], out byte key))
+                    continue;
+                if (!_comboGraph.TreeRowConditionOverrides.TryGetValue(st, out var rows)
+                    || !rows.TryGetValue(ri, out var edit))
+                {
+                    prov.Remove(pk);
+                    continue;
+                }
+                edit.Retarget.Remove(key);
+                edit.RetargetNodeIds.Remove(key);
+                edit.AddedKeys.Remove(key);
+            }
+            else if (pk.StartsWith("E:", StringComparison.Ordinal))
+            {
+                var parts = pk.Split(':');
+                if (parts.Length != 3 || !byte.TryParse(parts[2], out byte key)) continue;
+                if (!_comboGraph.TreeEdgeConditionOverrides.TryGetValue(parts[1], out var edit))
+                {
+                    prov.Remove(pk);
+                    continue;
+                }
+                edit.Retarget.Remove(key);
+                edit.RetargetNodeIds.Remove(key);
+                edit.AddedKeys.Remove(key);
+            }
+            prov.Remove(pk);
         }
     }
 
@@ -7237,14 +7724,56 @@ public partial class MainWindow : Window
 
         // Delete Anyway: clear the offending start targets with the Start Entries dialog's
         // semantics - vanilla rows/entries marked Removed (export drops them), new ones
-        // hard-removed - so the delete never leaves a ghost target behind.
+        // hard-removed - so the delete never leaves a ghost target behind. Multi-key rows
+        // only lose the keys that target this node; a row that loses its last key (or a
+        // single-key row) is removed whole.
         foreach (var en in startBlockers)
         {
             foreach (var t in en.Transitions
                 .Where(t => !t.Removed && StartTransitionTargetsNode(t, node.Id)).ToList())
             {
-                if (t.OriginalIndex >= 0) t.Removed = true;
-                else en.Transitions.Remove(t);
+                bool canTrim = t.KeyCount > 1
+                    && t.Keys.Count == t.KeyCount
+                    && t.KeyTargetNodeIds.Count == t.KeyCount
+                    && t.KeyTargetTreeIndices.Count == t.KeyCount
+                    && t.KeyTargetNames.Count == t.KeyCount;
+                if (canTrim)
+                {
+                    // Drop only the keys routed to the deleted node (parallel lists
+                    // stay in lockstep; export rebuilds m_TargetNodes from the model).
+                    for (int ki = t.KeyTargetNodeIds.Count - 1; ki >= 0; ki--)
+                    {
+                        if (t.KeyTargetNodeIds[ki] != node.Id) continue;
+                        t.Keys.RemoveAt(ki);
+                        t.KeyTargetTreeIndices.RemoveAt(ki);
+                        t.KeyTargetNodeIds.RemoveAt(ki);
+                        t.KeyTargetNames.RemoveAt(ki);
+                    }
+                    if (t.Keys.Count == 0)
+                    {
+                        if (t.OriginalIndex >= 0) t.Removed = true;
+                        else en.Transitions.Remove(t);
+                        continue;
+                    }
+                    if (t.Keys.Count != t.KeyCount)
+                    {
+                        t.KeyCount = t.Keys.Count;
+                        t.TargetSummary = string.Join(", ",
+                            t.Keys.Zip(t.KeyTargetTreeIndices, (k2, v2) => $"{k2}→{v2}"));
+                    }
+                    // Keep the row's single-target fallback pointed at a live key.
+                    if (t.TargetNodeId == node.Id)
+                    {
+                        t.TargetNodeId = t.KeyTargetNodeIds[0];
+                        t.TargetTreeIndex = t.KeyTargetTreeIndices[0];
+                        t.TargetName = t.KeyTargetNames[0];
+                    }
+                }
+                else
+                {
+                    if (t.OriginalIndex >= 0) t.Removed = true;
+                    else en.Transitions.Remove(t);
+                }
             }
             if (en.Transitions.Count(t => !t.Removed) == 0)
             {
@@ -8168,6 +8697,7 @@ public partial class MainWindow : Window
                 return;
             }
             _comboGraph = graph;
+            ApplySharedCardTuningToGraph(graph);
             _activeWeapon = NormalizeWeaponForCache(arch, weaponTag);
             UpdateWeaponButtonVisibility();
             SetComboInfo($"{arch} {weaponTag} - {graph.Nodes.Count} nodes");
@@ -8407,6 +8937,7 @@ public partial class MainWindow : Window
                 return;
             }
             _comboGraph = graph;
+            ApplySharedCardTuningToGraph(graph);
             if (!string.IsNullOrEmpty(_activeWeapon) && !GetWeaponVariantsForArchetype(arch).Any(w => w.tag == _activeWeapon))
                 _activeWeapon = null;
             UpdateWeaponButtonVisibility();
@@ -8648,6 +9179,7 @@ public partial class MainWindow : Window
                     {
                         stanceNode.AnimPath = _stanceMap[stance].DisplayAnim;
                     }
+                    ApplySharedCardTuningToGraph(_comboGraph);
 
                     SetComboInfo($"{stance} - {_comboGraph.WeaponName} ({_comboGraph.Nodes.Count} nodes, {_comboGraph.Edges.Count} edges)");
                     _comboTranslate.X = 0;
@@ -8827,6 +9359,7 @@ public partial class MainWindow : Window
         var inherited = FindSharedCardTuning(newCard, node);
         node.AttackBuildupFrames = inherited?.Buildup;
         node.AttackGameplayRange = inherited?.Range;
+        node.HitEdits = inherited?.HitEdits;
     }
 
     /// <summary>Every node the editor can tune: the live graph plus all cached unit graphs.</summary>
@@ -8847,16 +9380,17 @@ public partial class MainWindow : Window
     /// <summary>
     /// The tuning another node already holds for this card - the "changes list" lookup used when
     /// the same AttackDB file is dropped onto a second unit. Null when nobody tuned it yet.
+    /// Hit window edits ride along since they are a property of the same shared card file.
     /// </summary>
-    private (int? Buildup, float? Range)? FindSharedCardTuning(string cardPath, ComboNode exclude)
+    private (int? Buildup, float? Range, List<AttackHitEdit>? HitEdits)? FindSharedCardTuning(string cardPath, ComboNode exclude)
     {
         if (string.IsNullOrEmpty(cardPath)) return null;
         foreach (var n in EnumerateAllGraphNodes())
         {
             if (ReferenceEquals(n, exclude) || n.IsRedirect) continue;
             if (!string.Equals(AttackDbCard.EffectiveCardPath(n), cardPath, StringComparison.OrdinalIgnoreCase)) continue;
-            if (n.AttackBuildupFrames.HasValue || n.AttackGameplayRange.HasValue)
-                return (n.AttackBuildupFrames, n.AttackGameplayRange);
+            if (n.AttackBuildupFrames.HasValue || n.AttackGameplayRange.HasValue || n.HitEdits != null)
+                return (n.AttackBuildupFrames, n.AttackGameplayRange, AttackHitEdit.CloneList(n.HitEdits));
         }
         return null;
     }
@@ -8875,12 +9409,54 @@ public partial class MainWindow : Window
             if (!string.Equals(AttackDbCard.EffectiveCardPath(n), card, StringComparison.OrdinalIgnoreCase)) continue;
             n.AttackBuildupFrames = source.AttackBuildupFrames;
             n.AttackGameplayRange = source.AttackGameplayRange;
+            n.HitEdits = AttackHitEdit.CloneList(source.HitEdits);
+        }
+    }
+
+    /// <summary>
+    /// Fresh vanilla parses carry no AttackDB tuning, so a graph installed from disk would
+    /// silently diverge from units already tuned on the same card (and a later commit from
+    /// it would wipe them). Fill untuned same-card nodes from every other in-memory graph.
+    /// </summary>
+    private void ApplySharedCardTuningToGraph(ComboGraph? graph)
+    {
+        if (graph == null || _unitCaches == null) return;
+        var byCard = new Dictionary<string, (int? Buildup, float? Range, List<AttackHitEdit>? HitEdits)>(
+            StringComparer.OrdinalIgnoreCase);
+        void Consider(ComboGraph? g)
+        {
+            if (g == null || ReferenceEquals(g, graph)) return;
+            foreach (var n in g.Nodes)
+            {
+                if (n.IsRedirect) continue;
+                if (!n.AttackBuildupFrames.HasValue && !n.AttackGameplayRange.HasValue && n.HitEdits == null) continue;
+                string card = AttackDbCard.EffectiveCardPath(n);
+                if (string.IsNullOrEmpty(card)) continue;
+                if (!byCard.ContainsKey(card))
+                    byCard[card] = (n.AttackBuildupFrames, n.AttackGameplayRange, AttackHitEdit.CloneList(n.HitEdits));
+            }
+        }
+        Consider(_comboGraph);
+        foreach (var kvp in _unitCaches) Consider(kvp.Value.Graph);
+        if (byCard.Count == 0) return;
+
+        foreach (var n in graph.Nodes)
+        {
+            if (n.IsRedirect) continue;
+            if (n.AttackBuildupFrames.HasValue || n.AttackGameplayRange.HasValue || n.HitEdits != null) continue;
+            string card = AttackDbCard.EffectiveCardPath(n);
+            if (string.IsNullOrEmpty(card) || !byCard.TryGetValue(card, out var v)) continue;
+            n.AttackBuildupFrames = v.Buildup;
+            n.AttackGameplayRange = v.Range;
+            n.HitEdits = AttackHitEdit.CloneList(v.HitEdits);
         }
     }
 
     /// <summary>
     /// Projects saved before shared-card tracking could hold two different values for one card;
     /// unify them (first unit-key wins) so export never hits its keep-first conflict path.
+    /// Also fills same-card nodes carrying no tuning from the first tuned sibling, so old
+    /// saves whose units were never visited after an edit self-heal on load.
     /// </summary>
     private int NormalizeSharedCardTuning()
     {
@@ -8888,16 +9464,20 @@ public partial class MainWindow : Window
         int unified = 0;
         foreach (var n in EnumerateAllGraphNodes())
         {
-            if (n.IsRedirect || (!n.AttackBuildupFrames.HasValue && !n.AttackGameplayRange.HasValue)) continue;
+            if (n.IsRedirect || (!n.AttackBuildupFrames.HasValue && !n.AttackGameplayRange.HasValue
+                && n.HitEdits == null)) continue;
             string card = AttackDbCard.EffectiveCardPath(n);
             if (string.IsNullOrEmpty(card)) continue;
             if (firstByCard.TryGetValue(card, out var first))
             {
                 if (first.AttackBuildupFrames != n.AttackBuildupFrames
-                    || first.AttackGameplayRange != n.AttackGameplayRange)
+                    || first.AttackGameplayRange != n.AttackGameplayRange
+                    || !EditsEqual(first.HitEdits ?? new List<AttackHitEdit>(),
+                                   n.HitEdits ?? new List<AttackHitEdit>()))
                 {
                     n.AttackBuildupFrames = first.AttackBuildupFrames;
                     n.AttackGameplayRange = first.AttackGameplayRange;
+                    n.HitEdits = AttackHitEdit.CloneList(first.HitEdits);
                     unified++;
                 }
             }
@@ -8905,6 +9485,19 @@ public partial class MainWindow : Window
             {
                 firstByCard[card] = n;
             }
+        }
+        // Fill pass: one card = one value set in game, so an untuned node on a tuned card
+        // is a sync gap (unit never visited after the edit), not an intentional vanilla.
+        foreach (var n in EnumerateAllGraphNodes())
+        {
+            if (n.IsRedirect) continue;
+            if (n.AttackBuildupFrames.HasValue || n.AttackGameplayRange.HasValue || n.HitEdits != null) continue;
+            string card = AttackDbCard.EffectiveCardPath(n);
+            if (string.IsNullOrEmpty(card) || !firstByCard.TryGetValue(card, out var first)) continue;
+            n.AttackBuildupFrames = first.AttackBuildupFrames;
+            n.AttackGameplayRange = first.AttackGameplayRange;
+            n.HitEdits = AttackHitEdit.CloneList(first.HitEdits);
+            unified++;
         }
         return unified;
     }
@@ -9017,6 +9610,10 @@ public partial class MainWindow : Window
             if (chanceStructIdx >= 0)
             {
                 _comboGraph.TreeRowConditionOverrides.Remove(chanceStructIdx);
+                if (_comboGraph.RetargetProvenance != null)
+                    foreach (var pk in _comboGraph.RetargetProvenance.Keys
+                        .Where(k => k.StartsWith($"R:{chanceStructIdx}:", StringComparison.Ordinal)).ToList())
+                        _comboGraph.RetargetProvenance.Remove(pk);
                 // Links merged into this struct's rows just lost their AddedKeys (the
                 // whole override map went) - drop the merges too or export would skip
                 // their appended rows while the target keys no longer exist.
@@ -9031,7 +9628,13 @@ public partial class MainWindow : Window
                     _comboGraph.TreeConditionParamOverrides.Remove(expIdx);
             }
             foreach (string edgeKey in nodeEdgeCondKeys)
+            {
                 _comboGraph.TreeEdgeConditionOverrides.Remove(edgeKey);
+                if (_comboGraph.RetargetProvenance != null)
+                    foreach (var pk in _comboGraph.RetargetProvenance.Keys
+                        .Where(k => k.StartsWith($"E:{edgeKey}:", StringComparison.Ordinal)).ToList())
+                        _comboGraph.RetargetProvenance.Remove(pk);
+            }
         }
         bool hadAiReplace = node.ReplacedByAiNode;
         if (hadAiReplace) ClearAiReplace(node);
@@ -9052,6 +9655,7 @@ public partial class MainWindow : Window
             var inherited = FindSharedCardTuning(newCard, node);
             node.AttackBuildupFrames = inherited?.Buildup;
             node.AttackGameplayRange = inherited?.Range;
+            node.HitEdits = inherited?.HitEdits;
         }
 
         if (node.IsRedirect && _comboGraph != null
@@ -9064,6 +9668,7 @@ public partial class MainWindow : Window
                 int oldTargetId = node.ResolvedRedirectNodeId;
                 node.ResolvedRedirectNodeId = origTarget.Id;
                 MoveOwnedRedirectRows(node, oldTargetId, origTarget.Id);
+                RevertRedirectRowConditions(node);
 
                 var oldEdge = _comboGraph.Edges.FirstOrDefault(e => e.FromNodeId == node.Id && e.IsRedirect);
                 if (oldEdge != null) _comboGraph.Edges.Remove(oldEdge);
@@ -9347,6 +9952,8 @@ public partial class MainWindow : Window
             resetCount += edgeCondOverrides.Count;
             if (apply) edgeCondOverrides.Clear();
         }
+        if (apply && _comboGraph?.RetargetProvenance != null && _comboGraph.RetargetProvenance.Count > 0)
+            _comboGraph.RetargetProvenance.Clear();
 
         // Custom nodes (incl. authored redirects) and new links between surviving nodes.
         if (_comboGraph == null) return resetCount;   // flow-state re-assert (never actually null here)
@@ -9412,6 +10019,7 @@ public partial class MainWindow : Window
                             var inherited = FindSharedCardTuning(newCard, node);
                             node.AttackBuildupFrames = inherited?.Buildup;
                             node.AttackGameplayRange = inherited?.Range;
+                            node.HitEdits = inherited?.HitEdits;
                         }
                     }
                 }
@@ -9983,6 +10591,9 @@ public partial class MainWindow : Window
                     r => r.Value.Clone())),
             TreeEdgeConditionOverrides = graph.TreeEdgeConditionOverrides
                 .ToDictionary(kv => kv.Key, kv => kv.Value.Clone()),
+            RetargetProvenance = graph.RetargetProvenance == null
+                ? null
+                : new Dictionary<string, int>(graph.RetargetProvenance),
             ConduitTargets = graph.ConduitTargets
                 .ToDictionary(kv => kv.Key, kv => new List<int>(kv.Value))
         };
@@ -10073,9 +10684,7 @@ public partial class MainWindow : Window
     {
         if (unitPropsPopupBorder.Visibility == Visibility.Visible)
         {
-            SaveUnitProperties();
-            unitPropsPopupBorder.Visibility = Visibility.Collapsed;
-            SetWebViewVisible(true);
+            TryCloseUnitProps();
             return;
         }
         PopulateUnitProperties();
@@ -10086,11 +10695,38 @@ public partial class MainWindow : Window
     private void UnitPropsPopupBackground_Click(object sender, MouseButtonEventArgs e)
     {
         if (e.OriginalSource == unitPropsPopupBorder)
+            TryCloseUnitProps();
+    }
+
+    /// <summary>
+    /// Saves + closes the Unit Properties popup. Blocks the close while Last Man phase swap
+    /// is checked but no moveset is picked - export token-matches only a selected target
+    /// (UnitPropertiesManager.PhaseSwapActive needs both), so a checked box with no target
+    /// would otherwise save a setting that silently does nothing.
+    /// </summary>
+    private bool TryCloseUnitProps()
+    {
+        if (unitPropsPhaseSection.Visibility == Visibility.Visible
+            && chkPhaseSwap.IsChecked == true
+            && cmbPhaseSwapTarget.SelectedItem == null)
         {
-            SaveUnitProperties();
-            unitPropsPopupBorder.Visibility = Visibility.Collapsed;
-            SetWebViewVisible(true);
+            bool noTargets = cmbPhaseSwapTarget.Items.Count == 0;
+            MessageBox.Show(
+                noTargets
+                    ? "Last Man phase swap is checked, but no phase-swap movesets were found for this install.\n\n"
+                      + "Uncheck phase swap to close - without a target the swap does nothing on export."
+                    : "Last Man phase swap is checked but no moveset is picked.\n\n"
+                      + "Pick a moveset from the dropdown (or uncheck phase swap) before closing - "
+                      + "without a target the swap does nothing on export.",
+                "Unit Properties",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return false;
         }
+        SaveUnitProperties();
+        unitPropsPopupBorder.Visibility = Visibility.Collapsed;
+        SetWebViewVisible(true);
+        return true;
     }
 
     private void ResetUnitProps_Click(object sender, RoutedEventArgs e)
@@ -10108,7 +10744,7 @@ public partial class MainWindow : Window
         ["FlushLimit"] = ("Flush Limit", "Cooldown (seconds) after the enemy defends before it can defend again. Lower = more frequent defense cycles. At 0s, the enemy can defend again instantly. Combine with Hit Count = 0 for constant defense.", null),
         ["ImmuneToFocus"] = ("Immune to Focus Attacks", "Derived from the unit's VitalPointDB: checked when that database contains no Vital Point entries, meaning the unit has no Focus target (this is how Yang behaves by default). When checked, the export repoints the family's shared ArchetypeDB at Yang's empty one. This is a single flag per family - checking it on any member checks it for every member, and un-checking cannot undo a write that was never made for you.", null),
         ["Model"] = ("Model Override", "Two ways to change this unit's looks, both picked from the Choose dialog:\n\n- Roster swap (family): replaces every spawn of this unit's family with another family's whole roster of looks (e.g. all Grunts get FireDisciple's looks). Per-spawn variety is kept: each Character BP is matched to the source's same-hideout, same-gender meshes first, rotating round-robin. Covers the whole family by design; '(default)' clears it.\n\n- Specific model (variant): replaces just this variant's spawned mesh in its own scenario files (levels, training room, void, tutorial): matching m_OverrideSkeletalMesh entries point at the chosen mesh on export. Scoped to the current unit variant - other variants keep their in-game models. '(default)' clears the pick.\n\nThe two modes exclude each other: picking one clears the other for this family. 'Import custom model...' accepts an already-converted SK_ uasset bundle on Sifu's Base_skeleton - it is validated, stored in CustomAssets and listed under the Custom group.\n\nCaveats: hats and held props are attachments of the old skeleton and may float or disappear; female spawns of a specific-model variant are replaced too; bosses' phase models are shared, so a pick there still changes the whole boss fight.", null),
-        ["PhaseSwap"] = ("Phase Swap", "Makes this enemy phase-swap into the chosen moveset when taken down (Last Man transition, the mechanic Grunts already use against the player).\n\nOn export, a Last Man takedown transition is appended to this variant's scenario files, pointing the new phase at the picked moveset DB. Taking the unit down with a synchronized takedown swaps it into that moveset with health, structure and super-dizzy reset. The Last Man gauge is not required.\n\nThe moveset pick is token-matched: a per-level DB (e.g. FireDisciple / MiniBoss_H5) only patches scenarios with the same level token, so H5 only pairs with H5. Arena-only DBs patch arena scenarios; tokenless DBs patch every tier scenario. Scenarios that already phase (vanilla Grunt roster, bosses) are left untouched.\n\nA target DB must already be referenced by the scenario as its second phase (that's how per-level pairings work in vanilla) - if it isn't, the export log reports the file as failed. Hideout/arena FDs, Grunts, Bodyguards, BigGuys and FlashKicks are the intended subjects.", null),
+        ["PhaseSwap"] = ("Phase Swap", "Makes this enemy phase-swap into the chosen moveset when taken down (Last Man transition, the mechanic Grunts already use against the player).\n\nOn export, every scenario of this unit's tier is staged - levels, hideouts, arenas, challenge rooms. Scenarios that never phase get a Last Man takedown transition appended pointing at the picked moveset DB (health, structure and super-dizzy reset; the Last Man gauge is not required). Scenarios that already phase (the vanilla Grunt roster) get their existing takedown transition retargeted at the pick instead.\n\nPairing is per variant, not by level: a per-level DB (e.g. FireDisciple / H5 (MiniBoss)) patches every scenario that spawns this variant's tier - H2 through H5 hideouts, arenas, mute arenas - by creating the DB reference when missing. Cross-family targets work too (e.g. Grunt Advanced -> FireDisciple MiniBoss). Picking a DB the scenario already phases into (self-swap) is skipped.\n\nBosses (family-wide scenarios) are excluded. Hideout/arena FDs, Grunts, Bodyguards, BigGuys and FlashKicks are the intended subjects. The export log lists every patched, retargeted or skipped scenario.", null),
     };
 
     /// <summary>
@@ -10199,11 +10835,16 @@ public partial class MainWindow : Window
         chkImmuneToFocus.IsChecked = UnitPropertiesManager.GetEffectiveFocus(_contentPath, variantTag);
         _currentUnitProps.ImmuneToFocus = chkImmuneToFocus.IsChecked;
 
-        _selectedModelOverride = UnitPropertiesManager.GetEffectiveModel(_contentPath, variantTag)
-            ?? _currentUnitProps.ModelOverride;
-        _selectedModelSet = UnitPropertiesManager.GetEffectiveModelSet(_contentPath, variantTag)
-            ?? _currentUnitProps.ModelSet;
-        UpdateModelOverrideLabel();
+        _selectedModelOverride = null;
+        _selectedModelSet = null;
+        if (UnitPropertiesManager.EnableModelFeature)
+        {
+            _selectedModelOverride = UnitPropertiesManager.GetEffectiveModel(_contentPath, variantTag)
+                ?? _currentUnitProps.ModelOverride;
+            _selectedModelSet = UnitPropertiesManager.GetEffectiveModelSet(_contentPath, variantTag)
+                ?? _currentUnitProps.ModelSet;
+            UpdateModelOverrideLabel();
+        }
 
         chkPhaseSwap.IsChecked = _currentUnitProps.PhaseSwap ?? false;
         SelectPhaseTarget(_currentUnitProps.PhaseSwapTarget);
@@ -10504,11 +11145,13 @@ public partial class MainWindow : Window
 
     private void BtnChooseModel_Click(object sender, RoutedEventArgs e)
     {
+        if (!UnitPropertiesManager.EnableModelFeature) return;
         _ = OpenModelPickerAsync();
     }
 
     private async void BtnImportModel_Click(object sender, RoutedEventArgs e)
     {
+        if (!UnitPropertiesManager.EnableModelFeature) return;
         if (string.IsNullOrEmpty(_contentPath)) return;
         if (_parser == null || !_parser.IsLoaded)
         {
@@ -10618,6 +11261,7 @@ public partial class MainWindow : Window
 
     private async Task OpenModelPickerAsync()
     {
+        if (!UnitPropertiesManager.EnableModelFeature) return;
         if (string.IsNullOrEmpty(_contentPath)) return;
 
         _modelPickerRosterMode = !IsMainCharStance() && !string.IsNullOrEmpty(_selectedModelSet);
@@ -10712,6 +11356,7 @@ public partial class MainWindow : Window
         modelFilterWrap.Children.Clear();
         _modelThumbCards.Clear();
         _thumbQueued.Clear();
+        if (!UnitPropertiesManager.EnableModelFeature) return;
 
         if (_modelPickerRosterMode)
         {

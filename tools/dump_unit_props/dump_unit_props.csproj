@@ -13,5 +13,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\Core\UnitPropertiesManager.cs" Link="UnitPropertiesManager.cs"/>
+    <Compile Include="..\..\Core\ModelCatalog.cs" Link="ModelCatalog.cs"/>
+    <Compile Include="..\..\Core\CustomAssets.cs" Link="CustomAssets.cs"/>
+    <Compile Include="..\..\Core\PhaseSwapPatcher.cs" Link="PhaseSwapPatcher.cs"/>
   </ItemGroup>
 </Project>

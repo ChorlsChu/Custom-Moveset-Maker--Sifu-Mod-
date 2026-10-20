@@ -28,15 +28,16 @@ public partial class StartEntryBlockDialog : Window
         txtHeader.Text = "Node is used by Start Entries";
         txtMessage.Text = $"'{nodeName}' is targeted by {blockers.Count} start "
             + $"entr{(blockers.Count == 1 ? "y" : "ies")}:\n\n"
-            + "Deleting the node requires removing these targets first.";
+            + "Deleting the node removes these targets: single-key rows drop whole, "
+            + "multi-key rows keep their other keys and only lose the ones pointing here.";
 
         var lines = new List<string>();
         foreach (var en in blockers)
         {
             int live = en.Transitions.Count(t => !t.Removed);
             string kind = en.VanillaIndex >= 0
-                ? "vanilla - will be dropped from the game's start tickets"
-                : "new entry - removed entirely";
+                ? "vanilla - offending targets cleared (rows keep surviving keys)"
+                : "new entry - offending targets cleared";
             lines.Add($"• {en.Label} ({live} transition{(live == 1 ? "" : "s")}) - {kind}");
         }
         txtDetail.Text = string.Join("\n", lines);

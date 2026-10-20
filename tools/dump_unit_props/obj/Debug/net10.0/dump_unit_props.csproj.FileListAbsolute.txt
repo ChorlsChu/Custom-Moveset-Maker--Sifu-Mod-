@@ -5,8 +5,6 @@ C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMo
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\dump_unit_props\bin\Debug\net10.0\dump_unit_props.pdb
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\dump_unit_props\bin\Debug\net10.0\UAssetAPI.dll
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\dump_unit_props\bin\Debug\net10.0\Newtonsoft.Json.dll
-C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\dump_unit_props\bin\Debug\net10.0\UAssetAPI.pdb
-C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\dump_unit_props\bin\Debug\net10.0\UAssetAPI.xml
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\dump_unit_props\obj\Debug\net10.0\dump_unit_props.csproj.AssemblyReference.cache
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\dump_unit_props\obj\Debug\net10.0\dump_unit_props.GeneratedMSBuildEditorConfig.editorconfig
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\dump_unit_props\obj\Debug\net10.0\dump_unit_props.AssemblyInfoInputs.cache

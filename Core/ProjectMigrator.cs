@@ -280,6 +280,11 @@ public static class ProjectMigrator
             }
             if (o.AttackBuildupFrames.HasValue) { f.AttackBuildupFrames = o.AttackBuildupFrames; unit.TuningEdits++; }
             if (o.AttackGameplayRange.HasValue) { f.AttackGameplayRange = o.AttackGameplayRange; unit.TuningEdits++; }
+            if (o.HitEdits != null && o.HitEdits.Count > 0)
+            {
+                f.HitEdits = AttackHitEdit.CloneList(o.HitEdits);
+                unit.TuningEdits++;
+            }
             if (o.DelayWindowLo.HasValue) { f.DelayWindowLo = o.DelayWindowLo; unit.DelayWindows++; }
             if (o.DelayWindowHi.HasValue) { f.DelayWindowHi = o.DelayWindowHi; unit.DelayWindows++; }
             if (o.Removed) { f.Removed = true; unit.RemovedFlags++; }

@@ -137,6 +137,34 @@ public static class ContentDetector
             !Directory.EnumerateFiles(attacksDbDir, "*.uasset", SearchOption.AllDirectories).Any())
             return new DetectionResult(false, "DB/Attacks not found (needed for attack data). Re-extract game content.", contentPath);
 
+        // Hit-box row tables (damage/stun/parriable etc.) live in *_HitBoxData assets
+        // under DB/ — the hit-window editor reads them per attack card.
+        bool hasHitBoxData = Directory.Exists(Path.Combine(contentDir, "DB"))
+            && Directory.GetFiles(Path.Combine(contentDir, "DB"), "*_HitBoxData.uasset", SearchOption.AllDirectories).Length > 0;
+        if (!hasHitBoxData)
+            return new DetectionResult(false,
+                "HitBoxData tables not found under DB/ (needed for hit windows). Re-extract game content.", contentPath);
+
+        // Phase Swap appends/retargets a Last Man takedown using the vanilla Grunt
+        // scenario as the template donor.
+        var gruntScenario = Path.Combine(contentDir, "DB", "AI", "Archetypes", "Grunt", "_Base", "Grunt_Scenario_Base.uasset");
+        if (!File.Exists(gruntScenario))
+            return new DetectionResult(false,
+                "DB/AI/Archetypes/Grunt/_Base/Grunt_Scenario_Base.uasset not found (needed for Phase Swap). Re-extract game content.", contentPath);
+
+        // Stance switching copies per-stance movement DBs and transition requests.
+        var movementArch = Path.Combine(contentDir, "DB", "Movement", "Archetypes");
+        if (!Directory.Exists(movementArch) ||
+            !Directory.EnumerateFiles(movementArch, "*.uasset", SearchOption.AllDirectories).Any())
+            return new DetectionResult(false,
+                "DB/Movement/Archetypes not found (needed for stance switching). Re-extract game content.", contentPath);
+
+        var movementTransition = Path.Combine(contentDir, "DB", "Movement", "Transition");
+        if (!Directory.Exists(movementTransition) ||
+            !Directory.EnumerateFiles(movementTransition, "*.uasset", SearchOption.AllDirectories).Any())
+            return new DetectionResult(false,
+                "DB/Movement/Transition not found (needed for stance switching). Re-extract game content.", contentPath);
+
         // Base skeleton — every animation imports Game/Characters/Skeleton/Base_skeleton
         var skeleton = Path.Combine(contentDir, "Characters", "Skeleton", "Base_skeleton.uasset");
         if (!File.Exists(skeleton))

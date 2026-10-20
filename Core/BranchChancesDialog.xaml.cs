@@ -363,6 +363,23 @@ public partial class BranchChancesDialog : Window
         return string.Join(", ", parts);
     }
 
+    /// <summary>TargetSummary from the row's POST-override targets (clear/retarget
+    /// edits applied) - mirrors what export writes, so a retarget data-swap shows the
+    /// destination instead of the redirect. Duplicates collapse (a swap can funnel
+    /// several keys onto one target).</summary>
+    private string DescribeEffectiveTargets(ChanceRow r)
+    {
+        var targets = RowPostTargets(r);
+        if (targets.Count == 0) return "(no targets)";
+        var parts = new List<string>(targets.Count);
+        foreach (var t in targets.Distinct())
+        {
+            var tn = _graph.Nodes.FirstOrDefault(n => n.TreeIndex == t);
+            parts.Add(tn != null ? NodeDisplay(tn) : $"tree[{t}]");
+        }
+        return string.Join(", ", parts);
+    }
+
     /// <summary>Effective values: typed rows exact; automatic rows keep raw values with no
     /// append, or share the remainder once new links append (mirrors export).</summary>
     private void Recompute()
@@ -390,6 +407,13 @@ public partial class BranchChancesDialog : Window
 
     private void Rebuild()
     {
+        // TargetSummary is frozen from the vanilla snapshot at row build - re-derive
+        // it from the post-override targets so retarget data-swaps and pick changes
+        // read correctly (the destination, not the redirect) before repainting.
+        foreach (var r in _rows)
+            r.TargetSummary = r.Edge != null
+                ? r.TargetSummary // link rows always serve the link's own target
+                : DescribeEffectiveTargets(r);
         rowsPanel.Children.Clear();
         // Add/change card first: it is the primary action, and the chances card below it
         // is tall enough to bury anything appended at the end of the scroll area.
@@ -640,8 +664,9 @@ public partial class BranchChancesDialog : Window
 
     /// <summary>Editable card for vanilla rows carrying m_ConditionInstance, grouped by
     /// condition instance: shared typed param editors once per instance, then each
-    /// referencing row's outcome routing with True/False (assumed polarity) labels and a
-    /// node picker (connected nodes first, action/event included). Empty without rows.</summary>
+    /// referencing row's outcome routing with True/False labels (verified polarity:
+    /// key 0 = True, key 1 = False) and a node picker (connected nodes first,
+    /// action/event included). Empty without rows.</summary>
     private List<UIElement> BuildConditionEditSections()
     {
         var secs = new List<UIElement>();
@@ -1821,15 +1846,16 @@ public partial class BranchChancesDialog : Window
     }
 
     /// <summary>Outcome chip text: True/False only for pure boolean key sets {0}/{0,1}
-    /// (polarity assumption - in-game check gates it); anything else stays honest.
-    /// Added-condition rows label their lone 255 as "default" - the engine's fall-through
-    /// for a condition that matches nothing is untested.</summary>
+    /// (polarity verified in-game 2026-10-12: key 0 = True, key 1 = False - UE branch
+    /// pin order); anything else stays honest. Added-condition rows label their lone
+    /// 255 as "default" - the engine's fall-through for a condition that matches
+    /// nothing is untested.</summary>
     private static string OutcomeLabel(byte key, List<byte> keys, bool pending = false)
     {
         if (key == 255) return pending ? "default →" : "always →";
         bool pair = keys.Contains(0) && keys.Contains(1) && keys.All(k => k <= 1);
-        if (pair && key == 0) return "False (0) →";
-        if (pair && key == 1) return "True (1) →";
+        if (pair && key == 0) return "True (0) →";
+        if (pair && key == 1) return "False (1) →";
         return $"Returns {key} →";
     }
 
@@ -1842,8 +1868,8 @@ public partial class BranchChancesDialog : Window
                 : "Unconditional routing (taken when no condition outcome matches).";
         bool pair = keys.Contains(0) && keys.Contains(1) && keys.All(k => k <= 1);
         if (pair && (key == 0 || key == 1))
-            return $"Condition returns {key} - shown as {(key == 0 ? "False" : "True")} "
-                + "(polarity assumption; verify in game). Target node picked on the right.";
+            return $"Condition returns {key} - shown as {(key == 0 ? "True" : "False")} "
+                + "(branch pin order 0 = True, 1 = False - verified in game 2026-10-12). Target node picked on the right.";
         return $"Target when the condition returns {key}. Pick a node or type a tree index.";
     }
 
@@ -2330,6 +2356,7 @@ public partial class BranchChancesDialog : Window
                         : $"Automatic (vanilla {FormatProb(r.Original)}%) - reshared when new links append; type to lock a value.")
         };
         r.Field = probBox;
+        InputFilter.ApplyFloat(probBox);
         var normalBorder = BorderBrushInput;
         probBox.TextChanged += (_, _) =>
         {
@@ -2738,6 +2765,29 @@ public partial class BranchChancesDialog : Window
 
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
+        // Sum gate (mirrors Start Entries): a touched set that no longer totals 100
+        // - typically a link deleted after probabilities were typed - would ship a
+        // dead roll zone. Vanilla-untouched rows never block (vanilla sums to 100).
+        if (_canEditChances && _rows.Count > 0)
+        {
+            Recompute();
+            bool touched = _rows.Any(r => r.Explicit.HasValue
+                && (!r.IsNewLink && Math.Abs(r.Explicit.Value - r.Original) > 0.001f
+                    || r.IsNewLink));
+            float sum = _rows.Sum(r => r.Effective);
+            if (touched && Math.Abs(sum - 100f) > 0.5f)
+            {
+                MessageBox.Show(this,
+                    $"Branch chances for '{NodeDisplay(_node)}' sum to {sum:0.###}%. "
+                    + "Vanilla always sums to 100%.\n\nClick Σ→100% or adjust the values, "
+                    + "then save again.",
+                    "Probabilities don't sum to 100",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                txtStatus.Text = $"⚠ Sum {sum:0.###}% - fix to 100% before saving.";
+                txtStatus.Foreground = RedBrush;
+                return;
+            }
+        }
         var overrides = BuildOverrides();
         var condParams = BuildConditionParams();
         var condRows = BuildRowConditions();
