@@ -34,6 +34,7 @@ public partial class ImportDialog : Window
             4 => step4,
             5 => step5,
             6 => step6,
+            7 => step7,
             _ => step1
         };
 

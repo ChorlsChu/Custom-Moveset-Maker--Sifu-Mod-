@@ -1,631 +1,233 @@
-[23:06:43] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
-[23:06:44] [IMPORT] ReadModdedComboNodes: 55 nodes, 10 map override(s) from Sean_Combo_Phase1.uasset
-[23:06:44] [IMPORT] ReadModdedStartEntries: 13 entries from Sean_Combo_Phase1.uasset
-[23:06:45] [COMBO] Loaded Sifu/Content/DB/AI/Archetypes/Sean/Sean_Combo_Phase1.Sean_Combo_Phase1: exportType=Combo, weapon=Staff
-[23:06:46] [COMBO] Parsed 55 raw nodes from 55 tree nodes
-[23:06:46] [COMBO] Found 20 redirect nodes:  → tree[4],  → tree[7],  → tree[4],  → tree[15],  → tree[8],  → tree[4],  → tree[24],  → tree[0],  → tree[4],  → tree[0],  → tree[15],  → tree[7],  → tree[37],  → tree[24],  → tree[4],  → tree[37],  → tree[15],  → tree[37],  → tree[4],  → tree[15]
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=0(EagleSlaughter) → tgtTreeIdx=1() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=0(EagleSlaughter) → tgtTreeIdx=2() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=2() → tgtTreeIdx=3() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=2() → tgtTreeIdx=36() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=5() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=5() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=6() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=22() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=35() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=5() → tgtTreeIdx=6() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=5() → tgtTreeIdx=22() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=5() → tgtTreeIdx=35() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=7(ReverseCrane) → tgtTreeIdx=8(TigerSwing) input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=8(TigerSwing) → tgtTreeIdx=9(RisingSlash) input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=8(TigerSwing) → tgtTreeIdx=13() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=9(RisingSlash) → tgtTreeIdx=10() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=9(RisingSlash) → tgtTreeIdx=12() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=9(RisingSlash) → tgtTreeIdx=10() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=9(RisingSlash) → tgtTreeIdx=11() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=10() → tgtTreeIdx=11() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=13() → tgtTreeIdx=14() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=13() → tgtTreeIdx=9(RisingSlash) input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=15(LowSwipe) → tgtTreeIdx=16(HighSwipeCrane) input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=16(HighSwipeCrane) → tgtTreeIdx=17() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=16(HighSwipeCrane) → tgtTreeIdx=18() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=16(HighSwipeCrane) → tgtTreeIdx=19() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=19() → tgtTreeIdx=18() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=19() → tgtTreeIdx=20() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=20() → tgtTreeIdx=21() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=22() → tgtTreeIdx=23() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=22() → tgtTreeIdx=34() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Tornado) → tgtTreeIdx=25() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Tornado) → tgtTreeIdx=26() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Tornado) → tgtTreeIdx=28() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=26() → tgtTreeIdx=27() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=28() → tgtTreeIdx=29() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=28() → tgtTreeIdx=30() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=30() → tgtTreeIdx=31() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=31() → tgtTreeIdx=32() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=31() → tgtTreeIdx=33() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=35() → tgtTreeIdx=6() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=35() → tgtTreeIdx=23() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=5() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=5() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=6() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=22() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=35() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=38() → tgtTreeIdx=0(EagleSlaughter) input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=38() → tgtTreeIdx=39() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=40(SlamOTG) → tgtTreeIdx=41() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=42() → tgtTreeIdx=43() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=42() → tgtTreeIdx=44() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=44() → tgtTreeIdx=45() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=44() → tgtTreeIdx=46() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=47() → tgtTreeIdx=48() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=47() → tgtTreeIdx=49() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=50() → tgtTreeIdx=51() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=50() → tgtTreeIdx=51() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=50() → tgtTreeIdx=52() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=50() → tgtTreeIdx=53() input=
-[23:06:46] [REDIRECT DEBUG] Transition: srcTreeIdx=53() → tgtTreeIdx=54() input=
-[23:06:46] [COMBO] Parsed 61 raw edges
-[23:06:46] [COMBO] After dedup: 57 raw edges
-[23:06:46] [COMBO] Final: 43 nodes, 43 edges (removed 12 conduits, kept 20 redirects)
-[23:06:46] [COMBO] Parsed 13 start entries: Idle[BP_AIAttackTIcketNames::NewEnumerator5::0], Dodge[BP_AIAttackTIcketNames::NewEnumerator6::0], Grab[BP_AIAttackTIcketNames::NewEnumerator7::0], Rush[BP_AIAttackTIcketNames::NewEnumerator8::0], KnockedDown[BP_AIAttackTIcketNames::NewEnumerator9::0], Sean Dodge[BP_AIAttackTIcketNames::NewEnumerator19::1], Sean Idle[BP_AIAttackTIcketNames::NewEnumerator20::1], SeanDash[BP_AIAttackTIcketNames::NewEnumerator24::0], Sean Avoid[BP_AIAttackTIcketNames::NewEnumerator46::1], On MC Knocked down[BP_AIAttackTIcketNames::NewEnumerator54::1], Parry[BP_AIAttackTIcketNames::NewEnumerator10::1], MC Dodge Close[BP_AIAttackTIcketNames::NewEnumerator2::1], FallbackPostDefense[BP_AIAttackTIcketNames::NewEnumerator69::1]
-[23:06:47] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
-[23:06:47] [IMPORT] ReadModdedComboNodes: 55 nodes, 10 map override(s) from Sean_Combo_Phase1_chance.uasset
-[23:06:47] [COMBO] Loaded Sifu/Content/DB/AI/Archetypes/Sean/Sean_Combo_Phase1.Sean_Combo_Phase1: exportType=Combo, weapon=Staff
-[23:06:48] [COMBO] Parsed 55 raw nodes from 55 tree nodes
-[23:06:48] [COMBO] Found 20 redirect nodes:  → tree[4],  → tree[7],  → tree[4],  → tree[15],  → tree[8],  → tree[4],  → tree[24],  → tree[0],  → tree[4],  → tree[0],  → tree[15],  → tree[7],  → tree[37],  → tree[24],  → tree[4],  → tree[37],  → tree[15],  → tree[37],  → tree[4],  → tree[15]
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=0(EagleSlaughter) → tgtTreeIdx=1() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=0(EagleSlaughter) → tgtTreeIdx=2() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=2() → tgtTreeIdx=3() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=2() → tgtTreeIdx=36() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=5() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=5() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=6() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=22() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=35() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=5() → tgtTreeIdx=6() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=5() → tgtTreeIdx=22() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=5() → tgtTreeIdx=35() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=7(ReverseCrane) → tgtTreeIdx=8(TigerSwing) input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=8(TigerSwing) → tgtTreeIdx=9(RisingSlash) input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=8(TigerSwing) → tgtTreeIdx=13() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=9(RisingSlash) → tgtTreeIdx=10() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=9(RisingSlash) → tgtTreeIdx=12() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=9(RisingSlash) → tgtTreeIdx=10() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=9(RisingSlash) → tgtTreeIdx=11() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=10() → tgtTreeIdx=11() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=13() → tgtTreeIdx=14() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=13() → tgtTreeIdx=9(RisingSlash) input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=15(LowSwipe) → tgtTreeIdx=16(HighSwipeCrane) input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=16(HighSwipeCrane) → tgtTreeIdx=17() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=16(HighSwipeCrane) → tgtTreeIdx=18() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=16(HighSwipeCrane) → tgtTreeIdx=19() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=19() → tgtTreeIdx=18() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=19() → tgtTreeIdx=20() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=20() → tgtTreeIdx=21() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=22() → tgtTreeIdx=23() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=22() → tgtTreeIdx=34() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Tornado) → tgtTreeIdx=25() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Tornado) → tgtTreeIdx=26() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Tornado) → tgtTreeIdx=28() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=26() → tgtTreeIdx=27() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=28() → tgtTreeIdx=29() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=28() → tgtTreeIdx=30() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=30() → tgtTreeIdx=31() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=31() → tgtTreeIdx=32() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=31() → tgtTreeIdx=33() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=35() → tgtTreeIdx=6() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=35() → tgtTreeIdx=23() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=5() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=5() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=6() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=22() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=35() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=38() → tgtTreeIdx=0(EagleSlaughter) input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=38() → tgtTreeIdx=39() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=40(SlamOTG) → tgtTreeIdx=41() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=42() → tgtTreeIdx=43() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=42() → tgtTreeIdx=44() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=44() → tgtTreeIdx=45() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=44() → tgtTreeIdx=46() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=47() → tgtTreeIdx=48() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=47() → tgtTreeIdx=49() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=50() → tgtTreeIdx=51() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=50() → tgtTreeIdx=51() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=50() → tgtTreeIdx=52() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=50() → tgtTreeIdx=53() input=
-[23:06:48] [REDIRECT DEBUG] Transition: srcTreeIdx=53() → tgtTreeIdx=54() input=
-[23:06:48] [COMBO] Parsed 61 raw edges
-[23:06:48] [COMBO] After dedup: 57 raw edges
-[23:06:48] [COMBO] Final: 43 nodes, 43 edges (removed 12 conduits, kept 20 redirects)
-[23:06:48] [COMBO] Parsed 13 start entries: Idle[BP_AIAttackTIcketNames::NewEnumerator5::0], Dodge[BP_AIAttackTIcketNames::NewEnumerator6::0], Grab[BP_AIAttackTIcketNames::NewEnumerator7::0], Rush[BP_AIAttackTIcketNames::NewEnumerator8::0], KnockedDown[BP_AIAttackTIcketNames::NewEnumerator9::0], Sean Dodge[BP_AIAttackTIcketNames::NewEnumerator19::1], Sean Idle[BP_AIAttackTIcketNames::NewEnumerator20::1], SeanDash[BP_AIAttackTIcketNames::NewEnumerator24::0], Sean Avoid[BP_AIAttackTIcketNames::NewEnumerator46::1], On MC Knocked down[BP_AIAttackTIcketNames::NewEnumerator54::1], Parry[BP_AIAttackTIcketNames::NewEnumerator10::1], MC Dodge Close[BP_AIAttackTIcketNames::NewEnumerator2::1], FallbackPostDefense[BP_AIAttackTIcketNames::NewEnumerator69::1]
-[23:06:48] [IMPORT] Tree size mismatch: 55 modded vs 43 vanilla tree indices (Staff)
-[23:06:48] [IMPORT] Surfaced 32 modded-only node(s) (32 m_Nodes entries), 45 edge(s)
-[23:06:48] [IMPORT] ApplyModdedComboToVanilla: 0 moves, 0 retargets, 13 unmatched, 32 surfaced, 0 AI payload(s), 1 chance override(s), 0 cond rewire(s), 0 retarget swap(s), 0 cond param(s), 0 start row(s) (Staff)
-[23:06:48] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
-[23:06:48] [IMPORT] ReadModdedComboNodes: 55 nodes, 10 map override(s) from Sean_Combo_Phase1_condclear.uasset
-[23:06:49] [COMBO] Loaded Sifu/Content/DB/AI/Archetypes/Sean/Sean_Combo_Phase1.Sean_Combo_Phase1: exportType=Combo, weapon=Staff
-[23:06:49] [COMBO] Parsed 55 raw nodes from 55 tree nodes
-[23:06:49] [COMBO] Found 20 redirect nodes:  → tree[4],  → tree[7],  → tree[4],  → tree[15],  → tree[8],  → tree[4],  → tree[24],  → tree[0],  → tree[4],  → tree[0],  → tree[15],  → tree[7],  → tree[37],  → tree[24],  → tree[4],  → tree[37],  → tree[15],  → tree[37],  → tree[4],  → tree[15]
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=0(EagleSlaughter) → tgtTreeIdx=1() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=0(EagleSlaughter) → tgtTreeIdx=2() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=2() → tgtTreeIdx=3() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=2() → tgtTreeIdx=36() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=5() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=5() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=6() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=22() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=35() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=5() → tgtTreeIdx=6() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=5() → tgtTreeIdx=22() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=5() → tgtTreeIdx=35() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=7(ReverseCrane) → tgtTreeIdx=8(TigerSwing) input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=8(TigerSwing) → tgtTreeIdx=9(RisingSlash) input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=8(TigerSwing) → tgtTreeIdx=13() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=9(RisingSlash) → tgtTreeIdx=10() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=9(RisingSlash) → tgtTreeIdx=12() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=9(RisingSlash) → tgtTreeIdx=10() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=9(RisingSlash) → tgtTreeIdx=11() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=10() → tgtTreeIdx=11() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=13() → tgtTreeIdx=14() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=13() → tgtTreeIdx=9(RisingSlash) input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=15(LowSwipe) → tgtTreeIdx=16(HighSwipeCrane) input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=16(HighSwipeCrane) → tgtTreeIdx=17() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=16(HighSwipeCrane) → tgtTreeIdx=18() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=16(HighSwipeCrane) → tgtTreeIdx=19() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=19() → tgtTreeIdx=18() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=19() → tgtTreeIdx=20() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=20() → tgtTreeIdx=21() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=22() → tgtTreeIdx=23() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=22() → tgtTreeIdx=34() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Tornado) → tgtTreeIdx=25() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Tornado) → tgtTreeIdx=26() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Tornado) → tgtTreeIdx=28() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=26() → tgtTreeIdx=27() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=28() → tgtTreeIdx=29() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=28() → tgtTreeIdx=30() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=30() → tgtTreeIdx=31() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=31() → tgtTreeIdx=32() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=31() → tgtTreeIdx=33() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=35() → tgtTreeIdx=6() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=35() → tgtTreeIdx=23() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=5() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=5() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=6() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=22() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=35() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=38() → tgtTreeIdx=0(EagleSlaughter) input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=38() → tgtTreeIdx=39() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=40(SlamOTG) → tgtTreeIdx=41() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=42() → tgtTreeIdx=43() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=42() → tgtTreeIdx=44() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=44() → tgtTreeIdx=45() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=44() → tgtTreeIdx=46() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=47() → tgtTreeIdx=48() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=47() → tgtTreeIdx=49() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=50() → tgtTreeIdx=51() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=50() → tgtTreeIdx=51() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=50() → tgtTreeIdx=52() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=50() → tgtTreeIdx=53() input=
-[23:06:49] [REDIRECT DEBUG] Transition: srcTreeIdx=53() → tgtTreeIdx=54() input=
-[23:06:49] [COMBO] Parsed 61 raw edges
-[23:06:49] [COMBO] After dedup: 57 raw edges
-[23:06:49] [COMBO] Final: 43 nodes, 43 edges (removed 12 conduits, kept 20 redirects)
-[23:06:49] [COMBO] Parsed 13 start entries: Idle[BP_AIAttackTIcketNames::NewEnumerator5::0], Dodge[BP_AIAttackTIcketNames::NewEnumerator6::0], Grab[BP_AIAttackTIcketNames::NewEnumerator7::0], Rush[BP_AIAttackTIcketNames::NewEnumerator8::0], KnockedDown[BP_AIAttackTIcketNames::NewEnumerator9::0], Sean Dodge[BP_AIAttackTIcketNames::NewEnumerator19::1], Sean Idle[BP_AIAttackTIcketNames::NewEnumerator20::1], SeanDash[BP_AIAttackTIcketNames::NewEnumerator24::0], Sean Avoid[BP_AIAttackTIcketNames::NewEnumerator46::1], On MC Knocked down[BP_AIAttackTIcketNames::NewEnumerator54::1], Parry[BP_AIAttackTIcketNames::NewEnumerator10::1], MC Dodge Close[BP_AIAttackTIcketNames::NewEnumerator2::1], FallbackPostDefense[BP_AIAttackTIcketNames::NewEnumerator69::1]
-[23:06:49] [IMPORT] Tree size mismatch: 55 modded vs 43 vanilla tree indices (Staff)
-[23:06:49] [IMPORT] Surfaced 32 modded-only node(s) (32 m_Nodes entries), 45 edge(s)
-[23:06:49] [IMPORT] ApplyModdedComboToVanilla: 0 moves, 0 retargets, 13 unmatched, 32 surfaced, 0 AI payload(s), 0 chance override(s), 1 cond rewire(s), 0 retarget swap(s), 0 cond param(s), 0 start row(s) (Staff)
-[23:06:49] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
-[23:06:49] [IMPORT] ReadModdedComboNodes: 55 nodes, 10 map override(s) from Sean_Combo_Phase1_condparam.uasset
-[23:06:50] [COMBO] Loaded Sifu/Content/DB/AI/Archetypes/Sean/Sean_Combo_Phase1.Sean_Combo_Phase1: exportType=Combo, weapon=Staff
-[23:06:50] [COMBO] Parsed 55 raw nodes from 55 tree nodes
-[23:06:50] [COMBO] Found 20 redirect nodes:  → tree[4],  → tree[7],  → tree[4],  → tree[15],  → tree[8],  → tree[4],  → tree[24],  → tree[0],  → tree[4],  → tree[0],  → tree[15],  → tree[7],  → tree[37],  → tree[24],  → tree[4],  → tree[37],  → tree[15],  → tree[37],  → tree[4],  → tree[15]
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=0(EagleSlaughter) → tgtTreeIdx=1() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=0(EagleSlaughter) → tgtTreeIdx=2() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=2() → tgtTreeIdx=3() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=2() → tgtTreeIdx=36() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=5() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=5() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=6() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=22() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=4(ShoulderStrike) → tgtTreeIdx=35() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=5() → tgtTreeIdx=6() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=5() → tgtTreeIdx=22() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=5() → tgtTreeIdx=35() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=7(ReverseCrane) → tgtTreeIdx=8(TigerSwing) input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=8(TigerSwing) → tgtTreeIdx=9(RisingSlash) input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=8(TigerSwing) → tgtTreeIdx=13() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=9(RisingSlash) → tgtTreeIdx=10() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=9(RisingSlash) → tgtTreeIdx=12() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=9(RisingSlash) → tgtTreeIdx=10() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=9(RisingSlash) → tgtTreeIdx=11() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=10() → tgtTreeIdx=11() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=13() → tgtTreeIdx=14() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=13() → tgtTreeIdx=9(RisingSlash) input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=15(LowSwipe) → tgtTreeIdx=16(HighSwipeCrane) input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=16(HighSwipeCrane) → tgtTreeIdx=17() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=16(HighSwipeCrane) → tgtTreeIdx=18() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=16(HighSwipeCrane) → tgtTreeIdx=19() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=19() → tgtTreeIdx=18() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=19() → tgtTreeIdx=20() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=20() → tgtTreeIdx=21() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=22() → tgtTreeIdx=23() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=22() → tgtTreeIdx=34() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Tornado) → tgtTreeIdx=25() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Tornado) → tgtTreeIdx=26() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Tornado) → tgtTreeIdx=28() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=26() → tgtTreeIdx=27() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=28() → tgtTreeIdx=29() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=28() → tgtTreeIdx=30() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=30() → tgtTreeIdx=31() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=31() → tgtTreeIdx=32() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=31() → tgtTreeIdx=33() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=35() → tgtTreeIdx=6() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=35() → tgtTreeIdx=23() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=5() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=5() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=6() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=22() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=37(Thrust) → tgtTreeIdx=35() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=38() → tgtTreeIdx=0(EagleSlaughter) input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=38() → tgtTreeIdx=39() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=40(SlamOTG) → tgtTreeIdx=41() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=42() → tgtTreeIdx=43() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=42() → tgtTreeIdx=44() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=44() → tgtTreeIdx=45() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=44() → tgtTreeIdx=46() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=47() → tgtTreeIdx=48() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=47() → tgtTreeIdx=49() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=50() → tgtTreeIdx=51() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=50() → tgtTreeIdx=51() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=50() → tgtTreeIdx=52() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=50() → tgtTreeIdx=53() input=
-[23:06:50] [REDIRECT DEBUG] Transition: srcTreeIdx=53() → tgtTreeIdx=54() input=
-[23:06:50] [COMBO] Parsed 61 raw edges
-[23:06:50] [COMBO] After dedup: 57 raw edges
-[23:06:50] [COMBO] Final: 43 nodes, 43 edges (removed 12 conduits, kept 20 redirects)
-[23:06:50] [COMBO] Parsed 13 start entries: Idle[BP_AIAttackTIcketNames::NewEnumerator5::0], Dodge[BP_AIAttackTIcketNames::NewEnumerator6::0], Grab[BP_AIAttackTIcketNames::NewEnumerator7::0], Rush[BP_AIAttackTIcketNames::NewEnumerator8::0], KnockedDown[BP_AIAttackTIcketNames::NewEnumerator9::0], Sean Dodge[BP_AIAttackTIcketNames::NewEnumerator19::1], Sean Idle[BP_AIAttackTIcketNames::NewEnumerator20::1], SeanDash[BP_AIAttackTIcketNames::NewEnumerator24::0], Sean Avoid[BP_AIAttackTIcketNames::NewEnumerator46::1], On MC Knocked down[BP_AIAttackTIcketNames::NewEnumerator54::1], Parry[BP_AIAttackTIcketNames::NewEnumerator10::1], MC Dodge Close[BP_AIAttackTIcketNames::NewEnumerator2::1], FallbackPostDefense[BP_AIAttackTIcketNames::NewEnumerator69::1]
-[23:06:50] [IMPORT] Tree size mismatch: 55 modded vs 43 vanilla tree indices (Staff)
-[23:06:50] [IMPORT] Surfaced 32 modded-only node(s) (32 m_Nodes entries), 45 edge(s)
-[23:06:50] [IMPORT] ApplyModdedComboToVanilla: 0 moves, 0 retargets, 13 unmatched, 32 surfaced, 0 AI payload(s), 0 chance override(s), 0 cond rewire(s), 0 retarget swap(s), 1 cond param(s), 0 start row(s) (Staff)
-[23:06:51] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
-[23:06:51] [IMPORT] ReadModdedComboNodes: 93 nodes, 11 map override(s) from Fajar_Combo_P2_start.uasset
-[23:06:51] [COMBO] Loaded Sifu/Content/DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P2.Fajar_Combo_P2: exportType=Combo, weapon=Staff
-[23:06:51] [COMBO] Parsed 93 raw nodes from 93 tree nodes
-[23:06:51] [COMBO] Found 36 redirect nodes:  → tree[0],  → tree[7],  → tree[14],  → tree[16],  → tree[14],  → tree[24],  → tree[24],  → tree[14],  → tree[24],  → tree[4],  → tree[14],  → tree[4],  → tree[14],  → tree[24],  → tree[25],  → tree[14],  → tree[4],  → tree[24],  → tree[24],  → tree[31],  → tree[63],  → tree[25],  → tree[31],  → tree[4],  → tree[75],  → tree[7],  → tree[75],  → tree[63],  → tree[4],  → tree[14],  → tree[4],  → tree[75],  → tree[7],  → tree[7],  → tree[24],  → tree[31]
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=0(Rhino Trample) → tgtTreeIdx=1() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=0(Rhino Trample) → tgtTreeIdx=2() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=2() → tgtTreeIdx=1() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=3() → tgtTreeIdx=4(Swiping Mantis) input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=3() → tgtTreeIdx=46() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=4(Swiping Mantis) → tgtTreeIdx=5() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=4(Swiping Mantis) → tgtTreeIdx=6() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=4(Swiping Mantis) → tgtTreeIdx=7(Rising Falcon) input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=4(Swiping Mantis) → tgtTreeIdx=42() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=7(Rising Falcon) → tgtTreeIdx=8() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=7(Rising Falcon) → tgtTreeIdx=8() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=8() → tgtTreeIdx=9() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=8() → tgtTreeIdx=28() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=8() → tgtTreeIdx=31(Naja Reverse Lash) input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=9() → tgtTreeIdx=10() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=9() → tgtTreeIdx=13() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=9() → tgtTreeIdx=41() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=10() → tgtTreeIdx=11() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=10() → tgtTreeIdx=12() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=14(Leaping Slash) → tgtTreeIdx=15() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=16(Flurry third) → tgtTreeIdx=17() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=16(Flurry third) → tgtTreeIdx=18() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=16(Flurry third) → tgtTreeIdx=19(SpinKick) input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=17() → tgtTreeIdx=18() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=17() → tgtTreeIdx=40() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=18() → tgtTreeIdx=19(SpinKick) input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=18() → tgtTreeIdx=28() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=18() → tgtTreeIdx=31(Naja Reverse Lash) input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=19(SpinKick) → tgtTreeIdx=20() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=20() → tgtTreeIdx=21() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=20() → tgtTreeIdx=22() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=21() → tgtTreeIdx=22() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=21() → tgtTreeIdx=23() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Cobra Double Bite) → tgtTreeIdx=25(Flurry second) input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Cobra Double Bite) → tgtTreeIdx=26() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Cobra Double Bite) → tgtTreeIdx=27() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=25(Flurry second) → tgtTreeIdx=16(Flurry third) input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=26() → tgtTreeIdx=25(Flurry second) input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=27() → tgtTreeIdx=28() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=27() → tgtTreeIdx=31(Naja Reverse Lash) input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=27() → tgtTreeIdx=37() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=27() → tgtTreeIdx=38() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=28() → tgtTreeIdx=29() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=28() → tgtTreeIdx=30() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=31(Naja Reverse Lash) → tgtTreeIdx=32() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=31(Naja Reverse Lash) → tgtTreeIdx=34() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=31(Naja Reverse Lash) → tgtTreeIdx=36() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=32() → tgtTreeIdx=33() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=34() → tgtTreeIdx=35() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=38() → tgtTreeIdx=39() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=42() → tgtTreeIdx=43() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=43() → tgtTreeIdx=44() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=43() → tgtTreeIdx=45() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=47() → tgtTreeIdx=14(Leaping Slash) input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=47() → tgtTreeIdx=24(Cobra Double Bite) input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=48() → tgtTreeIdx=49() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=48() → tgtTreeIdx=51() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=48() → tgtTreeIdx=52() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=49() → tgtTreeIdx=50() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=54() → tgtTreeIdx=55() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=54() → tgtTreeIdx=59() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=54() → tgtTreeIdx=60() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=54() → tgtTreeIdx=61() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=54() → tgtTreeIdx=62() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=55() → tgtTreeIdx=56() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=55() → tgtTreeIdx=57() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=57() → tgtTreeIdx=58() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=61() → tgtTreeIdx=47() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=63(Razor Leaf) → tgtTreeIdx=9() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=64() → tgtTreeIdx=62() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=64() → tgtTreeIdx=60() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=64() → tgtTreeIdx=61() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=65() → tgtTreeIdx=60() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=65() → tgtTreeIdx=61() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=65() → tgtTreeIdx=66() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=65() → tgtTreeIdx=67() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=68() → tgtTreeIdx=66() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=68() → tgtTreeIdx=60() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=68() → tgtTreeIdx=61() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=69() → tgtTreeIdx=55() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=69() → tgtTreeIdx=59() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=69() → tgtTreeIdx=70() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=72() → tgtTreeIdx=73() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=72() → tgtTreeIdx=74() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=72() → tgtTreeIdx=77() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=72() → tgtTreeIdx=77() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=72() → tgtTreeIdx=74() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=72() → tgtTreeIdx=79() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=74() → tgtTreeIdx=76() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=77() → tgtTreeIdx=78() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=80() → tgtTreeIdx=81() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=80() → tgtTreeIdx=73() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=80() → tgtTreeIdx=74() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=80() → tgtTreeIdx=77() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=80() → tgtTreeIdx=77() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=80() → tgtTreeIdx=83() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=81() → tgtTreeIdx=82() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=84() → tgtTreeIdx=85() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=86() → tgtTreeIdx=87() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=88() → tgtTreeIdx=89() input=
-[23:06:51] [REDIRECT DEBUG] Transition: srcTreeIdx=88() → tgtTreeIdx=90() input=
-[23:06:51] [COMBO] Parsed 101 raw edges
-[23:06:51] [COMBO] After dedup: 97 raw edges
-[23:06:51] [COMBO] Final: 74 nodes, 57 edges (removed 19 conduits, kept 36 redirects)
-[23:06:51] [COMBO] Parsed 10 start entries: Fajar Regular Attacks[BP_AIAttackTIcketNames::NewEnumerator29::1], Traversal Attack[BP_AIAttackTIcketNames::NewEnumerator14::1], Parry[BP_AIAttackTIcketNames::NewEnumerator10::1], Fajar Wall Jump[BP_AIAttackTIcketNames::NewEnumerator16::1], Custom Combo 1[BP_AIAttackTIcketNames::NewEnumerator30::1], Avoid[BP_AIAttackTIcketNames::NewEnumerator23::1], Custom Combo 2[BP_AIAttackTIcketNames::NewEnumerator31::1], MC Dodge Close[BP_AIAttackTIcketNames::NewEnumerator2::1], FallbackPostDefense[BP_AIAttackTIcketNames::NewEnumerator69::1], Custom Combo 3[BP_AIAttackTIcketNames::NewEnumerator32::1]
-[23:06:51] [IMPORT] ReadModdedStartEntries: 10 entries from Fajar_Combo_P2_start.uasset
-[23:06:51] [IMPORT] Tree size mismatch: 93 modded vs 74 vanilla tree indices (Staff)
-[23:06:51] [IMPORT] Surfaced 55 modded-only node(s) (55 m_Nodes entries), 80 edge(s)
-[23:06:51] [IMPORT] ApplyModdedComboToVanilla: 0 moves, 0 retargets, 27 unmatched, 55 surfaced, 0 AI payload(s), 0 chance override(s), 0 cond rewire(s), 0 retarget swap(s), 1 cond param(s), 1 start row(s) (Staff)
-[23:06:52] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
-[23:06:52] [IMPORT] ReadModdedComboNodes: 93 nodes, 11 map override(s) from Fajar_Combo_P2_aipayload.uasset
-[23:06:52] [COMBO] Loaded Sifu/Content/DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P2.Fajar_Combo_P2: exportType=Combo, weapon=Staff
-[23:06:52] [COMBO] Parsed 93 raw nodes from 93 tree nodes
-[23:06:52] [COMBO] Found 36 redirect nodes:  → tree[0],  → tree[7],  → tree[14],  → tree[16],  → tree[14],  → tree[24],  → tree[24],  → tree[14],  → tree[24],  → tree[4],  → tree[14],  → tree[4],  → tree[14],  → tree[24],  → tree[25],  → tree[14],  → tree[4],  → tree[24],  → tree[24],  → tree[31],  → tree[63],  → tree[25],  → tree[31],  → tree[4],  → tree[75],  → tree[7],  → tree[75],  → tree[63],  → tree[4],  → tree[14],  → tree[4],  → tree[75],  → tree[7],  → tree[7],  → tree[24],  → tree[31]
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=0(Rhino Trample) → tgtTreeIdx=1() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=0(Rhino Trample) → tgtTreeIdx=2() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=2() → tgtTreeIdx=1() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=3() → tgtTreeIdx=4(Swiping Mantis) input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=3() → tgtTreeIdx=46() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=4(Swiping Mantis) → tgtTreeIdx=5() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=4(Swiping Mantis) → tgtTreeIdx=6() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=4(Swiping Mantis) → tgtTreeIdx=7(Rising Falcon) input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=4(Swiping Mantis) → tgtTreeIdx=42() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=7(Rising Falcon) → tgtTreeIdx=8() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=7(Rising Falcon) → tgtTreeIdx=8() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=8() → tgtTreeIdx=9() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=8() → tgtTreeIdx=28() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=8() → tgtTreeIdx=31(Naja Reverse Lash) input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=9() → tgtTreeIdx=10() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=9() → tgtTreeIdx=13() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=9() → tgtTreeIdx=41() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=10() → tgtTreeIdx=11() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=10() → tgtTreeIdx=12() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=14(Leaping Slash) → tgtTreeIdx=15() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=16(Flurry third) → tgtTreeIdx=17() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=16(Flurry third) → tgtTreeIdx=18() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=16(Flurry third) → tgtTreeIdx=19(SpinKick) input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=17() → tgtTreeIdx=18() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=17() → tgtTreeIdx=40() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=18() → tgtTreeIdx=19(SpinKick) input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=18() → tgtTreeIdx=28() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=18() → tgtTreeIdx=31(Naja Reverse Lash) input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=19(SpinKick) → tgtTreeIdx=20() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=20() → tgtTreeIdx=21() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=20() → tgtTreeIdx=22() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=21() → tgtTreeIdx=22() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=21() → tgtTreeIdx=23() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Cobra Double Bite) → tgtTreeIdx=25(Flurry second) input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Cobra Double Bite) → tgtTreeIdx=26() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Cobra Double Bite) → tgtTreeIdx=27() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=25(Flurry second) → tgtTreeIdx=16(Flurry third) input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=26() → tgtTreeIdx=25(Flurry second) input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=27() → tgtTreeIdx=28() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=27() → tgtTreeIdx=31(Naja Reverse Lash) input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=27() → tgtTreeIdx=37() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=27() → tgtTreeIdx=38() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=28() → tgtTreeIdx=29() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=28() → tgtTreeIdx=30() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=31(Naja Reverse Lash) → tgtTreeIdx=32() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=31(Naja Reverse Lash) → tgtTreeIdx=34() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=31(Naja Reverse Lash) → tgtTreeIdx=36() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=32() → tgtTreeIdx=33() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=34() → tgtTreeIdx=35() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=38() → tgtTreeIdx=39() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=42() → tgtTreeIdx=43() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=43() → tgtTreeIdx=44() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=43() → tgtTreeIdx=45() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=47() → tgtTreeIdx=14(Leaping Slash) input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=47() → tgtTreeIdx=24(Cobra Double Bite) input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=48() → tgtTreeIdx=49() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=48() → tgtTreeIdx=51() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=48() → tgtTreeIdx=52() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=49() → tgtTreeIdx=50() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=54() → tgtTreeIdx=55() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=54() → tgtTreeIdx=59() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=54() → tgtTreeIdx=60() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=54() → tgtTreeIdx=61() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=54() → tgtTreeIdx=62() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=55() → tgtTreeIdx=56() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=55() → tgtTreeIdx=57() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=57() → tgtTreeIdx=58() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=61() → tgtTreeIdx=47() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=63(Razor Leaf) → tgtTreeIdx=9() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=64() → tgtTreeIdx=62() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=64() → tgtTreeIdx=60() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=64() → tgtTreeIdx=61() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=65() → tgtTreeIdx=60() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=65() → tgtTreeIdx=61() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=65() → tgtTreeIdx=66() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=65() → tgtTreeIdx=67() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=68() → tgtTreeIdx=66() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=68() → tgtTreeIdx=60() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=68() → tgtTreeIdx=61() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=69() → tgtTreeIdx=55() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=69() → tgtTreeIdx=59() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=69() → tgtTreeIdx=70() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=72() → tgtTreeIdx=73() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=72() → tgtTreeIdx=74() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=72() → tgtTreeIdx=77() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=72() → tgtTreeIdx=77() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=72() → tgtTreeIdx=74() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=72() → tgtTreeIdx=79() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=74() → tgtTreeIdx=76() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=77() → tgtTreeIdx=78() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=80() → tgtTreeIdx=81() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=80() → tgtTreeIdx=73() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=80() → tgtTreeIdx=74() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=80() → tgtTreeIdx=77() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=80() → tgtTreeIdx=77() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=80() → tgtTreeIdx=83() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=81() → tgtTreeIdx=82() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=84() → tgtTreeIdx=85() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=86() → tgtTreeIdx=87() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=88() → tgtTreeIdx=89() input=
-[23:06:52] [REDIRECT DEBUG] Transition: srcTreeIdx=88() → tgtTreeIdx=90() input=
-[23:06:52] [COMBO] Parsed 101 raw edges
-[23:06:52] [COMBO] After dedup: 97 raw edges
-[23:06:52] [COMBO] Final: 74 nodes, 57 edges (removed 19 conduits, kept 36 redirects)
-[23:06:52] [COMBO] Parsed 10 start entries: Fajar Regular Attacks[BP_AIAttackTIcketNames::NewEnumerator29::1], Traversal Attack[BP_AIAttackTIcketNames::NewEnumerator14::1], Parry[BP_AIAttackTIcketNames::NewEnumerator10::1], Fajar Wall Jump[BP_AIAttackTIcketNames::NewEnumerator16::1], Custom Combo 1[BP_AIAttackTIcketNames::NewEnumerator30::1], Avoid[BP_AIAttackTIcketNames::NewEnumerator23::1], Custom Combo 2[BP_AIAttackTIcketNames::NewEnumerator31::1], MC Dodge Close[BP_AIAttackTIcketNames::NewEnumerator2::1], FallbackPostDefense[BP_AIAttackTIcketNames::NewEnumerator69::1], Custom Combo 3[BP_AIAttackTIcketNames::NewEnumerator32::1]
-[23:06:52] [IMPORT] Tree size mismatch: 93 modded vs 74 vanilla tree indices (Staff)
-[23:06:52] [IMPORT] Surfaced 55 modded-only node(s) (55 m_Nodes entries), 80 edge(s)
-[23:06:52] [IMPORT] ApplyModdedComboToVanilla: 0 moves, 0 retargets, 27 unmatched, 55 surfaced, 1 AI payload(s), 0 chance override(s), 0 cond rewire(s), 0 retarget swap(s), 1 cond param(s), 0 start row(s) (Staff)
-[23:06:53] Loaded 602 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Engine\Content
-[23:06:53] [IMPORT] ReadModdedComboNodes: 94 nodes, 11 map override(s) from Fajar_Combo_P2_surface.uasset
-[23:06:53] [COMBO] Loaded Sifu/Content/DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P2.Fajar_Combo_P2: exportType=Combo, weapon=Staff
-[23:06:53] [COMBO] Parsed 93 raw nodes from 93 tree nodes
-[23:06:53] [COMBO] Found 36 redirect nodes:  → tree[0],  → tree[7],  → tree[14],  → tree[16],  → tree[14],  → tree[24],  → tree[24],  → tree[14],  → tree[24],  → tree[4],  → tree[14],  → tree[4],  → tree[14],  → tree[24],  → tree[25],  → tree[14],  → tree[4],  → tree[24],  → tree[24],  → tree[31],  → tree[63],  → tree[25],  → tree[31],  → tree[4],  → tree[75],  → tree[7],  → tree[75],  → tree[63],  → tree[4],  → tree[14],  → tree[4],  → tree[75],  → tree[7],  → tree[7],  → tree[24],  → tree[31]
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=0(Rhino Trample) → tgtTreeIdx=1() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=0(Rhino Trample) → tgtTreeIdx=2() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=2() → tgtTreeIdx=1() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=3() → tgtTreeIdx=4(Swiping Mantis) input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=3() → tgtTreeIdx=46() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=4(Swiping Mantis) → tgtTreeIdx=5() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=4(Swiping Mantis) → tgtTreeIdx=6() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=4(Swiping Mantis) → tgtTreeIdx=7(Rising Falcon) input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=4(Swiping Mantis) → tgtTreeIdx=42() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=7(Rising Falcon) → tgtTreeIdx=8() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=7(Rising Falcon) → tgtTreeIdx=8() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=8() → tgtTreeIdx=9() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=8() → tgtTreeIdx=28() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=8() → tgtTreeIdx=31(Naja Reverse Lash) input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=9() → tgtTreeIdx=10() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=9() → tgtTreeIdx=13() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=9() → tgtTreeIdx=41() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=10() → tgtTreeIdx=11() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=10() → tgtTreeIdx=12() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=14(Leaping Slash) → tgtTreeIdx=15() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=16(Flurry third) → tgtTreeIdx=17() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=16(Flurry third) → tgtTreeIdx=18() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=16(Flurry third) → tgtTreeIdx=19(SpinKick) input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=17() → tgtTreeIdx=18() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=17() → tgtTreeIdx=40() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=18() → tgtTreeIdx=19(SpinKick) input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=18() → tgtTreeIdx=28() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=18() → tgtTreeIdx=31(Naja Reverse Lash) input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=19(SpinKick) → tgtTreeIdx=20() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=20() → tgtTreeIdx=21() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=20() → tgtTreeIdx=22() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=21() → tgtTreeIdx=22() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=21() → tgtTreeIdx=23() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Cobra Double Bite) → tgtTreeIdx=25(Flurry second) input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Cobra Double Bite) → tgtTreeIdx=26() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=24(Cobra Double Bite) → tgtTreeIdx=27() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=25(Flurry second) → tgtTreeIdx=16(Flurry third) input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=26() → tgtTreeIdx=25(Flurry second) input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=27() → tgtTreeIdx=28() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=27() → tgtTreeIdx=31(Naja Reverse Lash) input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=27() → tgtTreeIdx=37() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=27() → tgtTreeIdx=38() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=28() → tgtTreeIdx=29() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=28() → tgtTreeIdx=30() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=31(Naja Reverse Lash) → tgtTreeIdx=32() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=31(Naja Reverse Lash) → tgtTreeIdx=34() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=31(Naja Reverse Lash) → tgtTreeIdx=36() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=32() → tgtTreeIdx=33() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=34() → tgtTreeIdx=35() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=38() → tgtTreeIdx=39() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=42() → tgtTreeIdx=43() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=43() → tgtTreeIdx=44() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=43() → tgtTreeIdx=45() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=47() → tgtTreeIdx=14(Leaping Slash) input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=47() → tgtTreeIdx=24(Cobra Double Bite) input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=48() → tgtTreeIdx=49() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=48() → tgtTreeIdx=51() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=48() → tgtTreeIdx=52() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=49() → tgtTreeIdx=50() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=54() → tgtTreeIdx=55() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=54() → tgtTreeIdx=59() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=54() → tgtTreeIdx=60() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=54() → tgtTreeIdx=61() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=54() → tgtTreeIdx=62() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=55() → tgtTreeIdx=56() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=55() → tgtTreeIdx=57() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=57() → tgtTreeIdx=58() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=61() → tgtTreeIdx=47() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=63(Razor Leaf) → tgtTreeIdx=9() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=64() → tgtTreeIdx=62() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=64() → tgtTreeIdx=60() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=64() → tgtTreeIdx=61() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=65() → tgtTreeIdx=60() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=65() → tgtTreeIdx=61() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=65() → tgtTreeIdx=66() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=65() → tgtTreeIdx=67() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=68() → tgtTreeIdx=66() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=68() → tgtTreeIdx=60() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=68() → tgtTreeIdx=61() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=69() → tgtTreeIdx=55() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=69() → tgtTreeIdx=59() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=69() → tgtTreeIdx=70() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=72() → tgtTreeIdx=73() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=72() → tgtTreeIdx=74() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=72() → tgtTreeIdx=77() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=72() → tgtTreeIdx=77() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=72() → tgtTreeIdx=74() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=72() → tgtTreeIdx=79() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=74() → tgtTreeIdx=76() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=77() → tgtTreeIdx=78() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=80() → tgtTreeIdx=81() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=80() → tgtTreeIdx=73() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=80() → tgtTreeIdx=74() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=80() → tgtTreeIdx=77() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=80() → tgtTreeIdx=77() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=80() → tgtTreeIdx=83() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=81() → tgtTreeIdx=82() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=84() → tgtTreeIdx=85() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=86() → tgtTreeIdx=87() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=88() → tgtTreeIdx=89() input=
-[23:06:53] [REDIRECT DEBUG] Transition: srcTreeIdx=88() → tgtTreeIdx=90() input=
-[23:06:53] [COMBO] Parsed 101 raw edges
-[23:06:53] [COMBO] After dedup: 97 raw edges
-[23:06:53] [COMBO] Final: 74 nodes, 57 edges (removed 19 conduits, kept 36 redirects)
-[23:06:53] [COMBO] Parsed 10 start entries: Fajar Regular Attacks[BP_AIAttackTIcketNames::NewEnumerator29::1], Traversal Attack[BP_AIAttackTIcketNames::NewEnumerator14::1], Parry[BP_AIAttackTIcketNames::NewEnumerator10::1], Fajar Wall Jump[BP_AIAttackTIcketNames::NewEnumerator16::1], Custom Combo 1[BP_AIAttackTIcketNames::NewEnumerator30::1], Avoid[BP_AIAttackTIcketNames::NewEnumerator23::1], Custom Combo 2[BP_AIAttackTIcketNames::NewEnumerator31::1], MC Dodge Close[BP_AIAttackTIcketNames::NewEnumerator2::1], FallbackPostDefense[BP_AIAttackTIcketNames::NewEnumerator69::1], Custom Combo 3[BP_AIAttackTIcketNames::NewEnumerator32::1]
-[23:06:53] [IMPORT] Tree size mismatch: 94 modded vs 74 vanilla tree indices (Staff)
-[23:06:53] [IMPORT] Surfaced 56 modded-only node(s) (56 m_Nodes entries), 80 edge(s)
-[23:06:53] [IMPORT] ApplyModdedComboToVanilla: 0 moves, 0 retargets, 27 unmatched, 56 surfaced, 0 AI payload(s), 0 chance override(s), 0 cond rewire(s), 0 retarget swap(s), 1 cond param(s), 0 start row(s) (Staff)
-[23:07:00] Loaded 4 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\GameContent\Engine\Content
+[01:24:20] [EXPORT] System.Exception: REMOVE TREE: dropped 1 node(s) [46], reindexed 46 indices, 1 link targets dropped, 0 condition branches dropped, 5 redirects fixed, 1 transition rows dropped, 0 default slots fixed
+[01:24:20] [EXPORT] System.Exception:   VALIDATED: remove-middle 92 nodes, all index refs in range
+[01:24:20] [EXPORT] System.Exception: REMOVE TREE: dropped 1 node(s) [1], reindexed 91 indices, 2 link targets dropped, 21 condition branches dropped, 35 redirects fixed, 1 transition rows dropped, 0 default slots fixed
+[01:24:20] [EXPORT] System.Exception:   VALIDATED: remove-first 92 nodes, all index refs in range
+[01:24:20] [EXPORT] System.Exception: REMOVE TREE: dropped 1 node(s) [90], reindexed 2 indices, 1 link targets dropped, 0 condition branches dropped, 0 redirects fixed, 0 transition rows dropped, 0 default slots fixed
+[01:24:20] [EXPORT] System.Exception:   VALIDATED: remove-last 92 nodes, all index refs in range
+[01:24:21] [EXPORT] System.Exception: REMOVE TREE: dropped 1 node(s) [7], reindexed 85 indices, 1 link targets dropped, 0 condition branches dropped, 29 redirects fixed, 0 transition rows dropped, 0 default slots fixed
+[01:24:21] [EXPORT] System.Exception:   VALIDATED: remove-redirect-target 92 nodes, all index refs in range
+[01:24:21] [EXPORT] System.Exception: REMOVE TREE: dropped 2 node(s) [7, 11], reindexed 84 indices, 2 link targets dropped, 0 condition branches dropped, 28 redirects fixed, 0 transition rows dropped, 0 default slots fixed
+[01:24:21] [EXPORT] System.Exception:   VALIDATED: remove-redirect-chain 91 nodes, all index refs in range
+[01:24:21] [EXPORT] System.Exception: REMOVE TREE: dropped 1 node(s) [3], reindexed 89 indices, 1 link targets dropped, 7 condition branches dropped, 35 redirects fixed, 0 transition rows dropped, 0 default slots fixed
+[01:24:21] [EXPORT] System.Exception:   VALIDATED: remove-entry-target 92 nodes, all index refs in range
+[01:24:22] [EXPORT] System.Exception:   APPEND NODE: [55] 'SmokeAction' action=BP_AiAction_Bamboo_PushBack_V2 src=DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P2#28
+[01:24:22] [EXPORT] System.Exception:   APPEND LINK: 'Base0' -> [55] input='Light'
+[01:24:22] [EXPORT] System.Exception:   PROB REBALANCE tree[0]: [100, 100] -> [50, 50]
+[01:24:22] [EXPORT] System.Exception: APPEND: 1 nodes, 2 links, 0 start-entry rows, 0 chance overrides, 1 structs rebalanced, 0 chance sums rescaled, 0 condition edits, 0 redirects mirrored, 0 flow warnings, 0 payload replaces, 0 skipped (base=55)
+[01:24:22] [EXPORT] System.Exception:   VALIDATED: append-action-cross 56 nodes, all index refs in range
+[01:24:22] [EXPORT] System.Exception:   APPEND NODE: [93] 'SmokeEvent' event=SmokeEvent src=DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P2#1
+[01:24:22] [EXPORT] System.Exception: APPEND: 1 nodes, 0 links, 0 start-entry rows, 0 chance overrides, 0 structs rebalanced, 0 chance sums rescaled, 0 condition edits, 0 redirects mirrored, 0 flow warnings, 0 payload replaces, 0 skipped (base=93)
+[01:24:22] [EXPORT] System.Exception:   VALIDATED: append-event-same 94 nodes, all index refs in range
+[01:24:22] [EXPORT] System.Exception:   APPEND NODE: [93] 'SmokeEvent' event=BP_AiComboEvent_GotoPhase src=DB/AI/Archetypes/Fengjie/Phase2/Fengjie_Phase2_Combo#26
+[01:24:22] [EXPORT] System.Exception: APPEND: 1 nodes, 0 links, 0 start-entry rows, 0 chance overrides, 0 structs rebalanced, 0 chance sums rescaled, 0 condition edits, 0 redirects mirrored, 0 flow warnings, 0 payload replaces, 0 skipped (base=93)
+[01:24:22] [EXPORT] System.Exception:   VALIDATED: append-event-cross 94 nodes, all index refs in range
+[01:24:22] [EXPORT] System.Exception:   APPEND NODE: [93] 'SmokeAttack' attack=/Game/DB/AI/Archetypes/Fajar/Attacks/BareHands/Fajar_Rhino_Trample.Fajar_Rhino_Trample
+[01:24:22] [EXPORT] System.Exception: APPEND: 1 nodes, 0 links, 0 start-entry rows, 0 chance overrides, 0 structs rebalanced, 0 chance sums rescaled, 0 condition edits, 0 redirects mirrored, 0 flow warnings, 0 payload replaces, 0 skipped (base=93)
+[01:24:22] [EXPORT] System.Exception:   VALIDATED: append-attack 94 nodes, all index refs in range
+[01:24:22] [EXPORT] System.Exception:   APPEND REGISTER: 'SmokeAttack' -> /Game/DB/_MainChar/Combos/Attacks/Custom/MainChar_Custom_Smoke.MainChar_Custom_Smoke
+[01:24:22] [EXPORT] System.Exception:   PROB REBALANCE tree[57] (new node): [100]
+[01:24:22] [EXPORT] System.Exception:   APPEND NODE: [57] 'SmokeAttack' attack=/Game/DB/_MainChar/Combos/Attacks/Custom/MainChar_Custom_Smoke.MainChar_Custom_Smoke
+[01:24:22] [EXPORT] System.Exception:   APPEND NODE: [58] 'SmokeRedirect' redirect->1
+[01:24:22] [EXPORT] System.Exception:   APPEND LINK: 'Base1' -> [57] input='Light'
+[01:24:22] [EXPORT] System.Exception:   PROB REBALANCE tree[1]: [33, 34, 33, 33] -> [34.5, 22.086, 21.436, 21.978]
+[01:24:22] [EXPORT] System.Exception: APPEND: 2 nodes, 2 links, 0 start-entry rows, 0 chance overrides, 2 structs rebalanced, 0 chance sums rescaled, 0 condition edits, 0 redirects mirrored, 0 flow warnings, 0 payload replaces, 0 skipped (base=57)
+[01:24:22] [EXPORT] System.Exception:   VALIDATED: append-mainchar 59 nodes, all index refs in range
+[01:24:22] [EXPORT] System.Exception:   APPEND NODE: [55] 'SmokeCombo' action=BP_AiAction_Bamboo_PushBack_V2 src=DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P2#28
+[01:24:22] [EXPORT] System.Exception: APPEND: 1 nodes, 0 links, 0 start-entry rows, 0 chance overrides, 0 structs rebalanced, 0 chance sums rescaled, 0 condition edits, 0 redirects mirrored, 0 flow warnings, 0 payload replaces, 0 skipped (base=55)
+[01:24:22] [EXPORT] System.Exception: REMOVE TREE: dropped 1 node(s) [27], reindexed 28 indices, 1 link targets dropped, 0 condition branches dropped, 3 redirects fixed, 1 transition rows dropped, 0 default slots fixed
+[01:24:22] [EXPORT] System.Exception:   VALIDATED: add-and-delete 55 nodes, all index refs in range
+[01:24:23] [EXPORT] System.Exception:   COND RETARGET tree[0] row 0 key 0: -> 2
+[01:24:23] [EXPORT] System.Exception:   COND CLEAR tree[4] row 0: instance emptied=True, map collapsed=True
+[01:24:23] [EXPORT] System.Exception:   COND PARAM export 14: m_uiMCDominationFlags = 4
+[01:24:23] [EXPORT] System.Exception:   VALIDATED: condition-edits 55 nodes, all index refs in range
+[01:24:23] [EXPORT] System.Exception:   COND CLEAR tree[4] row 0: instance emptied=False, map collapsed=True
+[01:24:23] [EXPORT] System.Exception:   COND RETARGET tree[4] row 0 key 255: -> 6
+[01:24:23] [EXPORT] System.Exception:   COND PARAM export 14: m_uiMCDominationFlags = 4
+[01:24:23] [EXPORT] System.Exception:   VALIDATED: condition-edits-retarget 55 nodes, all index refs in range
+[01:24:23] [EXPORT] System.Exception:   COND CLEAR tree[4] row 0: instance emptied=False, map collapsed=True
+[01:24:23] [EXPORT] System.Exception:   COND RETARGET(node) tree[4] row 0 key 255: -> 7
+[01:24:23] [EXPORT] System.Exception:   COND PARAM export 14: m_uiMCDominationFlags = 4
+[01:24:23] [EXPORT] System.Exception:   VALIDATED: condition-edits-node-retarget 55 nodes, all index refs in range
+[01:24:23] [EXPORT] System.Exception:   COND CLEAR tree[4] row 0: instance emptied=False, map collapsed=True
+[01:24:23] [EXPORT] System.Exception:   COND RETARGET tree[4] row 0 key 255: -> 6
+[01:24:23] [EXPORT] System.Exception:   COND RETARGET(node) SKIP: tree[4] row 0 key 255 - node 999999 unresolvable
+[01:24:23] [EXPORT] System.Exception:   COND PARAM export 14: m_uiMCDominationFlags = 4
+[01:24:23] [EXPORT] System.Exception:   COND INSTANCE tree[2] row 0: -> export 14 (share ComboAIConditionMCDomination)
+[01:24:23] [EXPORT] System.Exception:   COND REKEY tree[2] row 0: {255} -> {0, 1} at 3
+[01:24:23] [EXPORT] System.Exception:   COND CLONE DIRTY SOURCE: DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P2#54 ('ComboAIConditionMCDomination_0_DC0919CF4DA74CD726885CAE4C36D111_Copy_46BC79B5419A6503B4734BB0F397499F_Copy_A980DB774D907E3ACA03F0B7EC451674_Copy_55DE8BBA421A167E8D459EA20CE26663') carries previous-export _Copy_ chains - the content root copy is not clean vanilla; re-extract it to stop clone stacking
+[01:24:23] [EXPORT] System.Exception:   COND CLONE ComboAIConditionMCDomination: DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P2#54 -> export 28
+[01:24:23] [EXPORT] System.Exception:   COND INSTANCE tree[2] row 1: -> export 28 (clone ComboAIConditionMCDomination from DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P2)
+[01:24:23] [EXPORT] System.Exception:   COND REKEY tree[2] row 1: {255} -> {0, 1} at 36
+[01:24:23] [EXPORT] System.Exception:   COND PARAM export -11851283: m_uiMCDominationFlags = 11
+[01:24:23] [EXPORT] System.Exception:   VALIDATED: add-condition 55 nodes, all index refs in range
+[01:24:23] [EXPORT] System.Exception:   APPEND LINK: 'Base0' -> [3] input='Light'
+[01:24:23] [EXPORT] System.Exception:   APPEND LINK: 'Base0' -> [4] input='Heavy'
+[01:24:23] [EXPORT] System.Exception:   COND CLONE DIRTY SOURCE: DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P2#54 ('ComboAIConditionMCDomination_0_DC0919CF4DA74CD726885CAE4C36D111_Copy_46BC79B5419A6503B4734BB0F397499F_Copy_A980DB774D907E3ACA03F0B7EC451674_Copy_55DE8BBA421A167E8D459EA20CE26663') carries previous-export _Copy_ chains - the content root copy is not clean vanilla; re-extract it to stop clone stacking
+[01:24:23] [EXPORT] System.Exception:   COND CLONE ComboAIConditionMCDomination: DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P2#54 -> export 28
+[01:24:23] [EXPORT] System.Exception:   COND EDGE 1>2|LMB: instance -> export 28 ComboAIConditionMCDomination, keys [0, 1, 2]
+[01:24:23] [EXPORT] System.Exception:   COND PARAM export -11851283: m_uiMCDominationFlags = 11
+[01:24:23] [EXPORT] System.Exception: Condition overrides: 2 edit(s) applied
+[01:24:23] [EXPORT] System.Exception:   PROB REBALANCE tree[0]: [100, 100, 100] -> [33.333, 33.333, 33.333]
+[01:24:23] [EXPORT] System.Exception: APPEND: 0 nodes, 2 links, 0 start-entry rows, 0 chance overrides, 1 structs rebalanced, 0 chance sums rescaled, 2 condition edits, 0 redirects mirrored, 0 flow warnings, 0 payload replaces, 0 skipped (base=55)
+[01:24:23] [EXPORT] System.Exception:   VALIDATED: edge-condition 55 nodes, all index refs in range
+[01:24:23] [EXPORT] System.Exception:   VALIDATED: bp-outer-good 55 nodes, all index refs in range
+[01:24:23] [EXPORT] System.Exception:   VALIDATE FAIL [bp-outer-bad]: 1 out-of-range index ref(s): BP_AICondition_BackObstacleCheck_C_0_Copy_8A54408846600045DA0B138971D25866: BP instance outer 0 (must be an export, 27 present) - staged file removed
+[01:24:23] [EXPORT] System.Exception:   APPEND LINK dedup: 'Base0' -> [2] already exists in base
+[01:24:23] [EXPORT] System.Exception: APPEND: 0 nodes, 0 links, 0 start-entry rows, 0 chance overrides, 0 structs rebalanced, 0 chance sums rescaled, 0 condition edits, 0 redirects mirrored, 0 flow warnings, 0 payload replaces, 0 skipped (base=55)
+[01:24:23] [EXPORT] System.Exception:   APPEND LINK: 'Base0' -> [2] input='None'
+[01:24:23] [EXPORT] System.Exception:   COND CLEAR tree[0] row 0: instance emptied=True, map collapsed=True
+[01:24:23] [EXPORT] System.Exception: Condition overrides: 1 edit(s) applied
+[01:24:23] [EXPORT] System.Exception:   PROB REBALANCE tree[0]: [100, 100] -> [50, 50]
+[01:24:23] [EXPORT] System.Exception: APPEND: 0 nodes, 1 links, 0 start-entry rows, 0 chance overrides, 1 structs rebalanced, 0 chance sums rescaled, 1 condition edits, 0 redirects mirrored, 0 flow warnings, 0 payload replaces, 0 skipped (base=55)
+[01:24:23] [EXPORT] System.Exception:   VALIDATED: clear-mixup 55 nodes, all index refs in range
+[01:24:23] [EXPORT] System.Exception:   AI REPLACE tree[0] 'SmokeReplace': kind=Action class=BP_AiAction_Bamboo_PushBack_V2 src=DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P2#28
+[01:24:23] [EXPORT] System.Exception: APPEND: 0 nodes, 0 links, 0 start-entry rows, 0 chance overrides, 0 structs rebalanced, 0 chance sums rescaled, 0 condition edits, 0 redirects mirrored, 0 flow warnings, 1 payload replaces, 0 skipped (base=55)
+[01:24:23] [EXPORT] System.Exception:   VALIDATED: replace-atk-action 55 nodes, all index refs in range
+[01:24:23] [EXPORT] System.Exception:   AI REPLACE tree[2] 'SmokeReplace': kind=Attack class=SmokeReplace card=/Game/DB/AI/Archetypes/Fajar/Attacks/BareHands/Fajar_Rhino_Trample key=/Game/DB/AI/Archetypes/Fajar/Attacks/BareHands/Fajar_Rhino_Trample.Fajar_Rhino_Trample
+[01:24:23] [EXPORT] System.Exception: APPEND: 0 nodes, 0 links, 0 start-entry rows, 0 chance overrides, 0 structs rebalanced, 0 chance sums rescaled, 0 condition edits, 0 redirects mirrored, 0 flow warnings, 1 payload replaces, 0 skipped (base=93)
+[01:24:23] [EXPORT] System.Exception:   VALIDATED: replace-action-atk 93 nodes, all index refs in range
+[01:24:23] [EXPORT] System.Exception:   AI REPLACE tree[1] 'SmokeReplace': kind=Action class=BP_AiAction_Bamboo_PushBack_V2 src=DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P2#28
+[01:24:23] [EXPORT] System.Exception: APPEND: 0 nodes, 0 links, 0 start-entry rows, 0 chance overrides, 0 structs rebalanced, 0 chance sums rescaled, 0 condition edits, 0 redirects mirrored, 0 flow warnings, 1 payload replaces, 0 skipped (base=93)
+[01:24:23] [EXPORT] System.Exception:   VALIDATED: replace-event-action 93 nodes, all index refs in range
+[01:24:23] [EXPORT] System.Exception:   APPEND LINK merged: node 1 -> 2 into tree[0] row 0 key 2
+[01:24:23] [EXPORT] System.Exception:   COND MERGE tree[0] row 0 key 2: -> [3] (node 2)
+[01:24:23] [EXPORT] System.Exception: Condition overrides: 1 edit(s) applied
+[01:24:23] [EXPORT] System.Exception: APPEND: 0 nodes, 0 links, 0 start-entry rows, 0 chance overrides, 0 structs rebalanced, 0 chance sums rescaled, 1 condition edits, 0 redirects mirrored, 0 flow warnings, 0 payload replaces, 0 skipped (base=55)
+[01:24:23] [EXPORT] System.Exception:   VALIDATED: merge-into-row 55 nodes, all index refs in range
+[01:24:23] [EXPORT] System.Exception:   START KEY: 'Fajar Regular Attacks' new row forced unconditional (255) - template row was multi-key
+[01:24:23] [EXPORT] System.Exception:   START ENTRY: 'Fajar Regular Attacks' rows 1 -> 2, 1 field patches, sum 100%
+[01:24:23] [EXPORT] System.Exception: APPEND: 0 nodes, 0 links, 1 start-entry rows, 0 chance overrides, 0 structs rebalanced, 0 chance sums rescaled, 0 condition edits, 0 redirects mirrored, 0 flow warnings, 0 payload replaces, 0 skipped (base=93)
+[01:24:23] [EXPORT] System.Exception:   VALIDATED: start-multikey-addrow 93 nodes, all index refs in range
+[01:24:23] [EXPORT] System.Exception:   APPEND NODE: [138] 'SmokeMirror' redirect->11
+[01:24:23] [EXPORT] System.Exception:   REDIRECT MIRROR: tree[138] 'SmokeMirror' -> tree[11] inherits tree[10] rows (2)
+[01:24:23] [EXPORT] System.Exception: APPEND: 1 nodes, 0 links, 0 start-entry rows, 0 chance overrides, 0 structs rebalanced, 0 chance sums rescaled, 0 condition edits, 1 redirects mirrored, 0 flow warnings, 0 payload replaces, 0 skipped (base=138)
+[01:24:24] [EXPORT] System.Exception:   VALIDATED: redirect-mirror 139 nodes, all index refs in range
+[01:24:24] [EXPORT] System.Exception:   APPEND NODE: [139] 'SmokeFallback' redirect->0
+[01:24:24] [EXPORT] System.Exception: APPEND: 1 nodes, 0 links, 0 start-entry rows, 0 chance overrides, 0 structs rebalanced, 0 chance sums rescaled, 0 condition edits, 0 redirects mirrored, 0 flow warnings, 0 payload replaces, 0 skipped (base=139)
+[01:24:24] [EXPORT] System.Exception:   CHANCE OVERRIDE tree[0] row 0: 100 -> 0
+[01:24:24] [EXPORT] System.Exception:   FLOW WARNING: tree[0] 'EagleSlaughter' ships all 1 rows at 0% - flow always stops here
+[01:24:24] [EXPORT] System.Exception: APPEND: 0 nodes, 0 links, 0 start-entry rows, 1 chance overrides, 0 structs rebalanced, 0 chance sums rescaled, 0 condition edits, 0 redirects mirrored, 1 flow warnings, 0 payload replaces, 0 skipped (base=55)
+[01:24:24] [EXPORT] System.Exception:   CHANCE OVERRIDE tree[2] row 0: 50 -> 0
+[01:24:24] [EXPORT] System.Exception:   PROB RESCALE tree[2] 'None': sum 50% -> 100% [0, 50] -> [0, 100]
+[01:24:24] [EXPORT] System.Exception: APPEND: 0 nodes, 0 links, 0 start-entry rows, 1 chance overrides, 0 structs rebalanced, 1 chance sums rescaled, 0 condition edits, 0 redirects mirrored, 0 flow warnings, 0 payload replaces, 0 skipped (base=55)
+[01:24:24] [EXPORT] System.Exception:   CHANCE OVERRIDE tree[2] row 0: 50 -> 40
+[01:24:24] [EXPORT] System.Exception:   CHANCE OVERRIDE tree[2] row 1: 50 -> 30
+[01:24:24] [EXPORT] System.Exception:   PROB RESCALE tree[2] 'None': sum 70% -> 100% [40, 30] -> [70, 30]
+[01:24:24] [EXPORT] System.Exception: APPEND: 0 nodes, 0 links, 0 start-entry rows, 2 chance overrides, 0 structs rebalanced, 1 chance sums rescaled, 0 condition edits, 0 redirects mirrored, 0 flow warnings, 0 payload replaces, 0 skipped (base=55)
+[01:24:24] [EXPORT] System.Exception:   CHANCE OVERRIDE tree[2] row 0: 50 -> 100
+[01:24:24] [EXPORT] System.Exception:   CHANCE OVERRIDE tree[2] row 1: 50 -> 0
+[01:24:24] [EXPORT] System.Exception: APPEND: 0 nodes, 0 links, 0 start-entry rows, 2 chance overrides, 0 structs rebalanced, 0 chance sums rescaled, 0 condition edits, 0 redirects mirrored, 0 flow warnings, 0 payload replaces, 0 skipped (base=55)
+[01:24:24] [EXPORT] System.Exception:   CHANCE OVERRIDE tree[0] row 0: 100 -> 0
+[01:24:24] [EXPORT] System.Exception:   FLOW WARNING: tree[0] 'EagleSlaughter' ships all 1 rows at 0% - flow always stops here
+[01:24:24] [EXPORT] System.Exception: APPEND: 0 nodes, 0 links, 0 start-entry rows, 1 chance overrides, 0 structs rebalanced, 0 chance sums rescaled, 0 condition edits, 0 redirects mirrored, 1 flow warnings, 0 payload replaces, 0 skipped (base=55)
+[01:24:24] [EXPORT] System.Exception:   CHANCE OVERRIDE tree[2] row 0: 50 -> 150
+[01:24:24] [EXPORT] System.Exception:   CHANCE OVERRIDE tree[2] row 1: 50 -> 150
+[01:24:24] [EXPORT] System.Exception:   PROB RESCALE tree[2] 'None': sum 300% -> 100% [150, 150] -> [50, 50]
+[01:24:24] [EXPORT] System.Exception: APPEND: 0 nodes, 0 links, 0 start-entry rows, 2 chance overrides, 0 structs rebalanced, 1 chance sums rescaled, 0 condition edits, 0 redirects mirrored, 0 flow warnings, 0 payload replaces, 0 skipped (base=55)
+[01:25:07] Loaded 4 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\GameContent\Engine\Content
+[01:25:23] Loaded 4 engine content files from C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\GameContent\Engine\Content
+[01:25:24] [COMBO] Loaded GameContent/Content/DB/AI/Archetypes/Sean/Sean_Combo_Phase2.Sean_Combo_Phase2: exportType=Combo, weapon=Staff
+[01:25:24] [COMBO] Parsed 47 raw nodes from 47 tree nodes
+[01:25:24] [COMBO] Found 15 redirect nodes:  → tree[2],  → tree[5],  → tree[9],  → tree[2],  → tree[14],  → tree[20],  → tree[5],  → tree[9],  → tree[30],  → tree[30],  → tree[30],  → tree[37],  → tree[41],  → tree[15],  → tree[30]
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=0() → tgtTreeIdx=1() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=0() → tgtTreeIdx=34() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=0() → tgtTreeIdx=35() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=2(EagleSlaughter) → tgtTreeIdx=3() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=3() → tgtTreeIdx=4() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=3() → tgtTreeIdx=28() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=3() → tgtTreeIdx=31() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=3() → tgtTreeIdx=32() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=5(Thrust) → tgtTreeIdx=6() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=6() → tgtTreeIdx=7() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=6() → tgtTreeIdx=26() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=6() → tgtTreeIdx=26() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=6() → tgtTreeIdx=7() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=6() → tgtTreeIdx=26() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=6() → tgtTreeIdx=26() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=6() → tgtTreeIdx=27() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=7() → tgtTreeIdx=8() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=7() → tgtTreeIdx=13() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=9(Tornado) → tgtTreeIdx=10() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=9(Tornado) → tgtTreeIdx=11() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=11() → tgtTreeIdx=12() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=14(ReverseCrane) → tgtTreeIdx=15(TigerSwing) input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=15(TigerSwing) → tgtTreeIdx=16() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=16() → tgtTreeIdx=17(RisingSlash) input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=16() → tgtTreeIdx=24() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=17(RisingSlash) → tgtTreeIdx=18() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=17(RisingSlash) → tgtTreeIdx=19() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=17(RisingSlash) → tgtTreeIdx=23() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=20(Waterfall) → tgtTreeIdx=21() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=20(Waterfall) → tgtTreeIdx=22() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=24() → tgtTreeIdx=25() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=26() → tgtTreeIdx=7() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=28() → tgtTreeIdx=29() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=30(ShoulderStrike) → tgtTreeIdx=6() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=32() → tgtTreeIdx=33() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=37(SlamOTG) → tgtTreeIdx=38() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=39() → tgtTreeIdx=40() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=39() → tgtTreeIdx=30(ShoulderStrike) input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=39() → tgtTreeIdx=5(Thrust) input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=41(LowSwipe) → tgtTreeIdx=42(HighSwipeCrane) input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=42(HighSwipeCrane) → tgtTreeIdx=43() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=42(HighSwipeCrane) → tgtTreeIdx=44() input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=45() → tgtTreeIdx=5(Thrust) input=
+[01:25:24] [REDIRECT DEBUG] Transition: srcTreeIdx=45() → tgtTreeIdx=30(ShoulderStrike) input=
+[01:25:24] [COMBO] Parsed 44 raw edges
+[01:25:24] [COMBO] After dedup: 40 raw edges
+[01:25:24] [COMBO] Final: 40 nodes, 32 edges (removed 7 conduits, kept 15 redirects)
+[01:25:24] [COMBO] Parsed 7 start entries: Sean Dodge[BP_AIAttackTIcketNames::NewEnumerator19::1], Sean Idle[BP_AIAttackTIcketNames::NewEnumerator20::1], Sean Avoid[BP_AIAttackTIcketNames::NewEnumerator46::1], On MC Knocked down[BP_AIAttackTIcketNames::NewEnumerator54::1], Parry[BP_AIAttackTIcketNames::NewEnumerator10::1], MC Dodge Close[BP_AIAttackTIcketNames::NewEnumerator2::1], FallbackPostDefense[BP_AIAttackTIcketNames::NewEnumerator69::1]
+[01:25:24] [COMBO] Loaded GameContent/Content/DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo.Yang_P1_Combo: exportType=Combo, weapon=BareHands
+[01:25:24] [COMBO] Parsed 138 raw nodes from 138 tree nodes
+[01:25:24] [COMBO] Found 49 redirect nodes:  → tree[5],  → tree[9],  → tree[11],  → tree[13],  → tree[15],  → tree[17],  → tree[21],  → tree[24],  → tree[26],  → tree[28],  → tree[30],  → tree[32],  → tree[34],  → tree[21],  → tree[5],  → tree[9],  → tree[5],  → tree[9],  → tree[28],  → tree[52],  → tree[5],  → tree[57],  → tree[0],  → tree[5],  → tree[9],  → tree[21],  → tree[49],  → tree[9],  → tree[30],  → tree[32],  → tree[49],  → tree[21],  → tree[95],  → tree[5],  → tree[9],  → tree[9],  → tree[24],  → tree[5],  → tree[9],  → tree[5],  → tree[49],  → tree[117],  → tree[117],  → tree[52],  → tree[5],  → tree[24],  → tree[9],  → tree[24],  → tree[95]
+[01:25:24] [COMBO] Parsed 123 raw edges
+[01:25:24] [COMBO] After dedup: 122 raw edges
+[01:25:24] [COMBO] Final: 119 nodes, 99 edges (removed 19 conduits, kept 49 redirects)
+[01:25:24] [COMBO] Injected Combat Stance root (barehands only)
+[01:25:24] [COMBO] Parsed 13 start entries: Dodge[BP_AIAttackTIcketNames::NewEnumerator6::1], Parry[BP_AIAttackTIcketNames::NewEnumerator10::1], Avoid[BP_AIAttackTIcketNames::NewEnumerator23::1], Custom Combo 1[BP_AIAttackTIcketNames::NewEnumerator30::1], Yang Defense Attacks
+ Phase Node = Phase1_Defense. 
+MC Domination = ALL[BP_AIAttackTIcketNames::NewEnumerator57::1], Yang Offense Attacks
+ Phase Node = Phase1_Offense. 
+MC Domination = ALL[BP_AIAttackTIcketNames::NewEnumerator56::1], Custom Combo 2[BP_AIAttackTIcketNames::NewEnumerator31::1], Dizzy Reaction[BP_AIAttackTIcketNames::NewEnumerator58::1], Yang Defense Close Reaction
+ Phase Node = Phase1_Defense. 
+MC Domination = ALL[BP_AIAttackTIcketNames::NewEnumerator60::1], Whiff Reaction[BP_AIAttackTIcketNames::NewEnumerator65::1], On MC Knocked down[BP_AIAttackTIcketNames::NewEnumerator54::1], MC Dodge Close[BP_AIAttackTIcketNames::NewEnumerator2::1], FallbackPostDefense[BP_AIAttackTIcketNames::NewEnumerator69::1]
+[01:25:24] [COMBO] Loaded GameContent/Content/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Base_Combo.FireDisciple_Base_Combo: exportType=Combo, weapon=BareHands
+[01:25:24] [COMBO] Parsed 25 raw nodes from 25 tree nodes
+[01:25:24] [COMBO] Found 6 redirect nodes:  → tree[2],  → tree[5],  → tree[9],  → tree[2],  → tree[10],  → tree[2]
+[01:25:24] [COMBO] Parsed 15 raw edges
+[01:25:24] [COMBO] After dedup: 15 raw edges
+[01:25:24] [COMBO] Final: 25 nodes, 15 edges (removed 0 conduits, kept 6 redirects)
+[01:25:24] [COMBO] Injected Combat Stance root (barehands only)
+[01:25:24] [COMBO] Parsed 10 start entries: Dodge[BP_AIAttackTIcketNames::NewEnumerator6::1], Parry[BP_AIAttackTIcketNames::NewEnumerator10::1], Direct Opponent Regular Attacks[BP_AIAttackTIcketNames::NewEnumerator0::1], Indirect Opponent Interruption Attacks[BP_AIAttackTIcketNames::NewEnumerator1::1], Avoid[BP_AIAttackTIcketNames::NewEnumerator23::1], FireDisciple WallJump GoTo[BP_AIAttackTIcketNames::NewEnumerator52::1], Custom Combo 2[BP_AIAttackTIcketNames::NewEnumerator31::1], KnockedDown[BP_AIAttackTIcketNames::NewEnumerator9::1], FallbackPostDefense[BP_AIAttackTIcketNames::NewEnumerator69::1], MC Dodge Close[BP_AIAttackTIcketNames::NewEnumerator2::1]
+[01:25:24] [COMBO] Loaded GameContent/Content/DB/_MainChar/Combos/MainChar_ComboTree.MainChar_ComboTree: exportType=Combo, weapon=BareHands
+[01:25:24] [COMBO] Split tree node 0 into 2 direction variants: GetUp Attack [], GetUp Attack []
+[01:25:24] [COMBO] Split tree node 4 into 2 direction variants: ShinKick [FR], ShinKick [BL]
+[01:25:24] [COMBO] Split tree node 5 into 2 direction variants: ThroatPunch [FL], ThroatPunch [BL]
+[01:25:24] [COMBO] Split tree node 7 into 2 direction variants: Palm02 [FL], Palm02 [BR]
+[01:25:24] [COMBO] Split tree node 8 into 2 direction variants: TripleHit [FL], TripleHit [BR]
+[01:25:24] [COMBO] Split tree node 9 into 2 direction variants: MultiHitClaws [FL], MultiHitClaws [BR]
+[01:25:24] [COMBO] Split tree node 10 into 2 direction variants: DoubleElbow [FL], DoubleElbow [BR]
+[01:25:24] [COMBO] Split tree node 11 into 2 direction variants: ClawsElbow [FL], ClawsElbow [BR]
+[01:25:24] [COMBO] Split tree node 12 into 2 direction variants: ElbowSync [FL], ElbowSync [BR]
+[01:25:24] [COMBO] Split tree node 14 into 2 direction variants: Ext02 [FR], Ext02 [BL]
+[01:25:24] [COMBO] Split tree node 15 into 2 direction variants: AoeKnockdown [FL], AoeKnockdown [BR]
+[01:25:25] [COMBO] Split tree node 16 into 2 direction variants: DelaySpinHighKick [FL], DelaySpinHighKick [BL]
+[01:25:25] [COMBO] Split tree node 30 into 2 direction variants: FrontKick [FR], FrontKick [BL]
+[01:25:25] [COMBO] Split tree node 31 into 2 direction variants: LowKick [FL], LowKick [BR]
+[01:25:25] [COMBO] Split tree node 32 into 2 direction variants: Palm Strike [FR], Palm Strike [BL]
+[01:25:25] [COMBO] Split tree node 33 into 2 direction variants: GuardBreak [FL], GuardBreak [BL]
+[01:25:25] [COMBO] Split tree node 36 into 2 direction variants: Thrust Kick [FL], Thrust Kick [BL]
+[01:25:25] [COMBO] Split tree node 39 into 2 direction variants: GroundPunch [FL], GroundPunch [BL]
+[01:25:25] [COMBO] Split tree node 44 into 2 direction variants: Jab(new) [FR], Jab(new) [BL]
+[01:25:25] [COMBO] Split tree node 45 into 2 direction variants: ThroatPlexus [FR], ThroatPlexus [BL]
+[01:25:25] [COMBO] Split tree node 48 into 2 direction variants: BellyPalm [FR], BellyPalm [BR]
+[01:25:25] [COMBO] Split tree node 50 into 2 direction variants: MultiHit [FL], MultiHit [BR]
+[01:25:25] [COMBO] Split tree node 51 into 2 direction variants: ResilientAttack [FL], ResilientAttack [BL]
+[01:25:25] [COMBO] Split tree node 54 into 2 direction variants: SpinHighKickFollowUp [FL], SpinHighKickFollowUp [BL]
+[01:25:25] [COMBO] Parsed 81 raw nodes from 57 tree nodes
+[01:25:25] [COMBO] Found 19 redirect nodes:  → tree[4],  → tree[7],  → tree[14],  → tree[14],  → tree[14],  → tree[4],  → tree[14],  → tree[30],  → tree[7],  → tree[4],  → tree[14],  → tree[5],  → tree[14],  → tree[5],  → tree[9],  → tree[30],  → tree[4],  → tree[45],  → tree[9]
+[01:25:25] [COMBO] Parsed 110 raw edges
+[01:25:25] [COMBO] After dedup: 102 raw edges
+[01:25:25] [COMBO] Final: 79 nodes, 99 edges (removed 2 conduits, kept 19 redirects)
+[01:25:25] [COMBO] Injected Combat Stance root (barehands only)
+[01:25:25] [COMBO] Parsed 7 start entries: Dodge[BP_MainCharComboStartStates::NewEnumerator4::0], KnockedDown[BP_MainCharComboStartStates::NewEnumerator7::2], Grab[BP_MainCharComboStartStates::NewEnumerator5::0], Default[BP_MainCharComboStartStates::NewEnumerator12::3], Rush[BP_MainCharComboStartStates::NewEnumerator6::2], PushInstigator[BP_MainCharComboStartStates::NewEnumerator10::2], Idle[BP_MainCharComboStartStates::NewEnumerator0::2]

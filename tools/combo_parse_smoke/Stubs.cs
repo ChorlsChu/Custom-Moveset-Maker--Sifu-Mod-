@@ -6,6 +6,11 @@ namespace SifuMovesetEditor
         {
             System.Console.Error.WriteLine($"[{category}] {ex.Message}");
         }
+
+        public static void WriteRaw(string line)
+        {
+            System.Console.Error.WriteLine(line);
+        }
     }
 }
 

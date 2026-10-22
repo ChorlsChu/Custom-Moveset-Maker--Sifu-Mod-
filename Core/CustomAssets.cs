@@ -193,16 +193,18 @@ public static class CustomAssets
     /// Copies every file under the pak extract's content root(s) that does not exist
     /// in the vanilla content into Root, preserving layout. All folders are taken -
     /// Effects/Blueprints/Characters and friends can be referenced by the moveset
-    /// files and must survive export. Returns files copied.
+    /// files and must survive export. Returns files copied. onProgress fires
+    /// (phase, done, total) with phase "compare" or "copy", percent-throttled.
     /// </summary>
-    public static int Harvest(string extractRoot, string vanillaContentDir)
+    public static int Harvest(string extractRoot, string vanillaContentDir,
+        Action<string, int, int>? onProgress = null)
     {
         int copied = 0;
         try
         {
             EnsureRoot();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var wanted = new List<(string file, string rel)>();
+            var allFiles = new List<(string file, string rel)>();
             foreach (var contentRoot in FindContentRoots(extractRoot))
             {
                 foreach (var file in Directory.GetFiles(contentRoot, "*", SearchOption.AllDirectories))
@@ -215,18 +217,42 @@ public static class CustomAssets
                     if (file.EndsWith(".pak", StringComparison.OrdinalIgnoreCase)) continue;
 
                     var rel = Path.GetRelativePath(contentRoot, file).Replace('\\', '/');
-                    if (!string.IsNullOrEmpty(vanillaContentDir))
-                    {
-                        var vanillaPath = Path.Combine(vanillaContentDir,
-                            rel.Replace('/', Path.DirectorySeparatorChar));
-                        // Skip only files byte-identical to vanilla. An existence check here
-                        // silently dropped every mod change that overlaps a vanilla path
-                        // (the WW re-export lost ~1166 modified files that way).
-                        if (FilesIdentical(vanillaPath, file)) continue;
-                    }
-
-                    wanted.Add((file, rel));
+                    allFiles.Add((file, rel));
                 }
+            }
+
+            // Percent-throttle the callback: 10k+ files would otherwise flood the
+            // dispatcher with one update per file.
+            int lastComparePct = -1, lastCopyPct = -1;
+            void Report(string phase, int done, int total, ref int lastPct)
+            {
+                if (onProgress == null || total <= 0) return;
+                int pct = done * 100 / total;
+                if (pct == lastPct && done != total) return;
+                lastPct = pct;
+                onProgress(phase, done, total);
+            }
+
+            var wanted = new List<(string file, string rel)>();
+            for (int i = 0; i < allFiles.Count; i++)
+            {
+                var (file, rel) = allFiles[i];
+                if (!string.IsNullOrEmpty(vanillaContentDir))
+                {
+                    var vanillaPath = Path.Combine(vanillaContentDir,
+                        rel.Replace('/', Path.DirectorySeparatorChar));
+                    // Skip only files byte-identical to vanilla. An existence check here
+                    // silently dropped every mod change that overlaps a vanilla path
+                    // (the WW re-export lost ~1166 modified files that way).
+                    if (FilesIdentical(vanillaPath, file))
+                    {
+                        Report("compare", i + 1, allFiles.Count, ref lastComparePct);
+                        continue;
+                    }
+                }
+
+                wanted.Add((file, rel));
+                Report("compare", i + 1, allFiles.Count, ref lastComparePct);
             }
 
             // A cooked asset ships as a .uasset + .uexp (+ .ubulk/.uptnl) family that must
@@ -251,8 +277,10 @@ public static class CustomAssets
                 }
             }
 
-            foreach (var (file, rel) in wanted.Concat(extras))
+            var copyList = wanted.Concat(extras).ToList();
+            for (int i = 0; i < copyList.Count; i++)
             {
+                var (file, rel) = copyList[i];
                 var dest = Path.Combine(Root, rel.Replace('/', Path.DirectorySeparatorChar));
                 if (string.Equals(Path.GetFullPath(dest), Path.GetFullPath(file),
                         StringComparison.OrdinalIgnoreCase))
@@ -260,6 +288,7 @@ public static class CustomAssets
                 Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
                 File.Copy(file, dest, true);
                 copied++;
+                Report("copy", i + 1, copyList.Count, ref lastCopyPct);
             }
         }
         catch (Exception ex)

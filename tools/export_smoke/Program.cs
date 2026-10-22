@@ -109,10 +109,26 @@ internal static class Program
     {
         try
         {
-            string path = Path.Combine(Directory.GetCurrentDirectory(), "error.log");
+            // Logs live in logs\error-<date>.log (rotated, 7-day history); slice from
+            // the last session banner so the tail shows only this run. Falls back to
+            // the legacy error.log path for old sessions.
+            string dir = Path.Combine(Directory.GetCurrentDirectory(), "logs");
+            string path = Directory.Exists(dir)
+                ? Directory.GetFiles(dir, "error-*.log")
+                    .OrderByDescending(f => File.GetLastWriteTimeUtc(f))
+                    .FirstOrDefault() ?? ""
+                : "";
+            if (path.Length == 0)
+                path = Path.Combine(Directory.GetCurrentDirectory(), "error.log");
             if (!File.Exists(path)) return "";
             var lines = File.ReadAllLines(path);
-            return "---- error.log tail ----\n" + string.Join("\n", lines.Skip(Math.Max(0, lines.Length - 30)));
+            int start = 0;
+            for (int i = lines.Length - 1; i >= 0; i--)
+            {
+                if (lines[i].Contains("===== session start")) { start = i; break; }
+            }
+            var tail = lines.Skip(Math.Max(start, lines.Length - 30));
+            return $"---- {Path.GetFileName(path)} tail ----\n" + string.Join("\n", tail);
         }
         catch { return ""; }
     }

@@ -16,6 +16,7 @@ VanillaBackup/
 ExportedMods/
 setup.log
 error.log
+logs/
 
 ## Release artifacts
 *.zip

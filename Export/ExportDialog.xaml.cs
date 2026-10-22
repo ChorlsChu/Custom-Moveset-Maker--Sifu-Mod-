@@ -834,7 +834,8 @@ public partial class ExportDialog : Window
     }
 
     // ErrorLog.Warnings snapshot taken when an export starts - ShowComplete reports the
-    // delta so real failures show up in the UI instead of only in error.log. The export
+    // delta so real failures show up in the UI instead of only in the session log
+    // (logs\error-<date>.log). The export
     // routine also logs progress through ErrorLog, so only warning-classified writes count.
     private int _warnBaseline;
 
@@ -7872,7 +7873,7 @@ public partial class ExportDialog : Window
 
         var errCount = ErrorLog.Warnings - _warnBaseline;
         txtResult.Text = errCount > 0
-            ? $"{pakName} ({changeCount} changes, {sizeStr}) - {errCount} warning(s), see error.log"
+            ? $"{pakName} ({changeCount} changes, {sizeStr}) - {errCount} warning(s), see the logs folder"
             : $"{pakName} ({changeCount} changes, {sizeStr})";
 
         if (!string.IsNullOrEmpty(installedTo))

@@ -1172,25 +1172,55 @@ public class AnimationParser : IDisposable
     {
         if (_provider == null || !Directory.Exists(customRoot)) return 0;
         int filesAdded = 0;
+        int skippedOverlap = 0;
         try
         {
             // Mount under "<ProjectName>/Content/" so FixPath("Game/<rel>") resolves to
             // "<ProjectName>/Content/<rel>.uasset" — plain "Game/" keys are unreachable
             // because FixPath rewrites the "Game" root to ProjectName + "/Content/".
             var prefix = (string.IsNullOrEmpty(_provider.ProjectName) ? "GameContent" : _provider.ProjectName) + "/Content/";
+
+            // Custom mounts go in at readOrder 1 and FileProviderDictionary resolves
+            // highest-readOrder-first, so a file at a vanilla path would silently REPLACE
+            // vanilla for every in-app read (a harvested WW MainChar_ComboTree would load
+            // as the "vanilla" project). Skip any rel that exists in the vanilla content
+            // dir: those files stay on disk for export staging, but the provider keeps
+            // serving the real vanilla copy. New-path files mount as usual.
+            var vanillaDir = ContentDir;
+            bool vanillaDirUsable = !string.IsNullOrEmpty(vanillaDir) && Directory.Exists(vanillaDir);
+            if (vanillaDirUsable)
+                vanillaDir = Path.GetFullPath(vanillaDir);
+
             var baseDir = new DirectoryInfo(customRoot);
             var customFiles = new Dictionary<string, GameFile>(StringComparer.OrdinalIgnoreCase);
             foreach (var file in Directory.GetFiles(customRoot, "*", SearchOption.AllDirectories))
             {
                 var ext = Path.GetExtension(file).ToLowerInvariant();
                 if (ext != ".uasset" && ext != ".uexp" && ext != ".ubulk") continue;
+
+                if (vanillaDirUsable)
+                {
+                    var rel = Path.GetRelativePath(customRoot, file);
+                    if (!Path.IsPathRooted(rel))
+                    {
+                        var vanillaFile = Path.GetFullPath(Path.Combine(vanillaDir, rel));
+                        if (vanillaFile.StartsWith(vanillaDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                            && File.Exists(vanillaFile))
+                        {
+                            skippedOverlap++;
+                            continue;
+                        }
+                    }
+                }
+
                 var gameFile = new OsGameFile(baseDir, new FileInfo(file), prefix, _provider.Versions);
                 customFiles[gameFile.Path] = gameFile;
                 filesAdded++;
             }
             if (customFiles.Count > 0)
                 _provider.Files.AddFiles(customFiles, readOrder: 1);
-            LogDebug($"[CUSTOM] Mounted {filesAdded} custom anim files from {customRoot} (prefix {prefix})");
+            LogDebug($"[CUSTOM] Mounted {filesAdded} custom anim files from {customRoot} (prefix {prefix}"
+                + (skippedOverlap > 0 ? $", skipped {skippedOverlap} vanilla-overlapping (kept on disk for export)" : "") + ")");
         }
         catch (Exception ex)
         {
@@ -1201,7 +1231,10 @@ public class AnimationParser : IDisposable
 
     private static void LogDebug(string message)
     {
-        try { File.AppendAllText(Path.Combine(Directory.GetCurrentDirectory(), "error.log"), $"[{DateTime.Now:HH:mm:ss}] {message}\n"); } catch { }
+        // Routed through ErrorLog so debug lines land in the same rotated, pruned
+        // log file as everything else (they used to append to a bare error.log and
+        // would otherwise split the session across two files).
+        ErrorLog.WriteRaw(message);
     }
 
     public List<MoveInfo> ScanAnimations()
@@ -1423,6 +1456,7 @@ public class AnimationParser : IDisposable
         var moves = new List<MoveInfo>();
         if (_provider == null || !Directory.Exists(customRoot)) return moves;
 
+        int scanned = 0, droppedNoStruct = 0;
         try
         {
             var archetypesDir = Path.Combine(customRoot, "DB", "AI", "Archetypes");
@@ -1433,18 +1467,25 @@ public class AnimationParser : IDisposable
                     var character = Path.GetFileName(charDir);
                     if (SkipDirectories.Contains(character)) continue;
                     character = CanonicalCharacterName(character);
-                    ScanCustomAttackDbDir(customRoot, charDir, charDir, character, moves);
+                    ScanCustomAttackDbDir(customRoot, charDir, charDir, character, moves,
+                        ref scanned, ref droppedNoStruct);
                 }
             }
 
             var mainCharAttacks = Path.Combine(customRoot, "DB", "_MainChar", "Combos", "Attacks");
             if (Directory.Exists(mainCharAttacks))
-                ScanCustomAttackDbDir(customRoot, mainCharAttacks, mainCharAttacks, "MainChar", moves);
+                ScanCustomAttackDbDir(customRoot, mainCharAttacks, mainCharAttacks, "MainChar", moves,
+                    ref scanned, ref droppedNoStruct);
         }
         catch (Exception ex)
         {
             LogDebug($"[CUSTOM] attack card scan failed: {ex.Message}");
         }
+
+        // One summary line instead of a per-card log: large mods scan thousands of
+        // cards and the per-file lines froze the UI with file I/O and ballooned
+        // error.log into megabytes.
+        LogDebug($"[CUSTOM] attack card scan: {scanned} file(s), {moves.Count} with m_Attack, {droppedNoStruct} skipped (no m_Attack struct)");
 
         return moves
             .OrderBy(m => m.Character, StringComparer.OrdinalIgnoreCase)
@@ -1453,7 +1494,8 @@ public class AnimationParser : IDisposable
             .ToList();
     }
 
-    private void ScanCustomAttackDbDir(string customRoot, string baseDir, string dir, string character, List<MoveInfo> moves)
+    private void ScanCustomAttackDbDir(string customRoot, string baseDir, string dir, string character,
+        List<MoveInfo> moves, ref int scanned, ref int droppedNoStruct)
     {
         foreach (var file in Directory.GetFiles(dir, "*.uasset"))
         {
@@ -1466,9 +1508,10 @@ public class AnimationParser : IDisposable
             var relPath = Path.GetRelativePath(customRoot, file).Replace('\\', '/');
             var gamePath = "Game/" + relPath[..^".uasset".Length];
 
+            scanned++;
             if (!HasAttackStruct(gamePath))
             {
-                LogDebug($"[CUSTOM] dropped (no m_Attack struct): {gamePath}");
+                droppedNoStruct++;
                 continue;
             }
 
@@ -1489,7 +1532,7 @@ public class AnimationParser : IDisposable
             var dirName = Path.GetFileName(subDir);
             var isOldDir = dirName.Equals("_old", StringComparison.OrdinalIgnoreCase);
             if (SkipDirectories.Contains(dirName) && !isOldDir) continue;
-            ScanCustomAttackDbDir(customRoot, baseDir, subDir, character, moves);
+            ScanCustomAttackDbDir(customRoot, baseDir, subDir, character, moves, ref scanned, ref droppedNoStruct);
         }
     }
 
@@ -1515,8 +1558,6 @@ public class AnimationParser : IDisposable
             var gamePath = "Game/" + relPath.Replace(".uasset", "");
 
             var hasStruct = HasAttackStruct(gamePath);
-            if (fileName.Contains("Grab", StringComparison.OrdinalIgnoreCase))
-                LogDebug($"[GRAB_SCAN] {gamePath}: hasStruct={hasStruct} cat={category} weapon={weaponType}");
             if (!hasStruct)
             {
                 LogDebug($"[LIBRARY] dropped (no m_Attack struct): {gamePath}");
@@ -1540,12 +1581,7 @@ public class AnimationParser : IDisposable
             var dirName = Path.GetFileName(subDir);
             var isOldDir = dirName.Equals("_old", StringComparison.OrdinalIgnoreCase);
             if (SkipDirectories.Contains(dirName) && !isOldDir)
-            {
-                if (dirName.Contains("Grab", StringComparison.OrdinalIgnoreCase) ||
-                    dirName.Contains("FarGrab", StringComparison.OrdinalIgnoreCase))
-                    LogDebug($"[GRAB_SCAN] skipped dir: {subDir}");
                 continue;
-            }
             if (isOldDir)
                 LogDebug($"[LIBRARY] scanning _old dir: {subDir}");
             ScanAttackDbDir(subDir, character, moves);
@@ -1559,24 +1595,15 @@ public class AnimationParser : IDisposable
             var dbObj = _provider?.SafeLoadPackageObject<UObject>(gamePath);
             if (dbObj == null && _overlayProvider != null)
                 dbObj = _overlayProvider.SafeLoadPackageObject<UObject>(gamePath);
-            if (dbObj == null)
-            {
-                if (gamePath.Contains("Grab", StringComparison.OrdinalIgnoreCase))
-                    LogDebug($"[GRAB_SCAN] {gamePath}: dbObj=null");
-                return false;
-            }
+            if (dbObj == null) return false;
 
             var mAttack = dbObj.Properties.FirstOrDefault(p => p.Name.Text == "m_Attack");
-            var ok = mAttack?.Tag is StructProperty attackStruct &&
-                     attackStruct.Value.StructType is FStructFallback;
-            if (gamePath.Contains("Grab", StringComparison.OrdinalIgnoreCase))
-                LogDebug($"[GRAB_SCAN] {gamePath}: m_Attack={(mAttack == null ? "missing" : mAttack.Tag?.GetType().Name ?? "null-tag")} structType={(mAttack?.Tag is StructProperty sp ? sp.Value.StructType?.GetType().Name ?? "null" : "n/a")} ok={ok}");
-            return ok;
+            return mAttack?.Tag is StructProperty attackStruct &&
+                   attackStruct.Value.StructType is FStructFallback;
         }
         catch (Exception ex)
         {
-            if (gamePath.Contains("Grab", StringComparison.OrdinalIgnoreCase))
-                LogDebug($"[GRAB_SCAN] {gamePath}: exception {ex.Message}");
+            LogDebug($"[CUSTOM] HasAttackStruct failed for {gamePath}: {ex.Message}");
             return false;
         }
     }
@@ -3437,6 +3464,51 @@ public class AnimationParser : IDisposable
             byIndex.Remove(kvp.Key);
         }
 
+        // Structural mirrors: vanillaMoves above skips redirect/root nodes and the
+        // conduit entries the vanilla parse stripped, so a modded file that keeps the
+        // vanilla base intact (editor exports append user nodes at the end) leaves
+        // those entries unmatched - and they used to surface as duplicate purple
+        // Node_{idx} nodes ("the Node_78 bug"). They already have a vanilla
+        // counterpart in the graph: claim them so SurfaceModdedOnlyNodes skips them.
+        // Redirect diffs keep working through the moddedByTree retarget pass, which
+        // reads all moddedNodes regardless of usedModded. ConduitTargets keys are raw
+        // m_Nodes struct indices - the same space as ModdedComboNodeInfo.TreeIndex.
+        var structuralIndices = new HashSet<int>();
+        foreach (var n in vanillaGraph.Nodes)
+        {
+            if (n.TreeIndex < 0) continue;
+            if (n.IsRedirect || n.IsRoot) structuralIndices.Add(n.TreeIndex);
+        }
+        if (vanillaGraph.ConduitTargets != null)
+        {
+            foreach (var ti in vanillaGraph.ConduitTargets.Keys)
+                if (ti >= 0) structuralIndices.Add(ti);
+        }
+        // Raw positions the parse stripped entirely: conduitIds is "any animless
+        // non-redirect/non-root/non-AI node" (:2069), but ConduitTargets only gets a
+        // key when the conduit had edges to collapse (:2368) - so a blank placeholder
+        // entry in the vanilla file is stripped from the graph yet absent from
+        // ConduitTargets. Graph TreeIndex values are asset-order m_Nodes indices, so
+        // raw-count minus graph indices is exactly the stripped set. Those modded
+        // mirrors used to surface as the opaque Node_{idx} purple nodes.
+        if (vanillaGraph.RawNodeCount > 0)
+        {
+            var graphTreeIdx = vanillaGraph.Nodes
+                .Where(n => n.TreeIndex >= 0)
+                .Select(n => n.TreeIndex)
+                .ToHashSet();
+            for (int i = 0; i < vanillaGraph.RawNodeCount; i++)
+                if (!graphTreeIdx.Contains(i)) structuralIndices.Add(i);
+        }
+        if (structuralIndices.Count > 0)
+        {
+            foreach (var m in moddedNodes)
+            {
+                if (usedModded.Contains(m)) continue;
+                if (structuralIndices.Contains(m.TreeIndex)) usedModded.Add(m);
+            }
+        }
+
         foreach (var kvp in vanillaMoves.OrderBy(k => k.Key))
         {
             var vanillaList = kvp.Value;
@@ -4119,13 +4191,37 @@ public class AnimationParser : IDisposable
         foreach (var m in extras)
         {
             string nodeName = m.Name == "None" ? "" : m.Name;
-            string baseDisplayName = string.IsNullOrEmpty(nodeName)
-                ? $"Node_{m.TreeIndex}"
-                : nodeName
+            string baseDisplayName;
+            if (!string.IsNullOrEmpty(nodeName))
+            {
+                baseDisplayName = nodeName
                     .Replace("MainChar_", "")
                     .Replace("_", " ")
                     .Replace("Attack barehands ", "")
                     .Replace("attack barehands ", "");
+            }
+            else if (m.AttackDbPaths.Count > 0)
+            {
+                // Unnamed attack entry: name it after its attack DB instead of the
+                // opaque Node_{idx} label (PrettifyAttackName with no direction - the
+                // direction-suffix pass below appends it when variants split).
+                var firstDb = NormalizeAnimPath(m.AttackDbPaths[0]);
+                baseDisplayName = PrettifyAttackName(firstDb, "");
+            }
+            else if (!string.IsNullOrEmpty(m.AiClass))
+            {
+                baseDisplayName = m.AiClass;
+            }
+            else if (m.RedirectTargetTreeIndex >= 0)
+            {
+                baseDisplayName = $"Redirect → tree[{m.RedirectTargetTreeIndex}]";
+            }
+            else
+            {
+                baseDisplayName = $"Node_{m.TreeIndex}";
+            }
+            if (string.IsNullOrWhiteSpace(baseDisplayName))
+                baseDisplayName = $"Node_{m.TreeIndex}";
             bool isRoot = nodeName.Contains("Conduit", StringComparison.OrdinalIgnoreCase) ||
                           nodeName.Contains("Root", StringComparison.OrdinalIgnoreCase);
             bool isRedirect = m.RedirectTargetTreeIndex >= 0;
@@ -4232,6 +4328,14 @@ public class AnimationParser : IDisposable
             return graph.Nodes.Where(n => n.TreeIndex == treeIndex).Select(n => n.Id).ToList();
         }
 
+        // Direction of every node ("" when not a direction variant). Used by
+        // AddEdgesFrom to stop the F/B/L/R split from exploding into a full
+        // cartesian fan: WW's Kuroki_P1 has 215 nodes and 4,048 edges (max 35 per
+        // input) purely from variant x variant products.
+        var dirById = graph.Nodes
+            .GroupBy(n => n.Id)
+            .ToDictionary(g => g.Key, g => g.First().DirectionLabel ?? "");
+
         var candidateEdges = new List<ComboEdge>();
         // ownerRedirectTreeIndex >= 0: fromTreeIndex is a modded redirect whose own rows
         // continue from the attack node it plays (A' pass-through) - same rule as the
@@ -4259,8 +4363,29 @@ public class AnimationParser : IDisposable
             {
                 if (t.TargetTreeIndex < 0) continue;
                 var toIds = IdsFor(t.TargetTreeIndex);
+                if (toIds.Count == 0) continue;
                 foreach (var f in fromIds)
-                    foreach (var to in toIds)
+                {
+                    // Direction-aware fan: a direction-variant node links only to
+                    // the matching variant of its target instead of the full
+                    // cartesian product. Fallbacks preserve connectivity:
+                    // same-dir -> unlabeled targets -> full toIds (and unlabeled
+                    // from-nodes keep the conservative full fan).
+                    var targets = toIds;
+                    dirById.TryGetValue(f, out var fDir);
+                    if (!string.IsNullOrEmpty(fDir))
+                    {
+                        var sameDir = toIds.Where(id => dirById.GetValueOrDefault(id) == fDir).ToList();
+                        if (sameDir.Count > 0)
+                            targets = sameDir;
+                        else
+                        {
+                            var unlabeled = toIds.Where(id => string.IsNullOrEmpty(dirById.GetValueOrDefault(id))).ToList();
+                            if (unlabeled.Count > 0)
+                                targets = unlabeled;
+                        }
+                    }
+                    foreach (var to in targets)
                         candidateEdges.Add(new ComboEdge
                         {
                             FromNodeId = f,
@@ -4268,6 +4393,7 @@ public class AnimationParser : IDisposable
                             InputName = t.InputName,
                             OwnerRedirectNodeId = ownerId
                         });
+                }
             }
         }
 

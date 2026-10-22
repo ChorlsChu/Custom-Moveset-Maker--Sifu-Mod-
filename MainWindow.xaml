@@ -336,7 +336,11 @@
         </Border>
 
         <Border DockPanel.Dock="Bottom" Background="#11111b" Padding="12,5">
-            <TextBlock Name="txtStatus" Text="Ready" Foreground="#6c7086" FontSize="11"/>
+            <DockPanel>
+                <TextBlock x:Name="txtVersion" DockPanel.Dock="Right" VerticalAlignment="Center"
+                           Foreground="#6c7086" FontSize="11" Text=""/>
+                <TextBlock Name="txtStatus" Text="Ready" Foreground="#6c7086" FontSize="11"/>
+            </DockPanel>
         </Border>
 
         <Grid>
@@ -787,8 +791,17 @@
                     <TextBox Name="txtSettingsOutputPath" Background="#313244" Foreground="#cdd6f4" Padding="6,3" FontSize="11"/>
                 </DockPanel>
                 <CheckBox Name="chkVerboseLog" Content="Verbose ErrorLog" Foreground="#6c7086" FontSize="11" Margin="0,0,0,4"/>
-                <CheckBox Name="chkShowAiNodes" Content="Show AI Actions &amp; Events (advanced)" Foreground="#6c7086" FontSize="11" Margin="0,0,0,12"
+                <CheckBox Name="chkShowAiNodes" Content="Show AI Actions &amp; Events (advanced)" Foreground="#6c7086" FontSize="11" Margin="0,0,0,4"
                           ToolTip="Beginner view when off: AI action/event nodes, the AI Actions &amp; Events library and AI-target start transitions are hidden from view. View-only - exports are unaffected."/>
+                <CheckBox Name="chkCheckUpdates" Content="Check for updates on startup" Foreground="#6c7086" FontSize="11" Margin="0,0,0,4"
+                          ToolTip="On launch, checks the GitHub releases page for a newer version (the tool's only internet use). Fails silently when offline."/>
+                <TextBlock x:Name="txtVersionSettings" Text="" Foreground="#6c7086" FontSize="11" Margin="0,0,0,12"/>
+                <TextBlock Text="Custom Library (CustomAssets):" Foreground="#6c7086" FontSize="11" Margin="0,0,0,4"/>
+                <DockPanel Margin="0,0,0,12">
+                    <Button Content="Clear…" DockPanel.Dock="Right" Padding="8,3" Click="ClearCustomLibrary_Click" Style="{StaticResource DarkButton}"
+                            ToolTip="Permanently delete every file under CustomAssets (imported mod harvests + hand-dropped files). The current project stays open."/>
+                    <TextBlock Name="txtCustomLibraryInfo" Foreground="#6c7086" FontSize="11" VerticalAlignment="Center" Text="Custom Library: -"/>
+                </DockPanel>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
                     <Button Content="Open Setup…" Padding="12,4" Click="OpenSetup_Click" Style="{StaticResource DarkButton}" Margin="0,0,6,0"
                             ToolTip="Re-open setup to browse folder or pak and refresh vanilla content"/>

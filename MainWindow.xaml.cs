@@ -17,6 +17,7 @@ using SifuMovesetEditor.Setup;
 using SifuMovesetEditor.Export;
 using SifuMovesetEditor.Import;
 using SifuMovesetEditor.Custom;
+using SifuMovesetEditor.Update;
 using UAssetAPI;
 using UAssetAPI.UnrealTypes;
 
@@ -28,8 +29,21 @@ namespace SifuMovesetEditor;
 
 public static class ErrorLog
 {
-    private static readonly string LogPath = Path.Combine(
-        Directory.GetCurrentDirectory(), "error.log");
+    /// <summary>Per-file cap: on hitting it the file rolls over to error-&lt;date&gt;.1.log
+    /// (replacing yesterday's part), so a late-day crash in a noisy session is never lost.</summary>
+    private const int MaxLogBytes = 10 * 1024 * 1024;
+
+    /// <summary>Only the last week of logs is kept: pruned at launch, and writes re-check
+    /// hourly so a long-running session also drops expired files without a restart.</summary>
+    private const int KeepDays = 7;
+
+    private static readonly string LogDir = Path.Combine(
+        Directory.GetCurrentDirectory(), "logs");
+
+    private static readonly object WriteLock = new();
+    private static string _logPath = "";
+    private static string _logDate = "";
+    private static DateTime _lastPruneUtc = DateTime.MinValue;
 
     /// <summary>Total writes this session - callers snapshot it to surface new
     /// errors (an export must not fail silently in the UI while only the log knows).</summary>
@@ -45,7 +59,18 @@ public static class ErrorLog
 
     public static void Init()
     {
-        try { File.WriteAllText(LogPath, ""); } catch { }
+        try
+        {
+            Directory.CreateDirectory(LogDir);
+            PruneOldLogs();
+            lock (WriteLock)
+            {
+                RollIfNecessary();
+                File.AppendAllText(_logPath,
+                    $"===== session start {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n");
+            }
+        }
+        catch { }
         Writes = 0;
         Warnings = 0;
     }
@@ -54,22 +79,76 @@ public static class ErrorLog
     {
         Interlocked.Increment(ref Writes);
         if (LooksLikeWarning(ex)) Interlocked.Increment(ref Warnings);
-        try
-        {
-            var msg = $"[{DateTime.Now:HH:mm:ss}] [{tag}] {ex}\n";
-            File.AppendAllText(LogPath, msg);
-        }
-        catch { }
+        Append($"[{DateTime.Now:HH:mm:ss}] [{tag}] {ex}\n");
     }
 
     public static void Write(string tag, string message)
     {
         Interlocked.Increment(ref Writes);
         if (MessageLooksLikeWarning(message)) Interlocked.Increment(ref Warnings);
+        Append($"[{DateTime.Now:HH:mm:ss}] [{tag}] {message}\n");
+    }
+
+    /// <summary>Debug/progress line (AnimationParser.LogDebug): lands in the same file,
+    /// but deliberately does not move the Writes/Warnings counters - those drive the
+    /// export warning panel and historical debug lines never counted toward them.</summary>
+    public static void WriteRaw(string line)
+        => Append($"[{DateTime.Now:HH:mm:ss}] {line}\n");
+
+    private static void Append(string msg)
+    {
+        lock (WriteLock)
+        {
+            try
+            {
+                RollIfNecessary();
+                File.AppendAllText(_logPath, msg);
+            }
+            catch { }
+        }
+    }
+
+    /// <summary>Resolves today's dated file (date rollover or first write), enforces the
+    /// size cap, and triggers the periodic prune. Always called under WriteLock.</summary>
+    private static void RollIfNecessary()
+    {
+        string today = DateTime.Now.ToString("yyyy-MM-dd");
+        if (_logDate != today || _logPath.Length == 0)
+        {
+            Directory.CreateDirectory(LogDir);
+            _logDate = today;
+            _logPath = Path.Combine(LogDir, $"error-{today}.log");
+        }
+        else if (new FileInfo(_logPath).Length >= MaxLogBytes)
+        {
+            var backup = Path.Combine(LogDir, $"error-{today}.1.log");
+            try { File.Delete(backup); } catch { }
+            try { File.Move(_logPath, backup); } catch { }
+            try
+            {
+                File.AppendAllText(_logPath,
+                    $"[{DateTime.Now:HH:mm:ss}] [LOG] Hit the {MaxLogBytes / (1024 * 1024)} MB cap - "
+                    + $"the earlier part of this session is kept as {Path.GetFileName(backup)}\n");
+            }
+            catch { }
+        }
+
+        if ((DateTime.UtcNow - _lastPruneUtc).TotalMinutes >= 60)
+        {
+            _lastPruneUtc = DateTime.UtcNow;
+            PruneOldLogs();
+        }
+    }
+
+    private static void PruneOldLogs()
+    {
         try
         {
-            var msg = $"[{DateTime.Now:HH:mm:ss}] [{tag}] {message}\n";
-            File.AppendAllText(LogPath, msg);
+            var cutoff = DateTime.Now.AddDays(-KeepDays);
+            foreach (var file in Directory.GetFiles(LogDir, "error-*.log"))
+            {
+                try { if (File.GetLastWriteTime(file) < cutoff) File.Delete(file); } catch { }
+            }
         }
         catch { }
     }
@@ -105,6 +184,11 @@ public partial class MainWindow : Window
     // Set while an import harvest writes into CustomAssets so its own file events
     // don't pop the "New Custom File(s)" dialog (import registers cards directly).
     private bool _suppressCustomWatcher;
+    // UtcNow taken when the last import harvest finished; the watcher flush uses
+    // it to ignore late FileSystemWatcher deliveries for the harvested copies
+    // (File.Copy preserves the source timestamp, so those files always have a
+    // LastWriteTime at or before this cutoff).
+    private DateTime _lastCustomFileWriteUtc;
     private FileSystemWatcher? _customWatcher;
     private DispatcherTimer? _customWatcherDebounce;
     private readonly HashSet<string> _customWatcherPending = new(StringComparer.OrdinalIgnoreCase);
@@ -322,6 +406,43 @@ public partial class MainWindow : Window
         _initialized = true;
         tabMoves.SelectedIndex = TabVanilla;
         StartCustomAssetsWatcher();
+
+        var version = UpdateChecker.CurrentVersion();
+        Title = $"Sifu Moveset Editor {version}";
+        txtVersion.Text = $"v{version}";
+        txtVersionSettings.Text = $"Version {version}";
+        UpdateChecker.CleanupSwapLeftovers();
+        UpdateChecker.CleanupStaleTempDirs();
+        _ = MaybeCheckForUpdatesAsync();
+    }
+
+    /// <summary>Launch-time update check - the tool's only internet use. Silent on
+    /// any failure (offline users see nothing). SIFU_UPDATE_FORCE=1 treats the
+    /// current version as 0.0 so the dialog can be exercised against the real
+    /// releases without publishing a newer one.</summary>
+    private async Task MaybeCheckForUpdatesAsync()
+    {
+        try
+        {
+            if (!_checkUpdatesOnLaunch) return;
+            var force = Environment.GetEnvironmentVariable("SIFU_UPDATE_FORCE") == "1";
+            var info = await UpdateChecker.CheckForUpdateAsync(force ? new Version(0, 0) : null);
+            if (info == null)
+            {
+                ErrorLog.WriteRaw($"[UPDATE] check ok: current {UpdateChecker.CurrentVersion()}, no newer release");
+                return;
+            }
+            ErrorLog.WriteRaw($"[UPDATE] {info.Tag} available (current {UpdateChecker.CurrentVersion()})");
+            var dialog = new UpdateDialog(info) { Owner = this };
+            if (dialog.ShowDialog() == true)
+                Application.Current.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            // WriteRaw on purpose: a failed check (offline, rate limit) must not
+            // bump the export warning counters.
+            ErrorLog.WriteRaw($"[UPDATE] check failed (offline?): {ex.Message}");
+        }
     }
 
     private void WebView_NavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
@@ -356,6 +477,8 @@ public partial class MainWindow : Window
                 if (settings != null)
                 {
                     _customAssetsAccepted = settings.CustomAssetsAccepted;
+                    _checkUpdatesOnLaunch = settings.CheckUpdatesOnLaunch;
+                    chkCheckUpdates.IsChecked = _checkUpdatesOnLaunch;
                     // Applies on every branch below (including the repair-wizard path,
                     // which never syncs chkShowLines).
                     _showAiNodes = settings.ShowAiNodes;
@@ -471,6 +594,9 @@ public partial class MainWindow : Window
     private double[]? _savedCameraPos;
     private double[]? _savedCameraTarget;
 
+    /// <summary>Settings-tab toggle; loaded from settings.json (default on).</summary>
+    private bool _checkUpdatesOnLaunch = true;
+
     private void SaveSettings()
     {
         var settings = new Settings
@@ -479,6 +605,7 @@ public partial class MainWindow : Window
             OutputPath = _outputPath,
             ShowLines = chkShowLines.IsChecked == true,
             ShowAiNodes = _showAiNodes,
+            CheckUpdatesOnLaunch = _checkUpdatesOnLaunch,
             CameraPosition = _savedCameraPos,
             CameraTarget = _savedCameraTarget,
             UnrealPakPath = Setup.ContentExtractor.CustomUnrealPakPath ?? "",
@@ -529,6 +656,17 @@ public partial class MainWindow : Window
     {
         if (_initInProgress) return;
         _initInProgress = true;
+        // [INIT] per-phase timings: pins down where startup time goes (the
+        // CustomAssets-heavy sessions reached the mount step at 36 s vs 13 s clean
+        // with no visible cause in the log).
+        var initSw = System.Diagnostics.Stopwatch.StartNew();
+        long initLast = 0;
+        void InitPhase(string phase)
+        {
+            var now = initSw.ElapsedMilliseconds;
+            ErrorLog.WriteRaw($"[INIT] {phase}: {now - initLast} ms (t+{now} ms)");
+            initLast = now;
+        }
         try
         {
             var contentPath = Path.Combine(_contentPath, "Content");
@@ -536,25 +674,30 @@ public partial class MainWindow : Window
             UpdateLoading("Initializing parser...", _contentPath);
             txtStatus.Text = $"Loading from: {_contentPath}...";
             _parser.Initialize(_contentPath, contentPath);
+            InitPhase("parser init + engine content");
 
             UpdateLoading("Scanning attack animations...", "Walking Animations/ directory...");
             _allMoves = await Task.Run(() => _parser.ScanAnimations());
+            InitPhase("scan animations");
 
             UpdateLoading("Scanning combo tree data...", "Reading attack data tables...");
             var usedPaths = await Task.Run(() => _parser.ScanUsedAnimations());
             await Task.Run(() => _parser.ScanDataTableTiming());
             foreach (var move in _allMoves)
                 move.IsUsed = usedPaths.Contains(move.FullPath);
+            InitPhase("scan used paths + DT timing");
 
             UpdateLoading("Scanning attack DBs...", "Finding archetype attack moves...");
             var attackDbMoves = await Task.Run(() => _parser.ScanArchetypeAttackDbs());
             _allMoves.AddRange(attackDbMoves);
+            InitPhase("scan archetype attack DBs");
 
             UpdateLoading("Scanning get-up animations...", "Finding enemy get-up moves...");
             var getUpMoves = await Task.Run(() => _parser.ScanGetUpAnims());
             _allMoves.AddRange(getUpMoves);
             _allMoves = _allMoves.GroupBy(m => m.FullPath).Select(g => g.First()).ToList();
             _allMoves = PreferAttackDbEntries(_allMoves);
+            InitPhase("scan get-ups + dedupe");
 
             UpdateLoading($"Validating animations (0/{_allMoves.Count})...", "");
             var totalMoves = _allMoves.Count;
@@ -571,6 +714,7 @@ public partial class MainWindow : Window
                             $"Validating animations ({validated}/{totalMoves})...", ""));
                 }
             });
+            InitPhase("validate animations");
 
             UpdateLoading("Loading locomotion + building mappings...", "");
             var locoResult = await Task.Run(() =>
@@ -580,21 +724,32 @@ public partial class MainWindow : Window
                 return loco;
             });
             _allLocomotion = locoResult;
+            InitPhase("locomotion + mappings");
 
             UpdateLoading($"Building library ({_allMoves.Count} moves)...", "");
             await Task.Run(BuildMainCharLibraryMoves);
             await Task.Run(() =>
             {
                 _parser.MountCustomIntoProvider(CustomAssets.Root);
-                RegisterCustomMoves();
+                // Anim cards only - the attack-card scan (17-33 s of package loads)
+                // is deferred so startup is not held hostage by it.
+                RegisterCustomAnimCards();
             });
+            InitPhase("library build + custom mount");
             BuildTree(_allMoves);
             LogLibraryDiagnostics();
+            InitPhase("build lists + diagnostics");
 
             UpdateLoading("Loading combo graph...", "Parsing MainChar combo tree...");
             await LoadComboGraphAsync();
+            InitPhase("combo graph");
 
             txtStatus.Text = $"Loaded {_allMoves.Count} animations from {_contentPath}";
+
+            // Warm the attack-card scan in the background now that the UI is ready;
+            // ApplyCustomAttackScanAsync registers the cards silently when it lands.
+            RequestCustomAttackCardScan();
+            _ = ApplyCustomAttackScanAsync(showOverlay: false);
         }
         catch (Exception ex)
         {
@@ -607,6 +762,7 @@ public partial class MainWindow : Window
             _initInProgress = false;
             loadingOverlay.Visibility = Visibility.Collapsed;
             SetWebViewVisible(true);
+            ErrorLog.WriteRaw($"[INIT] startup total: {initSw.ElapsedMilliseconds} ms");
         }
     }
 
@@ -616,8 +772,128 @@ public partial class MainWindow : Window
         txtSettingsOutputPath.Text = string.IsNullOrEmpty(_outputPath) ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportedMods") : _outputPath;
         // Reset the checkbox to the saved value so closing with Cancel discards edits.
         chkShowAiNodes.IsChecked = _showAiNodes;
+        chkCheckUpdates.IsChecked = _checkUpdatesOnLaunch;
+        UpdateCustomLibraryInfo();
         SetWebViewVisible(false);
         settingsOverlay.Visibility = Visibility.Visible;
+    }
+
+    private void UpdateCustomLibraryInfo()
+    {
+        try
+        {
+            int n = Directory.Exists(CustomAssets.Root)
+                ? Directory.EnumerateFiles(CustomAssets.Root, "*", SearchOption.AllDirectories).Count()
+                : 0;
+            txtCustomLibraryInfo.Text = n == 0
+                ? "Custom Library: empty"
+                : $"Custom Library: {n:N0} file(s) on disk";
+        }
+        catch
+        {
+            txtCustomLibraryInfo.Text = "Custom Library: (count unavailable)";
+        }
+    }
+
+    private void ClearCustomLibrary_Click(object sender, RoutedEventArgs e)
+    {
+        int fileCount;
+        try
+        {
+            fileCount = Directory.Exists(CustomAssets.Root)
+                ? Directory.EnumerateFiles(CustomAssets.Root, "*", SearchOption.AllDirectories).Count()
+                : 0;
+        }
+        catch { fileCount = -1; }
+        if (fileCount <= 0)
+        {
+            UpdateCustomLibraryInfo();
+            txtStatus.Text = "Custom library is already empty";
+            return;
+        }
+
+        var choice = MessageBox.Show(
+            $"Delete all {fileCount:N0} file(s) under CustomAssets?\n\n"
+            + "\u2022 Imported mod harvests and hand-dropped files are removed permanently.\n"
+            + "\u2022 The current project stays open, but anything referencing custom files will show missing content.\n\n"
+            + "This cannot be undone.",
+            "Clear Custom Library", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (choice != MessageBoxResult.Yes) return;
+
+        settingsOverlay.Visibility = Visibility.Collapsed;
+        SetWebViewVisible(true);
+        _ = ClearCustomLibraryAsync(fileCount);
+    }
+
+    /// <summary>
+    /// Deletes every file under CustomAssets, drops the custom cards from the library and
+    /// swaps in a clean provider (CUE4Parse dictionaries cannot unmount), then reparses
+    /// the current stance from vanilla-only content. Project state/caches are kept.
+    /// </summary>
+    private async Task ClearCustomLibraryAsync(int fileCount)
+    {
+        UpdateLoading("Clearing custom library...", $"{fileCount:N0} files");
+        loadingOverlay.Visibility = Visibility.Visible;
+        _suppressCustomWatcher = true;
+        try
+        {
+            int deleted = 0;
+            await Task.Run(() =>
+            {
+                foreach (var file in Directory.EnumerateFiles(CustomAssets.Root, "*", SearchOption.AllDirectories))
+                {
+                    try { File.Delete(file); deleted++; }
+                    catch (Exception ex) { ErrorLog.Write("CUSTOM", ex); }
+                }
+                // Prune the emptied folders bottom-up; Root itself stays.
+                foreach (var dir in Directory.EnumerateDirectories(CustomAssets.Root, "*", SearchOption.AllDirectories)
+                             .OrderByDescending(d => d.Length))
+                {
+                    try { if (Directory.GetFileSystemEntries(dir).Length == 0) Directory.Delete(dir); }
+                    catch { }
+                }
+            });
+            ErrorLog.Write("CUSTOM", new Exception($"Cleared custom library: {deleted} file(s) deleted"));
+
+            // Close-prompt manifest: the folder is empty again - forget the accepted set.
+            _customAssetsAccepted = null;
+
+            // Custom cards leave the library; the stale mount goes with the provider swap.
+            _allMoves?.RemoveAll(m => string.Equals(m.Category, "Custom", StringComparison.OrdinalIgnoreCase));
+            lock (_customAttackScanLock) { _customAttackScanTask = null; _customAttackScanDirty = false; }
+
+            var contentDir = Setup.ContentDetector.ResolveContentDir(_contentPath);
+            var fresh = new AnimationParser();
+            await Task.Run(() =>
+            {
+                fresh.Initialize(_contentPath, contentDir);
+                fresh.MountCustomIntoProvider(CustomAssets.Root);
+            });
+            _parser = fresh;
+
+            if (_activeStance == "MainChar")
+                await SwitchStanceAsync(_activeStance);
+            else
+                await LoadArchetypeGraphAsync(_activeStance);
+
+            RequestCustomAttackCardScan();
+            _ = ApplyCustomAttackScanAsync(showOverlay: false);
+            FilterMoves();
+            UpdateCustomLibraryInfo();
+            txtStatus.Text = $"Custom library cleared ({deleted:N0} file(s) deleted)";
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("CUSTOM", ex);
+            txtStatus.Text = $"Clear custom library failed: {ex.Message}";
+        }
+        finally
+        {
+            _suppressCustomWatcher = false;
+            // Drop any watcher events the deletion itself queued.
+            lock (_customWatcherPending) _customWatcherPending.Clear();
+            loadingOverlay.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void SettingsOverlay_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -738,7 +1014,7 @@ public partial class MainWindow : Window
         if (dlg.ShowDialog() == true) txtSettingsOutputPath.Text = dlg.FolderName;
     }
 
-    private void SaveSettings_Click(object sender, RoutedEventArgs e)
+    private async void SaveSettings_Click(object sender, RoutedEventArgs e)
     {
         var newContent = txtSettingsContentPath.Text.Trim();
         var newOutput = txtSettingsOutputPath.Text.Trim();
@@ -757,8 +1033,21 @@ public partial class MainWindow : Window
         _outputPath = newOutput;
         bool aiVisibilityChanged = _showAiNodes != (chkShowAiNodes.IsChecked == true);
         _showAiNodes = chkShowAiNodes.IsChecked == true;
+        _checkUpdatesOnLaunch = chkCheckUpdates.IsChecked == true;
         SaveSettings();
-        try { _parser?.Dispose(); var cDir = Setup.ContentDetector.ResolveContentDir(_contentPath); var fresh = new AnimationParser(); fresh.Initialize(_contentPath, cDir); fresh.MountCustomIntoProvider(CustomAssets.Root); _parser = fresh; } catch (Exception ex) { ErrorLog.Write("SETTINGS", ex); }
+        try
+        {
+            _parser?.Dispose();
+            var cDir = Setup.ContentDetector.ResolveContentDir(_contentPath);
+            var fresh = new AnimationParser();
+            await Task.Run(() =>
+            {
+                fresh.Initialize(_contentPath, cDir);
+                fresh.MountCustomIntoProvider(CustomAssets.Root);
+            });
+            _parser = fresh;
+        }
+        catch (Exception ex) { ErrorLog.Write("SETTINGS", ex); }
         bool rearranged = ApplyShowAiNodes(aiVisibilityChanged);
         settingsOverlay.Visibility = Visibility.Collapsed;
         SetWebViewVisible(true);
@@ -821,15 +1110,24 @@ public partial class MainWindow : Window
         _searchDebounceTimer.Start();
     }
 
-    private void TabChanged(object sender, SelectionChangedEventArgs e)
+    private async void TabChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_initialized) return;
         FilterMoves();
+        // First Custom-tab open waits out the deferred attack-card scan (overlay while it
+        // runs). The post-startup warmup usually finished already; if there is no scan
+        // (no CustomAssets yet) this returns immediately.
+        if (tabCustom.IsSelected)
+        {
+            try { await ApplyCustomAttackScanAsync(showOverlay: true); }
+            catch (Exception ex) { ErrorLog.Write("CUSTOM", ex); }
+        }
     }
 
-    private void FilterMoves()
+    private void FilterMoves(bool logTiming = false)
     {
         if (_allMoves == null || _allMoves.Count == 0) return;
+        var filterSw = System.Diagnostics.Stopwatch.StartNew();
 
         var searchText = txtSearch.Text.ToLower();
 
@@ -888,6 +1186,17 @@ public partial class MainWindow : Window
         txtMoveCount.Text = _aiLibraryMode
             ? $"{CountAiActions()} actions / {CountAiEvents()} events"
             : $"{vanillaMoves.Count} vanilla / {unusedMoves.Count} other / {filteredLoco.Count} stances / {customMoves.Count} custom";
+        if (logTiming)
+        {
+            // Materialized row counts matter: these ItemsControls are unvirtualized, so
+            // expanded accordion groups realize one container per row on the UI thread.
+            int Rows(System.Collections.IList? src) => src?.Count ?? -1;
+            ErrorLog.WriteRaw($"[RESET] FilterMoves {filterSw.ElapsedMilliseconds} ms "
+                + $"(cards: all={_allMoves.Count}, vanilla={vanillaMoves.Count}, other={unusedMoves.Count}, custom={customMoves.Count}; "
+                + $"rows materialized: vanilla={Rows(listVanilla.ItemsSource as System.Collections.IList)}, "
+                + $"other={Rows(listUnused.ItemsSource as System.Collections.IList)}, "
+                + $"custom={Rows(listCustom.ItemsSource as System.Collections.IList)})");
+        }
     }
 
     private int CountAiActions() => _aiNodes.Count(n => n.Kind == "Action");
@@ -1381,6 +1690,9 @@ public partial class MainWindow : Window
     private static readonly Dictionary<string, SolidColorBrush> EdgeBrushByInput = new(StringComparer.OrdinalIgnoreCase);
     private static readonly SolidColorBrush EdgeDefaultBrush;
     private static readonly SolidColorBrush EdgeStanceDimBrush;
+    // Frozen: GetEdgeBrush used to allocate one of these per edge per render
+    // (~4k allocations on a Kuroki-sized graph).
+    private static readonly SolidColorBrush EdgeRedirectIncomingBrush = new(Color.FromArgb(0x60, 0x6c, 0x70, 0x86));
 
     static MainWindow()
     {
@@ -1394,21 +1706,22 @@ public partial class MainWindow : Window
         EdgeDefaultBrush.Freeze();
         EdgeStanceDimBrush = new SolidColorBrush(EdgeStanceDim);
         EdgeStanceDimBrush.Freeze();
+        EdgeRedirectIncomingBrush.Freeze();
         ChainHighlightBorder.Freeze();
         ChainHighlightEdgeBrush.Freeze();
     }
 
-    private class EdgeVisuals
-    {
-        public System.Windows.Shapes.Path Path;
-        public System.Windows.Shapes.Path HitPath;
-        public System.Windows.Shapes.Polygon Arrow;
-        public bool IsConnected;
-        public bool IsConflict;
-        public int LastZIndex;
-        public System.Windows.Media.Effects.DropShadowEffect? Glow;
-    }
-    private Dictionary<ComboEdge, EdgeVisuals> _edgeVisuals = new();
+    // ── Batched edge rendering ──
+    // The old per-edge Path + hitPath + arrow triple made heavily-changed graphs
+    // unusable: Kuroki_P1 (4,048 edges) built ~12k canvas children and Fajar_P2
+    // (24,634) would build ~50k - the switch spike and the constant hover lag both
+    // came from that element count. Edges now render as one stroke Path (+ one
+    // arrow-fill Path) per (brush, thickness, dash, z, opacity) bucket, with
+    // math-based hit-testing for click/right-click. The full graph stays visible.
+    private sealed record EdgeHit(ComboEdge Edge, Point From, Point C1, Point C2, Point To);
+    private readonly List<EdgeHit> _edgeHits = new();
+    private readonly List<System.Windows.Shapes.Path> _edgeBatchPaths = new();
+    private int _lastConflictCount;
     private Dictionary<int, Border> _nodeBorders = new();
 
     private void SelectMoveCard(Border border)
@@ -1457,6 +1770,19 @@ public partial class MainWindow : Window
     }
 
     private string AttackDbContentDir() => ContentDetector.ResolveContentDir(_contentPath);
+
+    /// <summary>
+    /// True when a node anim path ("Game/Animations/...") exists in the vanilla
+    /// content dir. Import-time guard: such an anim belongs in the vanilla library,
+    /// never as a Custom card (library scan gaps are what the check bypasses).
+    /// </summary>
+    private static bool VanillaAnimOnDisk(string contentDir, string animPath)
+    {
+        var rel = VoiceArchetypeFixer.NormalizeRel(animPath);
+        if (string.IsNullOrEmpty(rel)) return false;
+        return File.Exists(Path.Combine(contentDir,
+            rel.Replace('/', Path.DirectorySeparatorChar) + ".uasset"));
+    }
 
     private static string FormatAttackDbVanilla(AttackDbCardValues v)
     {
@@ -2091,30 +2417,9 @@ public partial class MainWindow : Window
             kvp.Value.Opacity = lit ? 1.0 : ChainDimOpacity;
         }
 
-        foreach (var kvp in _edgeVisuals)
-        {
-            var edge = kvp.Key;
-            var vis = kvp.Value;
-            bool chain = active && _chainNodeIds.Contains(edge.FromNodeId) && _chainNodeIds.Contains(edge.ToNodeId);
-            var brush = GetEdgeBrush(edge);
-            if (chain && (!mainChar || IsIncomingToRedirect(edge)))
-                brush = ChainHighlightEdgeBrush;
-            if (vis.Path != null)
-            {
-                vis.Path.Stroke = brush;
-                vis.Path.StrokeThickness = chain ? ChainEdgeThickness : GetEdgeThickness(edge);
-                vis.Path.Opacity = active && !chain ? ChainDimOpacity : 1.0;
-                Canvas.SetZIndex(vis.Path, chain ? ChainEdgeZIndex : 0);
-            }
-            if (vis.HitPath != null)
-                Canvas.SetZIndex(vis.HitPath, chain ? ChainEdgeZIndex : -1);
-            if (vis.Arrow != null)
-            {
-                vis.Arrow.Fill = brush;
-                vis.Arrow.Opacity = active && !chain ? ChainDimOpacity : 1.0;
-                Canvas.SetZIndex(vis.Arrow, chain ? ChainEdgeZIndex : 0);
-            }
-        }
+        // Edge styling (chain highlight / dim / z-order) rides on the batch buckets -
+        // a rebuild re-buckets every edge under the current selection state.
+        RebuildEdgeBatches();
     }
 
     private void ApplySelectedNodeStyle(Border border, ComboNode node)
@@ -2181,7 +2486,7 @@ public partial class MainWindow : Window
             ? EdgeStanceDimBrush
             : (EdgeBrushByInput.TryGetValue(edge.InputName, out var c) ? c : EdgeDefaultBrush);
         if (IsIncomingToRedirect(edge))
-            brush = new SolidColorBrush(Color.FromArgb(0x60, 0x6c, 0x70, 0x86));
+            brush = EdgeRedirectIncomingBrush;
         return brush;
     }
 
@@ -2933,6 +3238,30 @@ public partial class MainWindow : Window
         return snapshot;
     }
 
+    // Saved layouts from before the cycle-safe layering can carry absurd coordinates
+    // (197 of 208 Kuroki_P1 nodes sat at X ≈ 610,000). Treat out-of-range positions
+    // as missing so the unit relayouts on restore instead of scrolling off into the
+    // void on every load. 50k px ≈ 227 columns of normal spacing - far beyond any
+    // sane hand placement or computed layout.
+    private const double SaneCoordMax = 50_000;
+
+    private static bool SaneCoord(Point p) =>
+        !double.IsNaN(p.X) && !double.IsNaN(p.Y)
+        && p.X >= -SaneCoordMax && p.X <= SaneCoordMax
+        && p.Y >= -SaneCoordMax && p.Y <= SaneCoordMax;
+
+    private static Dictionary<int, Point> SanitizePositions(Dictionary<int, Point>? src)
+    {
+        var result = new Dictionary<int, Point>();
+        if (src == null) return result;
+        foreach (var kvp in src)
+        {
+            if (SaneCoord(kvp.Value))
+                result[kvp.Key] = kvp.Value;
+        }
+        return result;
+    }
+
     private static Dictionary<int, Point> BuildPositionsForGraph(
         string unitKey,
         ComboGraph? graph,
@@ -2949,7 +3278,7 @@ public partial class MainWindow : Window
 
         foreach (var node in graph.Nodes)
         {
-            if (source.TryGetValue(node.Id, out var pt))
+            if (source.TryGetValue(node.Id, out var pt) && SaneCoord(pt))
                 result[node.Id] = pt;
         }
 
@@ -2989,9 +3318,16 @@ public partial class MainWindow : Window
 
     private bool TryRestoreUnitFromCache(string key)
     {
-        if (!_unitCaches.TryGetValue(key, out var cached)) return false;
+        if (!_unitCaches.TryGetValue(key, out var cached))
+        {
+            ErrorLog.Write("SWITCH", $"cache miss for {key} - parsing from disk");
+            return false;
+        }
+        var restoreSw = System.Diagnostics.Stopwatch.StartNew();
         _comboGraph = cached.Graph;
-        _nodePositions = new Dictionary<int, Point>(cached.Positions);
+        // Drop garbage coordinates so a pre-fix save relayouts instead of restoring
+        // anchors at X ≈ 610,000 (the "missing positions" check below catches the gap).
+        _nodePositions = SanitizePositions(cached.Positions);
         _activeVariant = cached.ActiveVariant;
         _activeWeapon = NormalizeWeaponForCache(
             key.Contains('|') ? key.Split('|')[0] : key,
@@ -3003,10 +3339,17 @@ public partial class MainWindow : Window
         if (_comboGraph.Nodes.Count > 0 &&
             _comboGraph.Nodes.Any(n => !_nodePositions.ContainsKey(n.Id)))
         {
+            var layoutSw = System.Diagnostics.Stopwatch.StartNew();
             LayoutComboGraph();
+            layoutSw.Stop();
+            ErrorLog.Write("SWITCH", $"{key}: layout for missing positions took {layoutSw.ElapsedMilliseconds} ms ({_comboGraph.Nodes.Count} nodes)");
         }
+        var renderSw = System.Diagnostics.Stopwatch.StartNew();
         RenderComboGraph();
+        renderSw.Stop();
         txtStatus.Text = $"Restored cached state for {key}";
+        restoreSw.Stop();
+        ErrorLog.Write("SWITCH", $"restored {key} in {restoreSw.ElapsedMilliseconds} ms (render {renderSw.ElapsedMilliseconds} ms, {_comboGraph.Edges.Count} edges, canvas {comboCanvas.Width:0}px)");
         return true;
     }
 
@@ -3041,12 +3384,20 @@ public partial class MainWindow : Window
                 int unitCount = _unitCaches.Count;
                 string filePath = dialog.FileName;
                 // Serialization runs off-thread behind the overlay; it blocks input, so
-                // the caches can't mutate while the background save walks them.
+                // the caches can't mutate while the background save walks them. The
+                // change-summary walk gets the same guarantee - build it inside the
+                // loading work so it can't freeze the window after the overlay lifts.
+                List<UnitReview>? saveReviews = null;
                 await RunWithLoadingAsync("Saving project...", Path.GetFileName(filePath),
-                    () => Task.Run(() => ProjectManager.SaveWithCaches(
-                        project, _unitCaches, stance, variant, weapon, filePath)));
+                    async () =>
+                    {
+                        await Task.Run(() => ProjectManager.SaveWithCaches(
+                            project, _unitCaches, stance, variant, weapon, filePath));
+                        saveReviews = await Task.Run(() =>
+                            ProjectChangeSummary.BuildFromUnitCaches(_unitCaches, _contentPath));
+                    });
                 txtStatus.Text = $"Saved project: {filePath} ({unitCount} units)";
-                ShowProjectFeedbackDialog(true, filePath, project.Name);
+                ShowProjectFeedbackDialog(true, filePath, project.Name, prebuiltUnits: saveReviews);
             }
             catch (Exception ex)
             {
@@ -3074,11 +3425,22 @@ public partial class MainWindow : Window
             try
             {
                 string filePath = dialog.FileName;
+                List<UnitReview>? loadReviews = null;
                 var (project, restoredKey, ok) = await RunWithLoadingAsync(
                     "Loading project...", Path.GetFileName(filePath),
-                    () => LoadProjectCoreAsync(filePath));
+                    async () =>
+                    {
+                        var r = await LoadProjectCoreAsync(filePath);
+                        // Built while the overlay still blocks input (same guarantee the
+                        // cache restore relies on) so the summary walk can't freeze the
+                        // window after the overlay lifts or race post-load edits.
+                        if (r.ok)
+                            loadReviews = await Task.Run(() =>
+                                ProjectChangeSummary.BuildFromUnitCaches(_unitCaches, _contentPath));
+                        return r;
+                    });
                 if (ok && project != null)
-                    ShowProjectFeedbackDialog(false, filePath, project.Name, restoredKey);
+                    ShowProjectFeedbackDialog(false, filePath, project.Name, restoredKey, loadReviews);
             }
             catch (Exception ex)
             {
@@ -3125,7 +3487,14 @@ public partial class MainWindow : Window
             if (restore.Restored > 0 || restore.Replaced > 0)
             {
                 try { _parser.MountCustomIntoProvider(CustomAssets.Root); } catch { }
-                try { RegisterCustomMoves(); FilterMoves(); } catch { }
+                try
+                {
+                    RegisterCustomAnimCards();
+                    FilterMoves();
+                    RequestCustomAttackCardScan();
+                    _ = ApplyCustomAttackScanAsync(showOverlay: false);
+                }
+                catch { }
                 ErrorLog.Write("PROJECT", new Exception(
                     $"Custom files: {restore.Restored} restored, {restore.Replaced} replaced, "
                     + $"{restore.SkippedIdentical} already matched, {restore.SkippedConflicts} conflict(s) kept"));
@@ -3336,11 +3705,17 @@ public partial class MainWindow : Window
         return (project, restoredKey, true);
     }
 
-    private void ShowProjectFeedbackDialog(bool isSave, string filePath, string projectName, string? restoredKey = null)
+    private void ShowProjectFeedbackDialog(bool isSave, string filePath, string projectName,
+        string? restoredKey = null, List<UnitReview>? prebuiltUnits = null)
     {
         try
         {
-            var units = ProjectChangeSummary.BuildFromUnitCaches(_unitCaches, _contentPath);
+            // Callers prebuild the summary inside RunWithLoadingAsync (the loading
+            // overlay blocks input, so the caches can't mutate mid-walk) - that keeps
+            // the walk off the window's thread where it used to stall the UI for
+            // seconds on big profiles. Fallback kept for safety.
+            var units = prebuiltUnits
+                ?? ProjectChangeSummary.BuildFromUnitCaches(_unitCaches, _contentPath);
             var mode = isSave ? "Save" : "Load";
             var dlg = new ProjectFeedbackDialog(
                 mode,
@@ -3362,18 +3737,13 @@ public partial class MainWindow : Window
     /// <summary>
     /// Post-import change summary: same list as save/load, filtered to the units
     /// this import actually touched. Imported sections are display-only - they do
-    /// not affect export gates.
+    /// not affect export gates. Reviews are built on the import worker thread (the
+    /// walk reads every unit cache and used to freeze the window here).
     /// </summary>
-    private void ShowImportFeedback(IEnumerable<string> unitKeys, string fileName)
+    private void ShowImportFeedback(List<UnitReview> units, string fileName)
     {
         try
         {
-            var keys = unitKeys
-                .Where(k => !string.IsNullOrEmpty(k))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var units = ProjectChangeSummary.BuildFromUnitCaches(_unitCaches, _contentPath)
-                .Where(u => keys.Contains(u.Key))
-                .ToList();
             var dlg = new ProjectFeedbackDialog(
                 "Import",
                 "Imported mod changes",
@@ -3614,6 +3984,9 @@ public partial class MainWindow : Window
         var importTempRoot = Path.Combine(Path.GetTempPath(),
             "SifuImp" + Guid.NewGuid().ToString("N").Substring(0, 6));
         var stagingDir = Path.Combine(importTempRoot, "a", "b", "c");
+        // True once step 7 has harvested this import's files; the finally-block
+        // fallback then stays hands-off so harvest/register never run twice.
+        bool customFilesCollected = false;
 
         var importDialog = new Import.ImportDialog
         {
@@ -4098,6 +4471,12 @@ public partial class MainWindow : Window
                         SeedPendingModelFromCaches();
                     }
 
+                    // Phantom-card guard: the sweep below used to tag every node anim
+                    // missing from the moves *library* as Category=Custom, which put 45
+                    // vanilla anims of EnemiesHarder_V2 on the Custom tab. Only anims
+                    // absent from vanilla content on disk are genuinely custom.
+                    string vanillaAnimDir = AttackDbContentDir();
+
                     foreach (var (unitKey, graph, _, _, entry) in finalImported)
                     {
                         if (graph?.Nodes == null) continue;
@@ -4133,6 +4512,8 @@ public partial class MainWindow : Window
                             if (!animPath.Contains("/Animations/", StringComparison.OrdinalIgnoreCase)) continue;
                             if (_allMoves.Any(m => !string.IsNullOrEmpty(m.FullPath) &&
                                     m.FullPath.Equals(animPath, StringComparison.OrdinalIgnoreCase)))
+                                continue;
+                            if (!string.IsNullOrEmpty(vanillaAnimDir) && VanillaAnimOnDisk(vanillaAnimDir, animPath))
                                 continue;
 
                             _allMoves.Add(new MoveInfo
@@ -4279,9 +4660,69 @@ public partial class MainWindow : Window
                     }
                 });
 
-                UI(() => { importDialog.UpdateStep(6, "done"); importDialog.SetProgress(100); });
+                UI(() => { importDialog.UpdateStep(6, "done"); importDialog.SetProgress(95); });
 
                 Thread.Sleep(200);
+
+                // Step 7: Collect custom files — harvest differing files into
+                // CustomAssets, remount the provider, and register the new cards.
+                // This used to run in the finally block on the UI thread after the
+                // dialog closed, freezing the window for a minute on large mods
+                // (10k+ files) with no feedback. Harvest runs on this worker
+                // thread with live progress; mount/register hop to the UI thread.
+                int harvestedCustom = 0;
+                if (Directory.Exists(importTempRoot))
+                {
+                    UI(() => { importDialog.UpdateStep(7, "active"); importDialog.SetCurrentAction("Collecting custom files..."); });
+                    _suppressCustomWatcher = true;
+                    try
+                    {
+                        harvestedCustom = CustomAssets.Harvest(importTempRoot, AttackDbContentDir(),
+                            (phase, done, total) => UI(() =>
+                            {
+                                string verb = phase == "copy" ? "Copying" : "Comparing";
+                                importDialog.SetCurrentAction($"{verb} custom files: {done:N0} / {total:N0}...");
+                                importDialog.SetProgress(95.0 + 4.0 * done / Math.Max(1, total));
+                            }));
+                    }
+                    finally
+                    {
+                        _suppressCustomWatcher = false;
+                        // Import harvest wrote its own files - drop any queued events so a
+                        // flush after the flag clears can't pop the watcher dialog.
+                        lock (_customWatcherPending) _customWatcherPending.Clear();
+                        _lastCustomFileWriteUtc = DateTime.UtcNow;
+                    }
+
+                    if (harvestedCustom > 0)
+                    {
+                        // Mount + anim-card registration stay on the UI thread (they touch
+                        // shared state the main window also reads); the expensive attack-card
+                        // scan is requested as a background task instead of running inline.
+                        // A failure here must not turn the (already successful) import into
+                        // an error.
+                        try
+                        {
+                            UI(() => importDialog.SetCurrentAction("Mounting custom assets..."));
+                            UI(() => _parser.MountCustomIntoProvider(CustomAssets.Root));
+                            UI(() => importDialog.SetCurrentAction("Indexing custom moves..."));
+                            UI(() =>
+                            {
+                                RegisterCustomAnimCards();
+                                FilterMoves();
+                                RequestCustomAttackCardScan();
+                                _ = ApplyCustomAttackScanAsync(showOverlay: false);
+                            });
+                        }
+                        catch (Exception cex)
+                        {
+                            ErrorLog.Write("IMPORT", cex);
+                        }
+                        ErrorLog.Write("IMPORT", new Exception($"Harvested {harvestedCustom} custom file(s) to CustomAssets"));
+                    }
+                    customFilesCollected = true;
+                    UI(() => { importDialog.UpdateStep(7, "done"); importDialog.SetProgress(100); });
+                }
 
                 string summary;
                 if (finalImported.Count > 0)
@@ -4331,10 +4772,26 @@ public partial class MainWindow : Window
                     }
                 }
                 UI(() => importDialog.ShowSuccess(summary, details));
-                UI(() => ShowImportFeedback(
-                    finalImported.Select(u => u.unitKey)
-                        .Concat(importedProps.Keys.Select(v => $"{GetArchFromVariant(v)}|{v}")),
-                    Path.GetFileName(pakPath)));
+
+                // The change-summary walk reads every unit cache and can take seconds
+                // on a big profile. The import dialog is non-modal, so snapshot the
+                // dictionary on the UI thread first (sub-ms - UI() is a synchronous
+                // Dispatcher.Invoke), then build off-thread right here on the worker:
+                // the window never freezes and the walk never touches the live
+                // dictionary while it builds.
+                Dictionary<string, UnitCacheEntry>? cacheSnapshot = null;
+                UI(() => cacheSnapshot = new Dictionary<string, UnitCacheEntry>(_unitCaches));
+                var feedbackKeys = finalImported.Select(u => u.unitKey)
+                    .Concat(importedProps.Keys.Select(v => $"{GetArchFromVariant(v)}|{v}"))
+                    .Where(k => !string.IsNullOrEmpty(k))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var feedbackFile = Path.GetFileName(pakPath);
+                var fbSw = System.Diagnostics.Stopwatch.StartNew();
+                var allReviews = ProjectChangeSummary.BuildFromUnitCaches(cacheSnapshot!, _contentPath);
+                var importReviews = allReviews.Where(u => feedbackKeys.Contains(u.Key)).ToList();
+                fbSw.Stop();
+                ErrorLog.Write("FEEDBACK", $"change summary built in {fbSw.ElapsedMilliseconds} ms ({importReviews.Count} of {allReviews.Count} unit section(s), {importReviews.Sum(u => u.Total)} row(s))");
+                UI(() => ShowImportFeedback(importReviews, feedbackFile));
             });
         }
         catch (Exception ex)
@@ -4342,33 +4799,41 @@ public partial class MainWindow : Window
             ErrorLog.Write("IMPORT", ex);
             importDialog.ShowError(ex.Message, ex.InnerException?.Message);
         }
-        finally
-        {
-            try { _parser.SetOverlayProvider(null); } catch { }
-            try
+            finally
             {
-                if (Directory.Exists(importTempRoot))
+                try { _parser.SetOverlayProvider(null); } catch { }
+                try
                 {
-                    // Import registers the harvested cards itself, so the watcher must
-                    // not pop the "New Custom File(s)" dialog over the import result.
-                    _suppressCustomWatcher = true;
-                    int harvested = CustomAssets.Harvest(importTempRoot, AttackDbContentDir());
-                    _suppressCustomWatcher = false;
-                    // Import harvest wrote its own files - drop any queued events so a
-                    // flush after the flag clears can't pop the watcher dialog.
-                    lock (_customWatcherPending) _customWatcherPending.Clear();
-                    if (harvested > 0)
+                    // Fallback for imports that failed before step 7 ran: still salvage
+                    // the extracted custom files so they are not lost. Successful
+                    // imports harvest inside the dialog (step 7) and skip this.
+                    if (!customFilesCollected && Directory.Exists(importTempRoot))
                     {
-                        _parser.MountCustomIntoProvider(CustomAssets.Root);
-                        RegisterCustomMoves();
-                        Dispatcher.Invoke(FilterMoves);
-                        ErrorLog.Write("IMPORT", new Exception($"Harvested {harvested} custom file(s) to CustomAssets"));
+                        _suppressCustomWatcher = true;
+                        // Harvest byte-compares every extracted file against vanilla and copies
+                        // the differing ones - minutes for large mods. Background it so the UI
+                        // stays responsive; the await resumes on the dispatcher thread, so the
+                        // mount/register below still run on the UI thread.
+                        int harvested = await Task.Run(() => CustomAssets.Harvest(importTempRoot, AttackDbContentDir()));
+                        _suppressCustomWatcher = false;
+                        // Import harvest wrote its own files - drop any queued events so a
+                        // flush after the flag clears can't pop the watcher dialog.
+                        lock (_customWatcherPending) _customWatcherPending.Clear();
+                        _lastCustomFileWriteUtc = DateTime.UtcNow;
+                        if (harvested > 0)
+                        {
+                            _parser.MountCustomIntoProvider(CustomAssets.Root);
+                            RegisterCustomAnimCards();
+                            FilterMoves();
+                            RequestCustomAttackCardScan();
+                            _ = ApplyCustomAttackScanAsync(showOverlay: false);
+                            ErrorLog.Write("IMPORT", new Exception($"Harvested {harvested} custom file(s) to CustomAssets"));
+                        }
                     }
                 }
+                catch (Exception hex) { _suppressCustomWatcher = false; ErrorLog.Write("IMPORT", hex); }
+                try { if (Directory.Exists(importTempRoot)) Directory.Delete(importTempRoot, true); } catch { }
             }
-            catch (Exception hex) { _suppressCustomWatcher = false; ErrorLog.Write("IMPORT", hex); }
-            try { if (Directory.Exists(importTempRoot)) Directory.Delete(importTempRoot, true); } catch { }
-        }
     }
 
     /// <summary>
@@ -4440,7 +4905,7 @@ public partial class MainWindow : Window
         return tuned + hitTuned;
     }
 
-    private static string? FindContentRootUnder(string root)
+    internal static string? FindContentRootUnder(string root)
     {
         try
         {
@@ -4456,15 +4921,29 @@ public partial class MainWindow : Window
         return null;
     }
 
+    // ── Custom attack-card scan (deferred): ScanCustomAttackDbs loads every candidate
+    // DB package through the provider - 17-33 s with a mod harvest - so it never runs
+    // inline. Startup, import, project load and watcher-add only request the scan; the
+    // results register on the UI thread when the background task lands.
+    private Task<List<MoveInfo>>? _customAttackScanTask;
+    private bool _customAttackScanDirty;
+    private readonly object _customAttackScanLock = new();
+
     /// <summary>
-    /// Registers everything in the persistent CustomAssets root as Custom-tab moves:
-    /// animation files (unit from the Animations/&lt;unit&gt; folder) plus attack cards
-    /// (unit from DB/AI/Archetypes/&lt;unit&gt;). Idempotent - paths already present in
-    /// _allMoves are skipped, so it can run after every harvest or watcher refresh.
+    /// Registers cheap custom animation cards (filesystem enumeration only) as Custom-tab
+    /// moves: unit from the Animations/&lt;unit&gt; folder. Idempotent - paths already present
+    /// in _allMoves are skipped, so it can run after every harvest or watcher refresh.
+    /// The expensive attack-card half lives in RegisterCustomAttackCards/RequestCustomAttackCardScan.
     /// </summary>
-    private void RegisterCustomMoves()
+    private void RegisterCustomAnimCards()
     {
         if (_allMoves == null || !Directory.Exists(CustomAssets.Root)) return;
+
+        // One-time index: per-file _allMoves.Any(...) was O(n²) and froze the UI for
+        // minutes after importing a mod that harvests thousands of custom files.
+        var existing = new HashSet<string>(
+            _allMoves.Where(m => !string.IsNullOrEmpty(m.FullPath)).Select(m => m.FullPath),
+            StringComparer.OrdinalIgnoreCase);
 
         var animsRoot = Path.Combine(CustomAssets.Root, "Animations");
         if (Directory.Exists(animsRoot))
@@ -4476,8 +4955,7 @@ public partial class MainWindow : Window
                     rel = rel[..^".uasset".Length];
                 var gamePath = "Game/" + rel;
 
-                if (_allMoves.Any(m => !string.IsNullOrEmpty(m.FullPath) &&
-                        m.FullPath.Equals(gamePath, StringComparison.OrdinalIgnoreCase)))
+                if (!existing.Add(gamePath))
                     continue;
 
                 var parts = rel.Split('/');
@@ -4513,16 +4991,105 @@ public partial class MainWindow : Window
                 });
             }
         }
+    }
 
-        // Custom attack cards - unit grouping comes from the archetype folder. Must run
-        // after MountCustomIntoProvider so HasAttackStruct can load them from the provider.
-        foreach (var card in _parser.ScanCustomAttackDbs(CustomAssets.Root))
+    /// <summary>
+    /// Starts the background custom attack-card scan (ScanCustomAttackDbs - loads every
+    /// candidate DB package) unless one is already running; a request during a running
+    /// scan sets a dirty flag so a follow-up scan runs after it lands (a harvest that
+    /// lands mid-scan would otherwise be missed). Completion applies through
+    /// ApplyCustomAttackScanAsync; registration dedups by FullPath so overlapping
+    /// applications are harmless.
+    /// </summary>
+    private void RequestCustomAttackCardScan()
+    {
+        if (_allMoves == null || !Directory.Exists(CustomAssets.Root)) return;
+        lock (_customAttackScanLock)
         {
-            if (_allMoves.Any(m => !string.IsNullOrEmpty(m.FullPath) &&
-                    m.FullPath.Equals(card.FullPath, StringComparison.OrdinalIgnoreCase)))
-                continue;
-            _allMoves.Add(card);
+            if (_customAttackScanTask is { IsCompleted: false })
+            {
+                _customAttackScanDirty = true;
+                return;
+            }
+            _customAttackScanDirty = false;
+            _customAttackScanTask = Task.Run(() =>
+            {
+                try { return _parser.ScanCustomAttackDbs(CustomAssets.Root); }
+                catch (Exception ex) { ErrorLog.Write("CUSTOM", ex); return new List<MoveInfo>(); }
+            });
         }
+    }
+
+    /// <summary>
+    /// Awaits the requested scan, then registers its cards and refreshes the library lists
+    /// (UI thread - _allMoves must not be mutated from workers). showOverlay presents the
+    /// loading overlay only while the scan is still running (first Custom-tab open).
+    /// </summary>
+    private async Task ApplyCustomAttackScanAsync(bool showOverlay)
+    {
+        Task<List<MoveInfo>>? scan;
+        lock (_customAttackScanLock) { scan = _customAttackScanTask; }
+        if (scan == null) return;
+
+        bool shown = showOverlay && !scan.IsCompleted;
+        if (shown)
+        {
+            UpdateLoading("Scanning custom attack cards...", "First run loads every custom DB once");
+            loadingOverlay.Visibility = Visibility.Visible;
+        }
+        List<MoveInfo> cards;
+        try { cards = await scan; }
+        finally { if (shown) loadingOverlay.Visibility = Visibility.Collapsed; }
+
+        lock (_customAttackScanLock)
+        {
+            // A clear-library swap (or a newer request) replaced the task while this
+            // scan ran - its results point at deleted files. Drop them.
+            if (!ReferenceEquals(scan, _customAttackScanTask)) return;
+        }
+
+        try
+        {
+            RegisterCustomAttackCards(cards);
+            FilterMoves();
+        }
+        catch (Exception ex) { ErrorLog.Write("CUSTOM", ex); }
+
+        // A request arrived while this scan was running (import/watcher during startup
+        // warmup): run the follow-up so the newly harvested files register too.
+        bool rescan;
+        lock (_customAttackScanLock)
+        {
+            rescan = _customAttackScanDirty;
+            _customAttackScanDirty = false;
+        }
+        if (rescan)
+        {
+            RequestCustomAttackCardScan();
+            _ = ApplyCustomAttackScanAsync(showOverlay);
+        }
+    }
+
+    /// <summary>
+    /// Registers pre-scanned custom attack cards (unit grouping comes from the archetype
+    /// folder). Must run after MountCustomIntoProvider so HasAttackStruct could load them
+    /// from the provider - the scan itself already happened. UI thread; idempotent.
+    /// </summary>
+    private void RegisterCustomAttackCards(List<MoveInfo> cards)
+    {
+        if (_allMoves == null || cards.Count == 0) return;
+        var existing = new HashSet<string>(
+            _allMoves.Where(m => !string.IsNullOrEmpty(m.FullPath)).Select(m => m.FullPath),
+            StringComparer.OrdinalIgnoreCase);
+        int added = 0;
+        foreach (var card in cards)
+        {
+            if (!existing.Add(card.FullPath)) continue;
+            _allMoves.Add(card);
+            added++;
+        }
+        if (added > 0)
+            ErrorLog.WriteRaw($"[CUSTOM] registered {added} attack card(s) ({cards.Count} scanned)");
     }
 
     private string? DetectStanceFromAsset(string uassetPath)
@@ -4733,7 +5300,7 @@ public partial class MainWindow : Window
     {
         if (_comboGraph == null) return;
 
-        var savedPositions = new Dictionary<int, Point>(_nodePositions);
+        var savedPositions = SanitizePositions(_nodePositions);
         _nodePositions.Clear();
 
         foreach (var node in _comboGraph.Nodes)
@@ -4826,6 +5393,58 @@ public partial class MainWindow : Window
                 outgoing[edge.FromNodeId].Add(edge.ToNodeId);
         }
 
+        // Cycle-safe layering: strip back-edges (iterative DFS, gray targets) from the
+        // LAYERING graph so Kahn sees a true DAG and every node gets a finite depth.
+        // Mod graphs routinely close link loops (WW's Kuroki_P1 has one); with cycles,
+        // cycle nodes never enter the Kahn queue, fall to depth 0, and the capped
+        // relaxation pass deepens them O(cycle length x passes) - Kuroki ended at
+        // depth 2,774 (X = 610,310 px) and a 600k-wide canvas. Stripped back-edges
+        // still render as normal links; they just stop driving column assignment.
+        {
+            var color = new Dictionary<int, byte>(layoutNodes.Count); // 0 white, 1 gray, 2 black
+            foreach (var node in layoutNodes) color[node.Id] = 0;
+            var backEdges = new List<(int From, int To)>();
+            var stack = new Stack<(int Id, int Next)>();
+            foreach (var root in layoutNodes)
+            {
+                if (color[root.Id] != 0) continue;
+                color[root.Id] = 1;
+                stack.Push((root.Id, 0));
+                while (stack.Count > 0)
+                {
+                    var (id, next) = stack.Pop();
+                    var targets = outgoing[id];
+                    if (next >= targets.Count)
+                    {
+                        color[id] = 2;
+                        continue;
+                    }
+                    stack.Push((id, next + 1));
+                    var tid = targets[next];
+                    if (color[tid] == 1)
+                    {
+                        backEdges.Add((id, tid)); // to a node still on the DFS stack
+                    }
+                    else if (color[tid] == 0)
+                    {
+                        color[tid] = 1;
+                        stack.Push((tid, 0));
+                    }
+                }
+            }
+            foreach (var (fromId, toId) in backEdges)
+            {
+                var list = outgoing[fromId];
+                for (int i = 0; i < list.Count; i++)
+                {
+                    if (list[i] != toId) continue;
+                    list.RemoveAt(i);
+                    break;
+                }
+                if (incoming.ContainsKey(toId)) incoming[toId]--;
+            }
+        }
+
         var baseDepth = new Dictionary<int, int>();
         var baseInDegree = new Dictionary<int, int>(incoming);
         var bfsQueue = new Queue<int>();
@@ -4907,22 +5526,31 @@ public partial class MainWindow : Window
         }
 
         // ── Post-pass: longest-path layering — enforce depth[child] > depth[parent] for every edge ──
-        bool changed = true;
-        while (changed)
+        // A mod graph can carry a link cycle (imported/merged links closing a loop);
+        // an uncapped relaxation loop never converges on one - it spun the UI thread
+        // forever (frozen window, one core pegged) the first time a position-less
+        // cached unit had to be laid out. Each pass can deepen a node by at most one
+        // level, so one pass per node is the true convergence bound: past that, stop
+        // and lay out what we have instead of hanging the window.
+        var byId = new Dictionary<int, ComboNode>();
+        foreach (var n in layoutNodes) byId[n.Id] = n;
+        bool changed;
+        int maxPasses = Math.Max(1, layoutNodes.Count);
+        for (int pass = 0; pass < maxPasses; pass++)
         {
             changed = false;
             foreach (var node in layoutNodes.OrderBy(n => n.Depth))
             {
                 foreach (var childId in outgoing[node.Id])
                 {
-                    var child = layoutNodes.FirstOrDefault(n => n.Id == childId);
-                    if (child != null && child.Depth <= node.Depth)
+                    if (byId.TryGetValue(childId, out var child) && child.Depth <= node.Depth)
                     {
                         child.Depth = node.Depth + 1;
                         changed = true;
                     }
                 }
             }
+            if (!changed) break;
         }
 
         var forwardDepth = new Dictionary<int, int>();
@@ -5295,7 +5923,6 @@ public partial class MainWindow : Window
     private void RenderComboGraph()
     {
         comboCanvas.Children.Clear();
-        _edgeVisuals.Clear();
         _nodeBorders.Clear();
         _nodeLabels.Clear();
         _nodeInputBgs.Clear();
@@ -5331,166 +5958,8 @@ public partial class MainWindow : Window
                 || !nodeIdsWithEdges.Contains(n.Id)))
             .Select(n => n.Id));
 
-        var edgesBySource = new Dictionary<int, List<ComboEdge>>();
-        foreach (var edge in _comboGraph.Edges)
-        {
-            if (orphanRedirectIds.Contains(edge.FromNodeId) || orphanRedirectIds.Contains(edge.ToNodeId))
-                continue;
-            // Hidden AI links are excluded here so fan-out sibling indices, the
-            // conflict scan below and the render loop all see the same edge set.
-            if (TouchesHiddenAi(edge.FromNodeId) || TouchesHiddenAi(edge.ToNodeId))
-                continue;
-            if (!edgesBySource.TryGetValue(edge.FromNodeId, out var list))
-            {
-                list = new List<ComboEdge>();
-                edgesBySource[edge.FromNodeId] = list;
-            }
-            list.Add(edge);
-        }
-
-        var conflictEdges = new HashSet<ComboEdge>();
-        int conflictCount = 0;
-        if (!string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase))
-        {
-            foreach (var kvp in edgesBySource)
-            {
-                var byInput = new Dictionary<string, List<ComboEdge>>(StringComparer.OrdinalIgnoreCase);
-                foreach (var e in kvp.Value)
-                {
-                    if (string.IsNullOrEmpty(e.InputName)) continue;
-                    // Literal "None" rows (imported auto-continue) are not real inputs -
-                    // several of them on one node is normal branching, not a conflict.
-                    if (string.Equals(e.InputName, "None", StringComparison.OrdinalIgnoreCase)) continue;
-                    if (!byInput.TryGetValue(e.InputName, out var list))
-                    {
-                        list = new List<ComboEdge>();
-                        byInput[e.InputName] = list;
-                    }
-                    list.Add(e);
-                }
-                foreach (var inputKvp in byInput)
-                {
-                    if (inputKvp.Value.Count > 2)
-                    {
-                        foreach (var e in inputKvp.Value)
-                            conflictEdges.Add(e);
-                        conflictCount += inputKvp.Value.Count;
-                    }
-                }
-            }
-        }
-
-        foreach (var edge in _comboGraph.Edges)
-        {
-            if (edge.FromNodeId == -1) continue;
-            if (!_nodePositions.TryGetValue(edge.FromNodeId, out var fromPos)) continue;
-            if (!_nodePositions.TryGetValue(edge.ToNodeId, out var toPos)) continue;
-
-            if (orphanRedirectIds.Contains(edge.FromNodeId) || orphanRedirectIds.Contains(edge.ToNodeId))
-                continue;
-            if (TouchesHiddenAi(edge.FromNodeId) || TouchesHiddenAi(edge.ToNodeId))
-                continue;
-
-            if (_isRetargetMode && edge.IsRedirect && _retargetSourceNode != null && edge.FromNodeId == _retargetSourceNode.Id)
-                continue;
-
-            if (edge.IsRedirect)
-                continue;
-
-            bool isIncomingToRedirect = _comboGraph.Nodes.Any(n => n.Id == edge.ToNodeId && n.IsRedirect);
-            var color = GetEdgeBrush(edge);
-
-            var siblings = edgesBySource[edge.FromNodeId];
-            int siblingIndex = siblings.IndexOf(edge);
-            int siblingCount = siblings.Count;
-
-            double fanY = siblingCount > 1
-                ? fromPos.Y + NODE_HEIGHT * (siblingIndex + 0.5) / siblingCount
-                : fromPos.Y + NODE_HEIGHT / 2;
-
-            var fromPoint = new Point(fromPos.X + NODE_WIDTH, fanY);
-            var toPoint = new Point(toPos.X, toPos.Y + NODE_HEIGHT / 2);
-
-            double dx = toPoint.X - fromPoint.X;
-            double curveOffset = Math.Max(40, dx * 0.5);
-            var cp1 = new Point(fromPoint.X + curveOffset, fromPoint.Y);
-            var cp2 = new Point(toPoint.X - curveOffset, toPoint.Y);
-
-            var pathGeom = new PathGeometry();
-            var figure = new PathFigure { StartPoint = fromPoint, IsClosed = false };
-            figure.Segments.Add(new BezierSegment(cp1, cp2, toPoint, isStroked: true));
-            pathGeom.Figures.Add(figure);
-
-            double thickness = GetEdgeThickness(edge);
-
-            var path = new System.Windows.Shapes.Path
-            {
-                Stroke = color,
-                StrokeThickness = thickness,
-                Data = pathGeom,
-                StrokeDashArray = isIncomingToRedirect ? new DoubleCollection { 4, 2 } : null
-            };
-            path.Tag = edge;
-            comboCanvas.Children.Add(path);
-
-            var hitPath = new System.Windows.Shapes.Path
-            {
-                Stroke = new SolidColorBrush(Color.FromArgb(1, 0, 0, 0)),
-                StrokeThickness = Math.Max(thickness, 14),
-                Data = pathGeom
-            };
-            hitPath.Tag = edge;
-            hitPath.Cursor = Cursors.Hand;
-            if (edge.IsNewLink)
-            {
-                var edgeMenu = new ContextMenu();
-                var deleteLinkItem = new MenuItem { Header = "Delete Link", Tag = edge };
-                deleteLinkItem.Click += DeleteEdgeMenuItem_Click;
-                edgeMenu.Items.Add(deleteLinkItem);
-                hitPath.ContextMenu = edgeMenu;
-                path.ContextMenu = edgeMenu;
-            }
-            path.MouseLeftButtonDown += Edge_ResetMode_MouseLeftButtonDown;
-            hitPath.MouseLeftButtonDown += Edge_ResetMode_MouseLeftButtonDown;
-            Canvas.SetZIndex(hitPath, -1);
-            comboCanvas.Children.Add(hitPath);
-
-            System.Windows.Shapes.Polygon? arrow = null;
-            var arrowSize = 6;
-            double tanX = toPoint.X - cp2.X;
-            double tanY = toPoint.Y - cp2.Y;
-            double tanLen = Math.Sqrt(tanX * tanX + tanY * tanY);
-            if (tanLen > 0)
-            {
-                double ux = tanX / tanLen;
-                double uy = tanY / tanLen;
-                var arrowTip = toPoint;
-                var arrowP1 = new Point(arrowTip.X - ux * arrowSize + uy * arrowSize / 2, arrowTip.Y - uy * arrowSize - ux * arrowSize / 2);
-                var arrowP2 = new Point(arrowTip.X - ux * arrowSize - uy * arrowSize / 2, arrowTip.Y - uy * arrowSize + ux * arrowSize / 2);
-
-                arrow = new System.Windows.Shapes.Polygon
-                {
-                    Fill = color,
-                    Points = new PointCollection { arrowTip, arrowP1, arrowP2 }
-                };
-                arrow.Tag = edge;
-                comboCanvas.Children.Add(arrow);
-            }
-
-            _edgeVisuals[edge] = new EdgeVisuals
-            {
-                Path = path,
-                HitPath = hitPath,
-                Arrow = arrow,
-                IsConnected = false,
-                IsConflict = conflictEdges.Contains(edge),
-                LastZIndex = 0,
-                Glow = null
-            };
-        }
-
-        if (conflictCount > 0)
-            ShowToast($"⚠ {conflictCount} input conflict{(conflictCount > 1 ? "s" : "")} detected — duplicate input on same node");
+        // Edge batches (geometry, buckets, conflict scan, hit records) are built by
+        // RebuildEdgeBatches via ApplySelectionStyles at the end of this method.
 
         foreach (var node in _comboGraph.Nodes)
         {
@@ -5703,59 +6172,19 @@ public partial class MainWindow : Window
         }
 
         ComputeSelectionChain();
-        ApplySelectionStyles();
+        ApplySelectionStyles(); // rebuilds the batched edge buckets for this graph
+        if (_lastConflictCount > 0)
+            ShowToast($"⚠ {_lastConflictCount} input conflict{(_lastConflictCount > 1 ? "s" : "")} detected — duplicate input on same node");
         RefreshAttackDbPanel();
         UpdateComboCanvasSize();
     }
 
     private void UpdateEdgesForNode(int nodeId)
     {
+        // Node drag: edge geometry lives in the shared batch buckets, so a move
+        // rebuilds them (pure geometry math - no per-edge canvas elements).
         if (_comboGraph == null) return;
-        foreach (var kvp in _edgeVisuals)
-        {
-            var edge = kvp.Key;
-            if (edge.FromNodeId != nodeId && edge.ToNodeId != nodeId) continue;
-            if (!_nodePositions.TryGetValue(edge.FromNodeId, out var fromPos)) continue;
-            if (!_nodePositions.TryGetValue(edge.ToNodeId, out var toPos)) continue;
-            var vis = kvp.Value;
-            // Same visible-only filter as RenderComboGraph's edgesBySource build,
-            // otherwise fan geometry shifts when a hidden sibling exists.
-            var siblings = _comboGraph.Edges.Where(e => e.FromNodeId == edge.FromNodeId
-                && !TouchesHiddenAi(e.FromNodeId) && !TouchesHiddenAi(e.ToNodeId)).ToList();
-            int siblingIndex = siblings.IndexOf(edge);
-            int siblingCount = siblings.Count;
-            double fanY = siblingCount > 1
-                ? fromPos.Y + NODE_HEIGHT * (siblingIndex + 0.5) / siblingCount
-                : fromPos.Y + NODE_HEIGHT / 2;
-            var fromPoint = new Point(fromPos.X + NODE_WIDTH, fanY);
-            var toPoint = new Point(toPos.X, toPos.Y + NODE_HEIGHT / 2);
-            double dx = toPoint.X - fromPoint.X;
-            double curveOffset = Math.Max(40, dx * 0.5);
-            var cp1 = new Point(fromPoint.X + curveOffset, fromPoint.Y);
-            var cp2 = new Point(toPoint.X - curveOffset, toPoint.Y);
-            var pathGeom = new PathGeometry();
-            var figure = new PathFigure { StartPoint = fromPoint, IsClosed = false };
-            figure.Segments.Add(new BezierSegment(cp1, cp2, toPoint, isStroked: true));
-            pathGeom.Figures.Add(figure);
-            if (vis.Path != null) vis.Path.Data = pathGeom;
-            if (vis.HitPath != null) vis.HitPath.Data = pathGeom;
-            if (vis.Arrow != null)
-            {
-                double tanX = toPoint.X - cp2.X;
-                double tanY = toPoint.Y - cp2.Y;
-                double tanLen = Math.Sqrt(tanX * tanX + tanY * tanY);
-                if (tanLen > 0)
-                {
-                    double ux = tanX / tanLen;
-                    double uy = tanY / tanLen;
-                    int arrowSize = 6;
-                    var arrowTip = toPoint;
-                    var arrowP1 = new Point(arrowTip.X - ux * arrowSize + uy * arrowSize / 2, arrowTip.Y - uy * arrowSize - ux * arrowSize / 2);
-                    var arrowP2 = new Point(arrowTip.X - ux * arrowSize - uy * arrowSize / 2, arrowTip.Y - uy * arrowSize + ux * arrowSize / 2);
-                    vis.Arrow.Points = new PointCollection { arrowTip, arrowP1, arrowP2 };
-                }
-            }
-        }
+        RebuildEdgeBatches();
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
@@ -6224,6 +6653,33 @@ public partial class MainWindow : Window
             touched = _customWatcherPending.ToList();
             _customWatcherPending.Clear();
         }
+
+        // Directory events (a new folder tree yields one event per level) are not
+        // files: they can never match an existing-file harvest, and the stale-file
+        // filter below only suppresses them when _lastCustomFileWriteUtc is set -
+        // otherwise a single watch session logs e.g. "Watcher: 164 file event(s)"
+        // that are pure directories. Drop them up front so they never reach the log
+        // or the popup. Deletion of a directory is kept (Directory.Exists is false),
+        // matching the file-deletion path below.
+        touched = touched.Where(rel =>
+            !Directory.Exists(Path.Combine(CustomAssets.Root, rel.Replace('/', Path.DirectorySeparatorChar)))).ToList();
+        if (touched.Count == 0) return;
+
+        // Drop late deliveries from an import harvest: File.Copy preserves the
+        // source timestamp, so harvested files always have LastWriteTime at or
+        // before the harvest cutoff. Import already registered them - showing the
+        // "New Custom File(s)" popup over the import result is pure noise.
+        if (_lastCustomFileWriteUtc != default)
+        {
+            touched = touched.Where(rel =>
+            {
+                var full = Path.Combine(CustomAssets.Root, rel.Replace('/', Path.DirectorySeparatorChar));
+                // Deletions still matter; only stale existing files are filtered.
+                return !File.Exists(full) || File.GetLastWriteTimeUtc(full) > _lastCustomFileWriteUtc;
+            }).ToList();
+            if (touched.Count == 0) return;
+        }
+
         ErrorLog.Write("CUSTOM", new Exception(
             $"Watcher: {touched.Count} file event(s): {string.Join(", ", touched.Take(8))}"));
 
@@ -6290,8 +6746,10 @@ public partial class MainWindow : Window
                         try
                         {
                             _parser.MountCustomIntoProvider(CustomAssets.Root);
-                            RegisterCustomMoves();
+                            RegisterCustomAnimCards();
                             FilterMoves();
+                            RequestCustomAttackCardScan();
+                            _ = ApplyCustomAttackScanAsync(showOverlay: false);
                             txtStatus.Text = "Custom files added to the Custom section";
                         }
                         catch (Exception ex) { ErrorLog.Write("CUSTOM", ex); }
@@ -7899,10 +8357,221 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Edge_ResetMode_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    // ── Batched edge build: one stroke Path (+ one arrow-fill Path) per
+    // (brush, thickness, dash, z, opacity) bucket instead of 3 canvas elements per
+    // edge. Called from ApplySelectionStyles (selection changes re-bucket the
+    // chain/dim styling) and UpdateEdgesForNode (node drag). ──
+    private void RebuildEdgeBatches()
+    {
+        foreach (var p in _edgeBatchPaths) comboCanvas.Children.Remove(p);
+        _edgeBatchPaths.Clear();
+        _edgeHits.Clear();
+        _lastConflictCount = 0;
+        if (_comboGraph == null) return;
+
+        var existingNodeIds = new HashSet<int>(_comboGraph.Nodes.Select(n => n.Id));
+        var nodeIdsWithEdges = new HashSet<int>();
+        foreach (var edge in _comboGraph.Edges)
+        {
+            nodeIdsWithEdges.Add(edge.FromNodeId);
+            nodeIdsWithEdges.Add(edge.ToNodeId);
+        }
+        var startEntryRedirectIds = ComputeLiveStartEntryRedirectIds();
+        var orphanRedirectIds = new HashSet<int>(_comboGraph.Nodes
+            .Where(n => n.IsRedirect && !startEntryRedirectIds.Contains(n.Id)
+                && (n.ResolvedRedirectNodeId < 0
+                || !existingNodeIds.Contains(n.ResolvedRedirectNodeId)
+                || !nodeIdsWithEdges.Contains(n.Id)))
+            .Select(n => n.Id));
+        var redirectIds = new HashSet<int>(_comboGraph.Nodes.Where(n => n.IsRedirect).Select(n => n.Id));
+
+        bool Visible(ComboEdge e) =>
+            !orphanRedirectIds.Contains(e.FromNodeId) && !orphanRedirectIds.Contains(e.ToNodeId)
+            && !TouchesHiddenAi(e.FromNodeId) && !TouchesHiddenAi(e.ToNodeId);
+
+        // Visible-only fan-out groups with stored sibling indices (the old
+        // List.IndexOf scan was O(siblings^2) per source node).
+        var edgesBySource = new Dictionary<int, List<ComboEdge>>();
+        foreach (var edge in _comboGraph.Edges)
+        {
+            if (!Visible(edge)) continue;
+            if (!edgesBySource.TryGetValue(edge.FromNodeId, out var list))
+            {
+                list = new List<ComboEdge>();
+                edgesBySource[edge.FromNodeId] = list;
+            }
+            list.Add(edge);
+        }
+        var siblingIndex = new Dictionary<ComboEdge, int>();
+        foreach (var kvp in edgesBySource)
+            for (int i = 0; i < kvp.Value.Count; i++)
+                siblingIndex[kvp.Value[i]] = i;
+
+        // Conflict scan (moved here from RenderComboGraph; the toast fires from
+        // RenderComboGraph off _lastConflictCount so rebuilds stay quiet).
+        if (!string.Equals(_activeStance, "MainChar", StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var kvp in edgesBySource)
+            {
+                var byInput = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                foreach (var e in kvp.Value)
+                {
+                    if (string.IsNullOrEmpty(e.InputName)) continue;
+                    // Literal "None" rows (imported auto-continue) are not real inputs -
+                    // several of them on one node is normal branching, not a conflict.
+                    if (string.Equals(e.InputName, "None", StringComparison.OrdinalIgnoreCase)) continue;
+                    byInput[e.InputName] = byInput.GetValueOrDefault(e.InputName) + 1;
+                }
+                foreach (var inputKvp in byInput)
+                    if (inputKvp.Value > 2) _lastConflictCount += inputKvp.Value;
+            }
+        }
+
+        bool selectionActive = _selectedNodeId >= 0 && _chainNodeIds.Count > 0;
+        bool mainCharSelection = selectionActive && IsCurrentGraphMainChar();
+
+        Brush ResolveBrush(ComboEdge edge)
+        {
+            if (edge.FromNodeId == -1) return EdgeStanceDimBrush;
+            if (redirectIds.Contains(edge.ToNodeId)) return EdgeRedirectIncomingBrush;
+            return EdgeBrushByInput.TryGetValue(edge.InputName, out var c) ? c : EdgeDefaultBrush;
+        }
+
+        var buckets = new Dictionary<(Brush Brush, double Thickness, bool Dashed, int Z, double Opacity), List<EdgeHit>>();
+
+        foreach (var edge in _comboGraph.Edges)
+        {
+            if (edge.FromNodeId == -1) continue;
+            if (!Visible(edge)) continue;
+            if (_isRetargetMode && edge.IsRedirect && _retargetSourceNode != null && edge.FromNodeId == _retargetSourceNode.Id)
+                continue;
+            if (edge.IsRedirect) continue;
+            if (!_nodePositions.TryGetValue(edge.FromNodeId, out var fromPos)) continue;
+            if (!_nodePositions.TryGetValue(edge.ToNodeId, out var toPos)) continue;
+            if (!siblingIndex.TryGetValue(edge, out var idx)) continue;
+
+            var sibs = edgesBySource[edge.FromNodeId];
+            double fanY = sibs.Count > 1
+                ? fromPos.Y + NODE_HEIGHT * (idx + 0.5) / sibs.Count
+                : fromPos.Y + NODE_HEIGHT / 2;
+            var from = new Point(fromPos.X + NODE_WIDTH, fanY);
+            var to = new Point(toPos.X, toPos.Y + NODE_HEIGHT / 2);
+            double dx = to.X - from.X;
+            double curveOffset = Math.Max(40, dx * 0.5);
+            var c1 = new Point(from.X + curveOffset, from.Y);
+            var c2 = new Point(to.X - curveOffset, to.Y);
+            var hit = new EdgeHit(edge, from, c1, c2, to);
+            _edgeHits.Add(hit);
+
+            bool chain = selectionActive
+                && _chainNodeIds.Contains(edge.FromNodeId) && _chainNodeIds.Contains(edge.ToNodeId);
+            bool toRedirect = redirectIds.Contains(edge.ToNodeId);
+            var brush = chain && (!mainCharSelection || toRedirect) ? ChainHighlightEdgeBrush : ResolveBrush(edge);
+            double thickness = chain ? ChainEdgeThickness : GetEdgeThickness(edge);
+            int z = chain ? ChainEdgeZIndex : 0;
+            double opacity = selectionActive && !chain ? ChainDimOpacity : 1.0;
+            var key = (brush, thickness, toRedirect, z, opacity);
+            if (!buckets.TryGetValue(key, out var list)) buckets[key] = list = new List<EdgeHit>();
+            list.Add(hit);
+        }
+
+        foreach (var kvp in buckets)
+        {
+            var (brush, thickness, dashed, z, opacity) = kvp.Key;
+            var geom = new PathGeometry();
+            var arrows = new PathGeometry();
+            foreach (var h in kvp.Value)
+            {
+                var figure = new PathFigure { StartPoint = h.From, IsClosed = false };
+                figure.Segments.Add(new BezierSegment(h.C1, h.C2, h.To, isStroked: true));
+                geom.Figures.Add(figure);
+
+                double tanX = h.To.X - h.C2.X;
+                double tanY = h.To.Y - h.C2.Y;
+                double tanLen = Math.Sqrt(tanX * tanX + tanY * tanY);
+                if (tanLen > 0)
+                {
+                    const double arrowSize = 6;
+                    double ux = tanX / tanLen;
+                    double uy = tanY / tanLen;
+                    var p1 = new Point(h.To.X - ux * arrowSize + uy * arrowSize / 2, h.To.Y - uy * arrowSize - ux * arrowSize / 2);
+                    var p2 = new Point(h.To.X - ux * arrowSize - uy * arrowSize / 2, h.To.Y - uy * arrowSize + ux * arrowSize / 2);
+                    // Fill-only figures (the arrow bucket path has no Stroke, so the
+                    // implicit closing line is invisible).
+                    var af = new PathFigure { StartPoint = h.To, IsClosed = true, IsFilled = true };
+                    af.Segments.Add(new LineSegment(p1, isStroked: false));
+                    af.Segments.Add(new LineSegment(p2, isStroked: false));
+                    arrows.Figures.Add(af);
+                }
+            }
+
+            var strokePath = new System.Windows.Shapes.Path
+            {
+                Stroke = brush,
+                StrokeThickness = thickness,
+                Data = geom,
+                Opacity = opacity,
+                Cursor = Cursors.Hand
+            };
+            if (dashed) strokePath.StrokeDashArray = new DoubleCollection { 4, 2 };
+            strokePath.MouseLeftButtonDown += EdgeBatch_MouseLeftButtonDown;
+            strokePath.MouseRightButtonDown += EdgeBatch_MouseRightButtonDown;
+            Canvas.SetZIndex(strokePath, z);
+            comboCanvas.Children.Add(strokePath);
+            _edgeBatchPaths.Add(strokePath);
+
+            if (arrows.Figures.Count > 0)
+            {
+                var arrowPath = new System.Windows.Shapes.Path
+                {
+                    Fill = brush,
+                    Data = arrows,
+                    Opacity = opacity,
+                    IsHitTestVisible = false
+                };
+                Canvas.SetZIndex(arrowPath, z);
+                comboCanvas.Children.Add(arrowPath);
+                _edgeBatchPaths.Add(arrowPath);
+            }
+        }
+    }
+
+    /// <summary>Nearest edge to <paramref name="canvasPos"/> within 7 px, sampled
+    /// along each bezier. Only used on click, so the O(edges x samples) walk is fine
+    /// even on a 24k-edge graph (a few ms).</summary>
+    private EdgeHit? HitTestEdge(Point canvasPos)
+    {
+        const double threshold = 7.0;
+        const int samples = 24;
+        double bestDistSq = threshold * threshold;
+        EdgeHit? best = null;
+        foreach (var h in _edgeHits)
+        {
+            for (int i = 0; i <= samples; i++)
+            {
+                double t = (double)i / samples;
+                double mt = 1 - t;
+                double x = mt * mt * mt * h.From.X + 3 * mt * mt * t * h.C1.X + 3 * mt * t * t * h.C2.X + t * t * t * h.To.X;
+                double y = mt * mt * mt * h.From.Y + 3 * mt * mt * t * h.C1.Y + 3 * mt * t * t * h.C2.Y + t * t * t * h.To.Y;
+                double dx = x - canvasPos.X;
+                double dy = y - canvasPos.Y;
+                double d2 = dx * dx + dy * dy;
+                if (d2 < bestDistSq)
+                {
+                    bestDistSq = d2;
+                    best = h;
+                }
+            }
+        }
+        return best;
+    }
+
+    private void EdgeBatch_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (!_isResetMode || _comboGraph == null) return;
-        if (sender is not System.Windows.Shapes.Path path || path.Tag is not ComboEdge edge) return;
+        var hit = HitTestEdge(e.GetPosition(comboCanvas));
+        if (hit == null) return;
+        var edge = hit.Edge;
         if (edge.IsNewLink)
         {
             PushUndo("Delete link");
@@ -7915,6 +8584,22 @@ public partial class MainWindow : Window
         {
             txtStatus.Text = "Link is already vanilla";
         }
+        e.Handled = true;
+    }
+
+    private void EdgeBatch_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_comboGraph == null) return;
+        var hit = HitTestEdge(e.GetPosition(comboCanvas));
+        if (hit is not { Edge.IsNewLink: true }) return;
+        var edgeMenu = new ContextMenu
+        {
+            Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint
+        };
+        var deleteLinkItem = new MenuItem { Header = "Delete Link", Tag = hit.Edge };
+        deleteLinkItem.Click += DeleteEdgeMenuItem_Click;
+        edgeMenu.Items.Add(deleteLinkItem);
+        edgeMenu.IsOpen = true;
         e.Handled = true;
     }
 
@@ -8925,12 +9610,16 @@ public partial class MainWindow : Window
             return;
         }
 
-        graphLoadingText.Text = $"Loading {arch} {variantTag}...";
-        graphLoadingBorder.Visibility = Visibility.Visible;
-        comboCanvas.IsHitTestVisible = false;
-        try
-        {
-            var graph = await Task.Run(() => _parser.LoadComboTreeFromPath(comboPath, arch));
+            graphLoadingText.Text = $"Loading {arch} {variantTag}...";
+            graphLoadingBorder.Visibility = Visibility.Visible;
+            comboCanvas.IsHitTestVisible = false;
+            try
+            {
+                ErrorLog.Write("COMBO", $"loading {arch} {variantTag} (cache miss for {cacheKey})");
+                var loadSw = System.Diagnostics.Stopwatch.StartNew();
+                var graph = await Task.Run(() => _parser.LoadComboTreeFromPath(comboPath, arch));
+                loadSw.Stop();
+                ErrorLog.Write("COMBO", $"{arch} {variantTag}: parse {loadSw.ElapsedMilliseconds} ms, {graph?.Nodes.Count ?? 0} node(s)");
             if (graph == null || graph.Nodes.Count == 0)
             {
                 txtStatus.Text = $"{variantTag}: no combo data found at {comboPath}";
@@ -9045,7 +9734,8 @@ public partial class MainWindow : Window
 
         // Release file handles that may lock BaseMovementDB (CUE4Parse FileProvider holds FileShare.None)
         try { _parser?.Dispose(); } catch { }
-        GC.Collect(); GC.WaitForPendingFinalizers(); await Task.Delay(100);
+        await Task.Run(() => { GC.Collect(); GC.WaitForPendingFinalizers(); });
+        await Task.Delay(100);
 
         var movementDbSrc = Path.Combine(contentDir, _stanceMap[stance].MovementDb + ".uasset");
         var movementDbExp = Path.Combine(contentDir, _stanceMap[stance].MovementDb + ".uexp");
@@ -9165,8 +9855,11 @@ public partial class MainWindow : Window
             if (!TryRestoreUnitFromCache(cacheKey))
             {
                 var freshParser = new AnimationParser();
-                freshParser.Initialize(_contentPath, contentDir);
-                freshParser.MountCustomIntoProvider(CustomAssets.Root);
+                await Task.Run(() =>
+                {
+                    freshParser.Initialize(_contentPath, contentDir);
+                    freshParser.MountCustomIntoProvider(CustomAssets.Root);
+                });
                 _parser = freshParser;
 
                 var graph = await Task.Run(() => _parser.LoadMainCharComboTree());
@@ -9207,7 +9900,18 @@ public partial class MainWindow : Window
         finally
         {
             // re-initialize provider that was disposed at start
-            try { var fresh = new AnimationParser(); var cDir = Setup.ContentDetector.ResolveContentDir(_contentPath); fresh.Initialize(_contentPath, cDir); fresh.MountCustomIntoProvider(CustomAssets.Root); _parser = fresh; } catch { }
+            try
+            {
+                var fresh = new AnimationParser();
+                var cDir = Setup.ContentDetector.ResolveContentDir(_contentPath);
+                await Task.Run(() =>
+                {
+                    fresh.Initialize(_contentPath, cDir);
+                    fresh.MountCustomIntoProvider(CustomAssets.Root);
+                });
+                _parser = fresh;
+            }
+            catch { }
             graphLoadingBorder.Visibility = Visibility.Collapsed;
             comboCanvas.IsHitTestVisible = true;
             btnChangeUnit.IsEnabled = true;
@@ -9264,12 +9968,16 @@ public partial class MainWindow : Window
             return;
         }
 
-        graphLoadingText.Text = $"Loading {arch}...";
-        graphLoadingBorder.Visibility = Visibility.Visible;
-        comboCanvas.IsHitTestVisible = false;
-        try
-        {
-            var graph = await Task.Run(() => _parser.LoadArchetypeAttackGraph(baseArch, diff));
+            graphLoadingText.Text = $"Loading {arch}...";
+            graphLoadingBorder.Visibility = Visibility.Visible;
+            comboCanvas.IsHitTestVisible = false;
+            try
+            {
+                ErrorLog.Write("COMBO", $"loading {arch} (cache miss for {cacheKey})");
+                var loadSw = System.Diagnostics.Stopwatch.StartNew();
+                var graph = await Task.Run(() => _parser.LoadArchetypeAttackGraph(baseArch, diff));
+                loadSw.Stop();
+                ErrorLog.Write("COMBO", $"{arch}: parse {loadSw.ElapsedMilliseconds} ms, {graph?.Nodes.Count ?? 0} node(s)");
             if (graph == null || graph.Nodes.Count == 0)
             {
                 txtStatus.Text = $"{arch}: no attack data found";
@@ -9712,11 +10420,46 @@ public partial class MainWindow : Window
         return false;
     }
 
+    // ── Reset diagnostics (freeze hunting): a 1s DispatcherTimer heartbeat + phase
+    // marker around ResetProjectToVanillaAsync. The timer only ticks while the
+    // dispatcher pumps, so: heartbeat gaps = UI thread blocked; heartbeats that keep
+    // ticking while the phase never advances = stalled async continuation.
+    private DispatcherTimer? _resetHeartbeat;
+    private string _resetPhase = "";
+    private int _resetHeartbeatTick;
+
+    private void StartResetHeartbeat(string phase)
+    {
+        _resetPhase = phase;
+        _resetHeartbeatTick = 0;
+        if (_resetHeartbeat == null)
+        {
+            _resetHeartbeat = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _resetHeartbeat.Tick += (_, _) =>
+            {
+                _resetHeartbeatTick++;
+                ErrorLog.WriteRaw($"[HB] reset phase '{_resetPhase}' - UI thread pumping (t+{_resetHeartbeatTick}s)");
+                if (_resetPhase == "post-overlay render" && _resetHeartbeatTick >= 3)
+                    StopResetHeartbeat("post-overlay render settled");
+            };
+        }
+        ErrorLog.WriteRaw($"[HB] reset heartbeat started ({phase})");
+        _resetHeartbeat.Start();
+    }
+
+    private void StopResetHeartbeat(string finalPhase)
+    {
+        _resetHeartbeat?.Stop();
+        ErrorLog.WriteRaw($"[HB] reset heartbeat stopped at '{finalPhase}' after {_resetHeartbeatTick}s");
+    }
+
     private async System.Threading.Tasks.Task ResetProjectToVanillaAsync(string statusMessage)
     {
         // Always multi-second (parser re-init + MainChar reparse), so show the overlay
         // immediately - covers Import "start fresh" (before its step dialog opens) and
         // New Project. Blocks input while the reset runs.
+        var resetSw = System.Diagnostics.Stopwatch.StartNew();
+        StartResetHeartbeat("reset-start");
         UpdateLoading("Resetting to vanilla...", statusMessage);
         loadingOverlay.Visibility = Visibility.Visible;
         try
@@ -9742,26 +10485,51 @@ public partial class MainWindow : Window
 
             // CustomAssets is the persistent library - reset clears project state only,
             // so custom cards stay registered and their files stay on disk.
+            _resetPhase = "parser-init";
             try
             {
                 var contentDir = Setup.ContentDetector.ResolveContentDir(_contentPath);
                 var fresh = new AnimationParser();
-                fresh.Initialize(_contentPath, contentDir);
-                fresh.MountCustomIntoProvider(CustomAssets.Root);
+                // Provider init walks the whole content tree - off the UI thread so the
+                // loading overlay can actually render and the window stays responsive.
+                await Task.Run(() =>
+                {
+                    fresh.Initialize(_contentPath, contentDir);
+                    fresh.MountCustomIntoProvider(CustomAssets.Root);
+                });
                 _parser = fresh;
             }
             catch (Exception ex)
             {
                 ErrorLog.Write("IMPORT", ex);
             }
+            ErrorLog.WriteRaw($"[RESET] parser init done at {resetSw.ElapsedMilliseconds} ms");
 
+            _resetPhase = "switch-stance";
             await SwitchStanceAsync("MainChar");
-            FilterMoves();
+            ErrorLog.WriteRaw($"[RESET] SwitchStanceAsync returned at {resetSw.ElapsedMilliseconds} ms");
+            _resetPhase = "filter-moves";
+            FilterMoves(logTiming: true);
             txtStatus.Text = statusMessage;
+            _resetPhase = "overlay-hide";
+            ErrorLog.WriteRaw($"[RESET] tail (FilterMoves + status) done at {resetSw.ElapsedMilliseconds} ms");
         }
         finally
         {
             loadingOverlay.Visibility = Visibility.Collapsed;
+            ErrorLog.WriteRaw($"[RESET] overlay hidden - reset total {resetSw.ElapsedMilliseconds} ms");
+            if (_resetPhase == "overlay-hide")
+            {
+                // Keep ticking through the first WPF layout/render pass after the
+                // overlay drops (a suspect in its own right): ticks that stop here
+                // localize the freeze to that pass.
+                _resetPhase = "post-overlay render";
+                _resetHeartbeatTick = 0;
+            }
+            else
+            {
+                StopResetHeartbeat(_resetPhase);
+            }
         }
     }
 
@@ -11870,6 +12638,9 @@ public class Settings
     public double[]? CameraTarget { get; set; }
     public string UnrealPakPath { get; set; } = "";
     public string CryptoJsonPath { get; set; } = "";
+    // Default true so old settings.json files (key absent) deserializing to the
+    // C# default still get the launch update check.
+    public bool CheckUpdatesOnLaunch { get; set; } = true;
     // CustomAssets files ("rel|utcTicks") accepted at the close prompt - re-asking
     // only happens when the folder's manifest drifts from this list.
     public List<string>? CustomAssetsAccepted { get; set; }

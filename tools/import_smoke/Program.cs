@@ -1,9 +1,17 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.RegularExpressions;
 using SifuMovesetEditor;
+using SifuMovesetEditor.Setup;
+using SifuMovesetEditor.Update;
+using System.Windows.Documents;
+using WpfRun = System.Windows.Documents.Run;
 using UAssetAPI;
 using UAssetAPI.ExportTypes;
 using UAssetAPI.PropertyTypes;
@@ -23,12 +31,26 @@ namespace import_smoke;
 /// </summary>
 internal static class Program
 {
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern IntPtr LoadLibrary(string lpFileName);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool FreeLibrary(IntPtr hModule);
+
     private static readonly string ContentRoot =
         Environment.GetEnvironmentVariable("SIFU_CONTENT")
         ?? @"C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Sifu\Content";
 
     private static readonly string SeanP1Rel = "Game/DB/AI/Archetypes/Sean/Sean_Combo_Phase1";
     private static readonly string FajarP2Rel = "Game/DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P2";
+
+    // Real mod paks for the surfaced-node / phantom-card regressions (Bug 1-3):
+    // skipped when absent so the smoke stays runnable without the user's downloads.
+    private static readonly string EHPak =
+        @"C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\bin\Debug\net10.0-windows\ExportedMods\EnemiesHarder_V2.pak";
+    private static readonly string WWPak =
+        @"C:\Users\Charles\Downloads\Sifu Modding\WW Test mod\.1Wude Wakening.pak";
+
     private static readonly string OutDir = Path.Combine(Path.GetTempPath(), "import_smoke");
     private static readonly List<string> Failures = new();
 
@@ -55,6 +77,11 @@ internal static class Program
         Run("StartEntryProbability", TestStartEntryProbability);
         Run("AiPayloadEventToAttack", TestAiPayloadEventToAttack);
         Run("SurfacedEventNode", TestSurfacedEventNode);
+        Run("UpdateChecker", TestUpdateChecker);
+        Run("UpdateSwap", TestUpdateSwap);
+        Run("NoteMarkdown", TestNoteMarkdown);
+        Run("RealPakEnemiesHarder", () => RunRealPak("EH", EHPak));
+        Run("RealPakWudeWakening", () => RunRealPak("WW", WWPak));
 
         Console.WriteLine();
         if (Failures.Count == 0)
@@ -91,12 +118,235 @@ internal static class Program
     {
         try
         {
-            string path = Path.Combine(Directory.GetCurrentDirectory(), "error.log");
+            // Logs live in logs\error-<date>.log (rotated, 7-day history); slice from
+            // the last session banner so the tail shows only this run. Falls back to
+            // the legacy error.log path for old sessions.
+            string dir = Path.Combine(Directory.GetCurrentDirectory(), "logs");
+            string path = Directory.Exists(dir)
+                ? Directory.GetFiles(dir, "error-*.log")
+                    .OrderByDescending(f => File.GetLastWriteTimeUtc(f))
+                    .FirstOrDefault() ?? ""
+                : "";
+            if (path.Length == 0)
+                path = Path.Combine(Directory.GetCurrentDirectory(), "error.log");
             if (!File.Exists(path)) return "";
             var lines = File.ReadAllLines(path);
-            return "---- error.log tail ----\n" + string.Join("\n", lines.Skip(Math.Max(0, lines.Length - 30)));
+            int start = 0;
+            for (int i = lines.Length - 1; i >= 0; i--)
+            {
+                if (lines[i].Contains("===== session start")) { start = i; break; }
+            }
+            var tail = lines.Skip(Math.Max(start, lines.Length - 30));
+            return $"---- {Path.GetFileName(path)} tail ----\n" + string.Join("\n", tail);
         }
         catch { return ""; }
+    }
+
+    // ---------------------------------------------------------------- update notes
+
+    private static void TestNoteMarkdown()
+    {
+        // GitHub release notes use **bold** / _italic_ - the dialog must strip
+        // the markers and wrap the text, not print the symbols.
+        var bold = MarkdownInlines.Render("**New Features**");
+        Expect(bold.Count == 1, $"bold block count ({bold.Count})");
+        Expect(bold[0] is Bold, "single bold inline");
+        Expect(((Bold)bold[0]).Inlines.FirstOrDefault() is WpfRun b1 && b1.Text == "New Features",
+            "bold text without stars");
+
+        var mixed = MarkdownInlines.Render("Plain **bold** and _italic_ end");
+        Expect(mixed.Count == 5, $"mixed inline count ({mixed.Count})");
+        Expect(mixed[1] is Bold && mixed[3] is Italic, "mixed bold/italic kinds");
+
+        var starItal = MarkdownInlines.Render("a *b* c");
+        Expect(starItal.Count == 3 && starItal[1] is Italic, "star italic");
+
+        var literal = MarkdownInlines.Render("use ** for bold");
+        Expect(literal.Count == 1 && literal[0] is WpfRun lr && lr.Text == "use ** for bold",
+            "unmatched markers stay literal");
+
+        var snake = MarkdownInlines.Render("some_snake_case_word");
+        Expect(snake.Count == 1 && snake[0] is WpfRun sr && sr.Text == "some_snake_case_word",
+            "intraword underscores untouched");
+
+        var multi = MarkdownInlines.Render("line1\r\n**line2**");
+        Expect(multi.Count == 2 && multi[0] is WpfRun mr && mr.Text == "line1\n" && multi[1] is Bold,
+            "newlines preserved as line breaks");
+    }
+
+    // ---------------------------------------------------------------- update check
+
+    private static void TestUpdateChecker()
+    {
+        // Tag/version parsing: repo tags look like "v1.2"; csproj Version like "1.3".
+        Expect(UpdateChecker.ParseTagVersion("v1.2") == new Version(1, 2), "ParseTagVersion(v1.2)");
+        Expect(UpdateChecker.ParseTagVersion("1.3") == new Version(1, 3), "ParseTagVersion(1.3)");
+        Expect(UpdateChecker.ParseTagVersion("v1.4.1") == new Version(1, 4, 1), "ParseTagVersion(v1.4.1)");
+        Expect(UpdateChecker.ParseTagVersion("1.3+abc123") == new Version(1, 3), "ParseTagVersion strips +sha");
+        Expect(UpdateChecker.ParseTagVersion("1.3 (deadbeef)") == new Version(1, 3), "ParseTagVersion strips (sha)");
+        Expect(UpdateChecker.ParseTagVersion("garbage") == null, "ParseTagVersion(garbage) is null");
+        Expect(UpdateChecker.ParseTagVersion(null) == null, "ParseTagVersion(null) is null");
+
+        var v13 = new Version(1, 3);
+        Expect(UpdateChecker.IsNewer(new Version(1, 4), v13), "1.4 > 1.3");
+        Expect(UpdateChecker.IsNewer(new Version(1, 3, 1), v13), "1.3.1 > 1.3");
+        Expect(!UpdateChecker.IsNewer(v13, v13), "1.3 !> 1.3");
+        Expect(!UpdateChecker.IsNewer(new Version(1, 2), v13), "1.2 !> 1.3");
+        // Out-of-order publish: the max version wins (1.4 beats 1.3.2).
+        Expect(new Version(1, 4) > new Version(1, 3, 2), "max-version pick 1.4 > 1.3.2");
+
+        var current = UpdateChecker.CurrentVersion();
+        Expect(current > new Version(0, 0), $"CurrentVersion parses ({current})");
+
+        // Zip payload layout: exe at the root, or inside one wrapper folder
+        // (SifuMovesetEditor/) - both must resolve to the dir to copy from.
+        var stage = Path.Combine(Path.GetTempPath(), "up_smoke_" + Guid.NewGuid().ToString("N").Substring(0, 8));
+        Directory.CreateDirectory(stage);
+        try
+        {
+            const string exe = "SifuMovesetEditor.exe";
+            File.WriteAllText(Path.Combine(stage, exe), "x");
+            Expect(UpdateChecker.FindPayloadDir(stage, exe) == stage, "payload resolved at zip root");
+
+            var wrap = Path.Combine(stage, "SifuMovesetEditor");
+            Directory.CreateDirectory(wrap);
+            File.Delete(Path.Combine(stage, exe));
+            File.WriteAllText(Path.Combine(wrap, exe), "x");
+            Expect(UpdateChecker.FindPayloadDir(stage, exe) == wrap, "payload resolved in wrapper folder");
+
+            File.Delete(Path.Combine(wrap, exe));
+            var miss = false;
+            try { UpdateChecker.FindPayloadDir(stage, exe); }
+            catch (InvalidOperationException) { miss = true; }
+            Expect(miss, "missing exe throws");
+        }
+        finally
+        {
+            try { Directory.Delete(stage, true); } catch { }
+        }
+    }
+
+    /// <summary>Exercises the in-process swap in temp dirs. (1) Design gates first:
+    /// Windows must allow renaming files this process genuinely holds open - our
+    /// own SifuMovesetEditor.dll and exe - or the whole in-place approach is dead
+    /// on this machine; and a LoadLibrary'd native dll (image section, share=READ)
+    /// must report locked to IsFileLocked's write-probe. (2) A held handle with
+    /// the loader's share mode (read+delete: exclusive probes report locked,
+    /// rename allowed) must be renamed to *.old and replaced, settings preserved,
+    /// manifest written. (3) A mid-copy failure must roll every rename back and
+    /// clear the manifest. (4) CleanupSwapLeftovers must then remove the *.old
+    /// leftovers.</summary>
+    private static void TestUpdateSwap()
+    {
+        // ---- Design gate: rename files that are truly in use by this process. ----
+        var selfDll = Path.Combine(AppContext.BaseDirectory, "SifuMovesetEditor.dll");
+        Expect(File.Exists(selfDll), "gate: referenced assembly sits beside smoke exe");
+        try
+        {
+            File.Move(selfDll, selfDll + ".gatetest");
+            File.Move(selfDll + ".gatetest", selfDll);
+        }
+        catch (Exception ex)
+        {
+            try { if (File.Exists(selfDll + ".gatetest")) File.Move(selfDll + ".gatetest", selfDll); } catch { }
+            Expect(false, $"gate: renaming a LOADED .NET assembly must work ({ex.Message})");
+        }
+
+        var exe = Environment.ProcessPath!;
+        try
+        {
+            File.Move(exe, exe + ".gatetest");
+            File.Move(exe + ".gatetest", exe);
+        }
+        catch (Exception ex)
+        {
+            try { if (File.Exists(exe + ".gatetest")) File.Move(exe + ".gatetest", exe); } catch { }
+            Expect(false, $"gate: renaming the RUNNING exe must work ({ex.Message})");
+        }
+
+        // Image-section gate: a native DLL loaded via LoadLibrary closes its
+        // handle but the section keeps a share=READ lock - the exact blind spot
+        // that made a read-probe miss WebView2Loader.dll in the field (probe said
+        // free, File.Copy then died with a sharing violation). The write-probe
+        // must report such a file locked.
+        var nativeDll = Path.Combine(AppContext.BaseDirectory, "runtimes", "win-x64", "native", "WebView2Loader.dll");
+        if (!File.Exists(nativeDll))
+            nativeDll = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..",
+                "bin", "Debug", "net10.0-windows", "runtimes", "win-x64", "native", "WebView2Loader.dll");
+        if (File.Exists(nativeDll))
+        {
+            var mod = LoadLibrary(nativeDll);
+            Expect(mod != IntPtr.Zero, "gate: LoadLibrary of WebView2Loader.dll");
+            try
+            {
+                Expect(UpdateChecker.IsFileLocked(nativeDll),
+                    "gate: image-section-held native DLL must report locked (write-probe)");
+            }
+            finally { FreeLibrary(mod); }
+        }
+
+        var baseDir = Path.Combine(Path.GetTempPath(), "upswap_" + Guid.NewGuid().ToString("N").Substring(0, 8));
+        var payload = Path.Combine(baseDir, "stage", "app");
+        var appDir = Path.Combine(baseDir, "installed");
+        Directory.CreateDirectory(Path.Combine(payload, "sub"));
+        Directory.CreateDirectory(Path.Combine(appDir, "sub"));
+
+        File.WriteAllText(Path.Combine(payload, "app.dll"), "NEW");
+        File.WriteAllText(Path.Combine(payload, "locked.dll"), "NEW");
+        File.WriteAllText(Path.Combine(payload, "sub", "data.txt"), "NEWDATA");
+        File.WriteAllText(Path.Combine(payload, "settings.json"), "FROM-PAYLOAD");
+        File.WriteAllText(Path.Combine(appDir, "app.dll"), "OLD");
+        File.WriteAllText(Path.Combine(appDir, "locked.dll"), "OLD");
+        File.WriteAllText(Path.Combine(appDir, "settings.json"), "USER-SETTINGS");
+
+        // ---- Happy path with one in-use file. ----
+        using (new FileStream(Path.Combine(appDir, "locked.dll"),
+            FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
+        {
+            UpdateChecker.SwapIntoPlace(payload, appDir, null);
+
+            Expect(File.ReadAllText(Path.Combine(appDir, "app.dll")) == "NEW", "free dest overwritten");
+            Expect(File.ReadAllText(Path.Combine(appDir, "locked.dll")) == "NEW", "locked dest replaced after rename");
+            Expect(File.ReadAllText(Path.Combine(appDir, "locked.dll.old")) == "OLD", "original kept as .old");
+            Expect(File.ReadAllText(Path.Combine(appDir, "settings.json")) == "USER-SETTINGS", "settings.json preserved");
+            Expect(File.ReadAllText(Path.Combine(appDir, "sub", "data.txt")) == "NEWDATA", "subfolder copied");
+            var manifest = Path.Combine(appDir, "logs", "swap.pending");
+            Expect(File.Exists(manifest), "manifest written for next-instance cleanup");
+            Expect(File.ReadAllText(manifest).Contains("locked.dll"), "manifest lists the .old file");
+            Expect(File.ReadAllText(Path.Combine(appDir, "logs", "update.log")).Contains("swap ok"),
+                "update.log records the swap");
+        }
+
+        UpdateChecker.CleanupSwapLeftovers(appDir);
+        Expect(!File.Exists(Path.Combine(appDir, "locked.dll.old")), ".old removed by cleanup");
+        Expect(!File.Exists(Path.Combine(appDir, "logs", "swap.pending")), "manifest removed once clean");
+
+        // ---- Rollback: a dest name occupied by a directory fails the copy. ----
+        var rbPayload = Path.Combine(baseDir, "stage2", "app");
+        var rbApp = Path.Combine(baseDir, "installed2");
+        Directory.CreateDirectory(rbPayload);
+        Directory.CreateDirectory(rbApp);
+        Directory.CreateDirectory(Path.Combine(rbApp, "locked")); // copy target is a DIRECTORY
+        File.WriteAllText(Path.Combine(rbPayload, "aaa_newonly.txt"), "CREATE-ME");
+        File.WriteAllText(Path.Combine(rbPayload, "locked"), "NEW-BLOCKED");
+        File.WriteAllText(Path.Combine(rbPayload, "zzz_locked.dll"), "NEW-L");
+        File.WriteAllText(Path.Combine(rbApp, "zzz_locked.dll"), "OLD-L");
+
+        using (new FileStream(Path.Combine(rbApp, "zzz_locked.dll"),
+            FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
+        {
+            var threw = false;
+            try { UpdateChecker.SwapIntoPlace(rbPayload, rbApp, null); }
+            catch (InvalidOperationException) { threw = true; }
+            Expect(threw, "copy failure surfaces as a swap error");
+            Expect(File.ReadAllText(Path.Combine(rbApp, "zzz_locked.dll")) == "OLD-L", "rollback restored the locked file");
+            Expect(!File.Exists(Path.Combine(rbApp, "zzz_locked.dll.old")), "rollback removed the .old");
+            Expect(!File.Exists(Path.Combine(rbApp, "aaa_newonly.txt")), "rollback removed files it created");
+            Expect(!File.Exists(Path.Combine(rbApp, "logs", "swap.pending")), "rollback cleared the manifest");
+            Expect(Directory.Exists(Path.Combine(rbApp, "locked")), "blocked directory untouched");
+        }
+
+        try { Directory.Delete(baseDir, true); } catch { }
     }
 
     // ---------------------------------------------------------------- pipeline
@@ -571,5 +821,192 @@ internal static class Program
             "surfaced node has no ImportComboRel");
         Expect(surfaced.ImportSourceTreeIndex == appendedIdx,
             $"ImportSourceTreeIndex={surfaced.ImportSourceTreeIndex}, expected {appendedIdx}");
+    }
+
+    // ---------------------------------------------------------------- real paks
+
+    /// <summary>
+    /// Extracts a real mod pak (UnrealPak, same flow as MainWindow import), discovers its
+    /// combo trees through BuildImportComboCatalog, runs the vanilla-compare pipeline and
+    /// asserts the Bug 1-3 regressions: no opaque Node_{idx} display names on surfaced
+    /// nodes (purple-duplicate fix), WW Kuroki_P1 edge fan collapsed, EH Kuroki_P1
+    /// surfaced count down from 112, and every EH node anim present in vanilla content
+    /// (so the import sweep can no longer create Custom cards for them). Prints a
+    /// per-unit table of surfaced/edge/missing-anim numbers for layout review.
+    /// </summary>
+    private static void RunRealPak(string label, string pakPath)
+    {
+        var only = Environment.GetEnvironmentVariable("SIFU_SMOKE_PAKS");
+        if (!string.IsNullOrEmpty(only) &&
+            !only.Split(',').Any(s => s.Trim().Equals(label, StringComparison.OrdinalIgnoreCase)))
+            return;
+        if (!File.Exists(pakPath))
+        {
+            Console.WriteLine($"    (pak not found - skipped: {pakPath})");
+            return;
+        }
+
+        var stagingRoot = Path.Combine(Path.GetTempPath(), "SifuImpSmoke" + label);
+        var extractDir = Path.Combine(stagingRoot, "a", "b", "c");
+        if (Directory.Exists(stagingRoot)) Directory.Delete(stagingRoot, true);
+        Directory.CreateDirectory(extractDir);
+        try
+        {
+            var pakCopy = Path.Combine(stagingRoot, "original.pak");
+            File.Copy(pakPath, pakCopy, true);
+
+            var unrealPak = ContentExtractor.FindUnrealPak()
+                ?? throw new Exception("UnrealPak not found (tools\\ue4\\UnrealPak\\UnrealPak.exe)");
+            var keys = ContentExtractor.EnsurePakKeysFile();
+            var psi = new ProcessStartInfo
+            {
+                FileName = unrealPak,
+                Arguments = keys != null && File.Exists(keys)
+                    ? $"\"{pakCopy}\" -CryptoKeys=\"{keys}\" -Extract \"{extractDir}\""
+                    : $"\"{pakCopy}\" -Extract \"{extractDir}\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                WorkingDirectory = ContentExtractor.EnsureUnrealPakWorkingDirectory(),
+            };
+            using (var proc = Process.Start(psi) ?? throw new Exception("Failed to start UnrealPak"))
+            {
+                string stdout = proc.StandardOutput.ReadToEnd();
+                string stderr = proc.StandardError.ReadToEnd();
+                if (!proc.WaitForExit(300000))
+                {
+                    try { proc.Kill(true); } catch { }
+                    throw new Exception("UnrealPak timed out after 300 s");
+                }
+                if (proc.ExitCode != 0)
+                    throw new Exception($"UnrealPak exit {proc.ExitCode}: {(stderr + "\n" + stdout).Trim()}");
+            }
+
+            var catalog = MainWindow.BuildImportComboCatalog();
+            var candidates = Directory.GetFiles(extractDir, "*.uasset", SearchOption.AllDirectories)
+                .Where(f => catalog.ContainsKey(Path.GetFileNameWithoutExtension(f)))
+                .Select(f => (path: f, rel: Path.GetRelativePath(extractDir, f),
+                              entry: catalog[Path.GetFileNameWithoutExtension(f)]))
+                .ToList();
+
+            static bool IsBackupVariant(string rel) =>
+                rel.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    .Any(seg => seg.Equals("0Backup", StringComparison.OrdinalIgnoreCase)
+                             || seg.Equals("Old", StringComparison.OrdinalIgnoreCase)
+                             || seg.Contains("_Copy", StringComparison.OrdinalIgnoreCase));
+            var chosen = new Dictionary<string, (string path, MainWindow.ImportComboEntry entry)>(
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var c in candidates) if (!IsBackupVariant(c.rel)) chosen.TryAdd(c.entry.UnitKey, (c.path, c.entry));
+            foreach (var c in candidates) if (IsBackupVariant(c.rel)) chosen.TryAdd(c.entry.UnitKey, (c.path, c.entry));
+            if (chosen.Count == 0) throw new Exception($"no combo trees discovered in {Path.GetFileName(pakPath)}");
+
+            string? overlay = MainWindow.FindContentRootUnder(extractDir);
+            var parser = NewParser();
+            if (overlay != null) parser.SetOverlayProvider(parser.CreateOverlayProvider(overlay));
+
+            Console.WriteLine($"    [{label}] {Path.GetFileName(pakPath)}: {chosen.Count} unit tree(s), overlay={(overlay != null ? "yes" : "no")}");
+            int missingTotal = 0;
+            var failures = new List<string>();
+            void Check(bool ok, string msg)
+            {
+                if (!ok) failures.Add(msg);
+            }
+            foreach (var (unitKey, (treePath, entry)) in chosen)
+            {
+                var modded = parser.ReadModdedComboNodes(treePath, overlay);
+                if (modded.Count == 0)
+                {
+                    Console.WriteLine($"    {label} {unitKey}: no modded nodes parsed - skipped");
+                    continue;
+                }
+                var starts = parser.ReadModdedStartEntries(treePath);
+                var graph = parser.LoadComboTreeFromPath(entry.GamePath, entry.WeaponName);
+                if (graph == null)
+                {
+                    Console.WriteLine($"    {label} {unitKey}: vanilla graph null ({entry.GamePath}) - skipped");
+                    continue;
+                }
+
+                int edgesBefore = graph.Edges.Count;
+                var result = parser.ApplyModdedComboToVanilla(
+                    graph, modded, entry.WeaponName, starts.Count > 0 ? starts : null);
+                int edgesDelta = graph.Edges.Count - edgesBefore;
+
+                var surfacedNodes = graph.Nodes.Where(n => n.Kind == ComboNodeKind.ImportedNew).ToList();
+                int missing = graph.Nodes.Count(n =>
+                    !n.IsRoot && !string.IsNullOrEmpty(n.AnimPath)
+                    && n.AnimPath.Contains("/Animations/", StringComparison.OrdinalIgnoreCase)
+                    && !n.AnimPath.Contains("/DB/", StringComparison.OrdinalIgnoreCase)
+                    && !AnimOnVanillaDisk(ContentRoot, n.AnimPath));
+                missingTotal += missing;
+
+                Console.WriteLine(
+                    $"    {label} {unitKey}: mod={modded.Count} surfaced={result.Surfaced} " +
+                    $"extraNodes={surfacedNodes.Count} edgesDelta={edgesDelta} " +
+                    $"graph={graph.Nodes.Count}/{graph.Edges.Count} missingOnDisk={missing}");
+                var extraIdx = string.Join(",", surfacedNodes.Select(n => n.TreeIndex).OrderBy(x => x));
+                var conduitKeys = graph.ConduitTargets == null
+                    ? ""
+                    : string.Join(",", graph.ConduitTargets.Keys.OrderBy(k => k));
+                int redirs = graph.Nodes.Count(n => n.IsRedirect && n.TreeIndex >= 0);
+                Console.WriteLine(
+                    $"    {label} {unitKey}: extraTreeIdx=[{extraIdx}] redirs={redirs} conduits=[{conduitKeys}]");
+
+                foreach (var n in surfacedNodes)
+                {
+                    var disp = string.IsNullOrEmpty(n.DisplayName) ? n.Name : n.DisplayName;
+                    Check(!string.IsNullOrWhiteSpace(disp),
+                        $"{label} {unitKey}: surfaced node tree[{n.TreeIndex}] has no display name " +
+                        $"(name='{n.Name}' db='{n.DefaultDBPath}' anim='{n.AnimPath}' " +
+                        $"redir={n.IsRedirect}->{n.RedirectTargetTreeIndex} action='{n.ActionClass}' event='{n.EventName}')");
+                    Check(!Regex.IsMatch(disp?.Trim() ?? "", @"^Node_\d+$"),
+                        $"{label} {unitKey}: surfaced node named '{disp}' (tree[{n.TreeIndex}]) " +
+                        $"name='{n.Name}' db='{n.DefaultDBPath}' anim='{n.AnimPath}' " +
+                        $"redir={n.IsRedirect}->{n.RedirectTargetTreeIndex} action='{n.ActionClass}' event='{n.EventName}' " +
+                        $"dirs={n.DirectionLabel} kind={n.Kind}");
+                }
+
+                if (label == "EH" && unitKey == "Kuroki|Kuroki_P1")
+                {
+                    Check(result.Surfaced >= 40 && result.Surfaced <= 55,
+                        $"EH Kuroki_P1 surfaced={result.Surfaced}, expected 40..55 (pre-fix 112)");
+                }
+                if (label == "WW" && unitKey == "Kuroki|Kuroki_P1")
+                {
+                    Check(result.Surfaced <= 60,
+                        $"WW Kuroki_P1 surfaced={result.Surfaced}, expected <= 60 (pre-fix 118)");
+                    Check(edgesDelta < 2000,
+                        $"WW Kuroki_P1 edgesDelta={edgesDelta}, expected < 2000 (pre-fix 3964)");
+                }
+            }
+            parser.SetOverlayProvider(null);
+
+            if (label == "EH")
+            {
+                Check(missingTotal == 0,
+                    $"EH: {missingTotal} node anim(s) absent from vanilla content - would remain Custom cards");
+            }
+            else
+            {
+                Console.WriteLine(
+                    $"    [{label}] {missingTotal} node anim(s) absent from vanilla content (kept as Custom cards)");
+            }
+
+            if (failures.Count > 0)
+                throw new Exception(string.Join("\n         ", failures));
+        }
+        finally
+        {
+            try { if (Directory.Exists(stagingRoot)) Directory.Delete(stagingRoot, true); } catch { }
+        }
+    }
+
+    private static bool AnimOnVanillaDisk(string contentDir, string animPath)
+    {
+        var rel = VoiceArchetypeFixer.NormalizeRel(animPath);
+        if (string.IsNullOrEmpty(rel)) return false;
+        return File.Exists(Path.Combine(contentDir,
+            rel.Replace('/', Path.DirectorySeparatorChar) + ".uasset"));
     }
 }
