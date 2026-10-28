@@ -1,5 +1,7 @@
 # Sifu Custom Moveset Maker
 
+**Current version: v1.3**
+
 A modding tool for [Sifu](https://www.sloclap.com/games/sifu/) that lets you create, visualize, and export custom moveset mods — no UE4 editor required.
 
 > **Windows shows "Windows protected your PC"?** That's Microsoft SmartScreen flagging the app as unrecognized (it's currently unsigned while [code signing](https://signpath.org/) is being set up — it is not a virus). Click **More info → Run anyway**. If the downloaded zip is flagged, right-click it → **Properties → Unblock** before extracting. You can verify the source yourself: [github.com/ChorlsChu/Custom-Moveset-Maker--Sifu-Mod-](https://github.com/ChorlsChu/Custom-Moveset-Maker--Sifu-Mod-).
@@ -21,7 +23,34 @@ A modding tool for [Sifu](https://www.sloclap.com/games/sifu/) that lets you cre
 
 - **Stance Tab** — View per-character combat stance animations for MainChar, Grunt, FireDisciple, FlashKick, BigGuy, BodyGuard, Fajar, Fengjie, Kuroki, Sean, Yang, and Servant. Switch stances via dropdown to apply BaseMovementDB + BP_TransitionAnimRequest.
 
+- **Custom Nodes & Free Linking** — Build your own combos:
+  - Drag any attack card from the library and drop it onto the combo graph to add a brand-new attack node.
+  - Connect any node to any node to design your own routes and mixups — the input picker only offers inputs that actually make sense for that link.
+
+- **AI Action & Event Nodes** — Not every enemy move is a plain Attack node. Some units perform moves through BP AI Action references instead — that's why you won't find, for example, FireDisciple's RushJumpKicks, Kuroki's throwing knives or her dashes, or the enemies' directional dashes (Dash S/N/W/E) as attack nodes in their movesets. AI Action and Event nodes let you see, add, and link these.
+  - AI Actions are **category-specific**: adding one to a unit that doesn't use that category (like giving the FireDisciple Staff moveset the "WallJump" action) may not work in game.
+  - They're **disabled by default** and can be enabled in Settings, since this may confuse new users (the amount of AI Actions/Event nodes is huge on boss movesets).
+
+- **Phase Swap** — Assign a second moveset to any unit: when the player performs a takedown on that unit, it cancels the grab and instantly switches to the chosen moveset — the same trick vanilla Grunts use to go Advanced → MiniBoss mid-fight.
+
+- **Mixups (Chances)** — Every connected link on an attack node gets a probability you choose — when a move has multiple follow-ups, the game rolls your chances (like 70% ThrustPalm / 30% Sweep).
+  - If your chances don't add up to 100, the editor warns you before export and normalizes them.
+
+- **Conditions** — Each link can carry conditions that must be met for that transition to be available — so you can gate follow-ups on game state instead of always offering them.
+
+- **Start Entries** — Start Entries decide which nodes an attack chain can start from and with what probability, so you control where strings enter the graph. Editable per unit.
+  - Entries are **unit-specific**: copying one from a unit family to another that doesn't use it (like giving Sean the FireDisciple's "WallJumpGoTo" entry) may not work in game — the receiving unit needs to actually support that entry type.
+
+- **Advanced Hit Windows** — Every attack node has a hit window — the window during the animation where the attack can actually connect. Widen it to make a move more forgiving, tighten it to punish timing. Edit start/end (plus related fields) per attack; export patches them in.
+  - Each hit has gameplay toggles: set **"parriable" per hit** (not per attack).
+  - Apply **"dizzy on parry"** or **"dizzy on avoid"** to give the victim a chance to punish, plus super-dizzy gauge fill.
+  - The rest of the hit's numbers are here too: damage, structure, stun, freeze, lethal, and more.
+  - Some attacks (grabs, takedowns like Crooked Foot) don't carry all fields, so those sections may be partially empty.
+
 - **Auto-Extract on First Run** — When the app opens and cannot find any extracted game files, it will automatically locate Sifu's original `.pak` file and selectively extract only the needed assets (animations, combo trees, attack data) into the app's directory. No need to manually extract the full 30GB game — just the ~500MB needed for modding.
+
+- **Auto Updates** — No more manually downloading the zip from GitHub: on launch the editor checks for a newer release and pops up an **"Update & Restart"** button when one exists. Click it, and it downloads, installs, and relaunches you on the new version.
+  - Updates only touch the app files — your settings and Custom Library (`CustomAssets`) are never touched.
 
 - **Export Pak** — Package your modified combo tree into a UE4 `.pak` mod that installs into Sifu's `~mods` folder.
 
@@ -45,30 +74,43 @@ Sifu stores its combat system in UE4 combo tree data assets. This tool parses th
 
 4. **Edit moves** — Drag animations from the library onto combo nodes to replace moves. Double-click to preview any animation in the 3D viewer. Repeat across as many units as you want — each unit’s graph is cached in the project.
 
-5. **Unit Properties (optional)** — For enemies and bosses (not MainChar), open **Unit Properties** to edit Health, Structure, and experimental AI defense fields (Memory Limit, Hits Count, Flush Limit). See [Unit Properties](#unit-properties).
+5. **Add new nodes & links** — Drag an attack card from the library onto the graph to add a brand-new attack node, then connect any node to any node to build your own routes — the input picker only offers inputs that make sense for the chosen link. (Enable **AI Action & Event nodes** in Settings first if you want to add enemy moves that live outside the attack tables, like Kuroki's knives/dashes.)
 
-6. **Switch stances** — Use the Combat Stance dropdown to replace the player's movement/stance with any of 12 supported stances. Each stance swaps:
-   - `BaseMovementDB` — movement database with transition anim references
-   - `BP_TransitionAnimRequest` — animation graph for locomotion transitions
+6. **Tune follow-ups (Mixups & Conditions)** — Give each outgoing link a **chance** (e.g. 70% ThrustPalm / 30% Sweep) and optional **conditions** that gate whether the link is offered. The editor warns before export if your chances don't sum to 100 and normalizes them.
 
-7. **Export mod** — Generate a `.pak` + `.sig` file pair. The export pipeline:
-   - Patches `m_Attacks` maps in each modified combo tree to reference new AttackDB assets
-   - Copies/modifies animation `.uasset`/`.uexp` files (only modified ones)
-   - Patches unit properties (ArchetypeDB Health/Structure, ContextualDefense) when changed
-   - Patches stance DBs if stance changed (via StanceGenerator)
-   - Builds UE4 pak using UnrealPak.exe (multi-unit mods export as one pak)
-   - Copies .sig file for pak integrity
+7. **Tune hit windows** — Open **Advanced hit windows** on any attack node to edit the connect window plus per-hit gameplay: parriable, dizzy on parry/avoid, super-dizzy fill, damage, structure, stun, freeze, lethal, and more.
 
-8. **Install** — Copy the generated pak+sig to `Sifu/Content/Paks/~mods/`
+8. **Phase Swap (optional)** — Assign a second moveset to a unit so a player takedown on it cancels into that moveset mid-fight.
+
+9. **Unit Properties (optional)** — For enemies and bosses (not MainChar), open **Unit Properties** to edit Health, Structure, and experimental AI defense fields (Memory Limit, Hits Count, Flush Limit). See [Unit Properties](#unit-properties).
+
+10. **Switch stances** — Use the Combat Stance dropdown to replace the player's movement/stance with any of 12 supported stances. Each stance swaps:
+    - `BaseMovementDB` — movement database with transition anim references
+    - `BP_TransitionAnimRequest` — animation graph for locomotion transitions
+
+11. **Export mod** — Generate a `.pak` + `.sig` file pair. The export pipeline:
+    - Patches `m_Attacks` maps in each modified combo tree to reference new AttackDB assets
+    - Patches hit-window fields, mixup chances, conditions, and start entries into the combo trees
+    - Copies/modifies animation `.uasset`/`.uexp` files (only modified ones)
+    - Patches unit properties (ArchetypeDB Health/Structure, ContextualDefense) when changed
+    - Patches stance DBs if stance changed (via StanceGenerator)
+    - Builds UE4 pak using UnrealPak.exe (multi-unit mods export as one pak)
+    - Copies .sig file for pak integrity
+
+12. **Install** — Copy the generated pak+sig to `Sifu/Content/Paks/~mods/`
 
 ### Data Model
 
-- **ComboNode**: Graph node with `AnimPath`, `DefaultAnimPath`, `DisplayName`, `DirectionLabel` (FL/FR/BL/BR/F/B/L/R)
-- **ComboEdge**: Transition between nodes with `InputName` (LMB/RMB/S/Q/etc.)
+- **ComboNode**: Graph node with `AnimPath`, `DefaultAnimPath`, `DisplayName`, `DirectionLabel` (FL/FR/BL/BR/F/B/L/R). Nodes can be vanilla, custom (dragged from the library), or AI Action / Event nodes.
+- **ComboEdge**: Transition between nodes with `InputName` (LMB/RMB/S/Q/etc.), a **chance** (mixup probability, normalized to 100 at export), and optional **conditions** gating the transition.
 - **AttackDB**: Self-contained move definition referencing an `AnimSequence` and `AttackDataRow` from a DataTable
 - **AttackDataRow**: Struct holding per-attack stats (damage, knockback, hitframe, etc.)
+- **HitWindow (`m_HitBoxes`)**: Per-attack connect window with frame range plus per-hit fields — parriable, damage, structure, stun, freeze, lethal, dizzy on parry/avoid, super-dizzy fill
+- **Start Entries**: Per-unit chain entry points with probabilities, deciding which nodes a string can start from
+- **Phase Swap**: Optional second moveset per unit, applied when the player performs a takedown on it
 - **BaseMovementDB**: Player movement database with `m_DetailedMoveTransitionDB`, `m_TransitionAnimRequest`, per-speed blend descriptions
 - **BP_TransitionAnimRequest**: Blueprint asset defining which animations play for V0/V1 tense states, starts, and stops
+- **Custom Library (`CustomAssets/`)**: Persistent folder for user-created assets (new cards, cloned content); auto-staged into the pak on export
 
 ### Supported Characters & Stances
 
@@ -144,7 +186,8 @@ The app writes `settings.json` in its installation directory on exit.
 2. **Adjust Unit Properties** on enemies/bosses if desired (Health, Structure, AI defense).
 3. **Switch stances** via the Combat Stance dropdown if desired.
 4. Click **Export Pak** — the Export dialog will show:
-   - **Review panel**: list of all changes (modified nodes + unit property values + stance changes).
+   - **Review panel**: list of all changes (modified nodes + unit property values + stance changes + hit-window edits).
+   - **Warnings**: e.g. mixup chances that don't sum to 100 (they're normalized) or hit rows shared between attacks.
    - **Progress**: step-by-step build (copy files → patch imports → build pak).
    - **Complete**: shows pak size, change count, and install location.
 5. Copy the generated pak+sig (e.g. `MainCharComboMod.pak` or `MultiUnitComboMod.pak`) to `Sifu/Content/Paks/~mods/`.
@@ -208,6 +251,7 @@ The right sidebar shows an **Attack DB** panel when the selected combo node has 
 - **`.sifu-edit`** — Project save format: node animation swaps per unit, unit properties, and multi-unit caches (JSON).
 - **`.pak` + `.sig`** — Mod package (UE4 pak + integrity signature).
 - **`settings.json`** — Persistent app settings (content path, output path, camera position, stance).
+- **`CustomAssets/`** — Your Custom Library: any brand-new content the editor creates lives here, persists between sessions, and is automatically included when a mod is exported. Auto-updates never touch it.
 
 ---
 
@@ -251,6 +295,18 @@ On first run, if the app cannot find valid extracted content:
 
 ---
 
+## Auto Updates
+
+No more manually downloading the zip from GitHub:
+
+1. On launch, the editor checks GitHub for a newer release.
+2. If one exists, an **"Update & Restart"** button pops up.
+3. Click it — the editor downloads the update, installs it, and relaunches you on the new version.
+
+Updates only replace the app files. Your `settings.json`, projects (`.sifu-edit`), and **Custom Library (`CustomAssets/`)** are never touched.
+
+---
+
 ## Credits
 
 - [Sloclap](https://www.sloclap.com/) — Developer and publisher of Sifu. This tool is an independent fan-made modding utility and is not affiliated with or endorsed by Sloclap.
@@ -272,8 +328,9 @@ Release binaries are code-signed: free code signing provided by [SignPath.io](ht
 
 ## Planned Enhancements (future roadmap)
 
-- Custom chain attacks on MainCharacter. Doing that on enemy movesets is causing the game to crash for some reason
 - Custom Arena level creator where you can modify the waves, enemy spawns and all that (Maybe I'll make this as a standalone, unsure)
+
+> **Note:** "Custom chain attacks on MainChar" is no longer planned — it ships as **Custom Nodes & Free Linking** (see [What it does](#what-it-does)).
 
 ---
 
@@ -299,6 +356,15 @@ A: Yes — switch to the unit via Change Unit, then open **Unit Properties** (hi
 
 **Q: Can I edit movesets for all enemies and bosses in one mod?**  
 A: Yes. Switch units with Change Unit, edit each moveset (and unit properties if you want), then export once — all modified units are packaged into a single pak.
+
+**Q: How do I add a brand-new move (a move that isn't in the graph)?**  
+A: Drag any attack card from the Animation Library and drop it onto the combo graph — it creates a brand-new attack node. Then connect it to other nodes to wire it into your routes; the input picker only offers inputs that make sense for that link.
+
+**Q: Why can't I find enemy dashes, Kuroki's knives, or FireDisciple's RushJumpKicks as attack nodes?**  
+A: Those moves aren't stored as plain Attack nodes — units perform them through BP AI Action references (and some are Event nodes). Enable **AI Action & Event nodes** in Settings to see, add, and link them. Two caveats: AI Actions are category-specific (giving a unit a category it doesn't use may not work in game), and boss movesets contain a *huge* number of them — which is why the feature is off by default.
+
+**Q: Will updating the app erase my custom content?**  
+A: No. Updates only replace app files. Your `settings.json`, `.sifu-edit` projects, and Custom Library (`CustomAssets/`) are never touched.
 
 ---
 
