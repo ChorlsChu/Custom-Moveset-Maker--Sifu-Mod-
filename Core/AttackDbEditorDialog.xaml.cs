@@ -56,6 +56,8 @@ public partial class AttackDbEditorDialog : Window
         public CheckBox BreakStructure = null!;
         public CheckBox DizzyParry = null!;
         public CheckBox DizzyAvoid = null!;
+        /// <summary>Window title - recolored when the row stops being shared.</summary>
+        public TextBlock? Title;
     }
 
     /// <summary>One selectable Hit reaction preset; the dropdown writes power + property level together.</summary>
@@ -114,14 +116,101 @@ public partial class AttackDbEditorDialog : Window
 
         BuildWindows();
 
-        var shared = card.Windows.Where(w => w.SharedRow).Select(w => w.RowName).Distinct().ToList();
+        UpdateSharedBanner();
+    }
+
+    private Func<string?>? _makePrivate;
+
+    /// <summary>
+    /// Escape hatch for a shared row: gives this card a private HitBoxData copy so its
+    /// edits stop leaking to other attacks. Set by the caller - only for cards that
+    /// already live in CustomAssets (a vanilla card cannot be rewritten in place).
+    /// Returns null on success, otherwise the failure message.
+    /// <para>
+    /// The caller assigns this after construction, so the setter must refresh the banner:
+    /// the constructor runs <see cref="UpdateSharedBanner"/> before the callback exists,
+    /// and without this the button would stay collapsed forever.
+    /// </para>
+    /// </summary>
+    internal Func<string?>? MakePrivate
+    {
+        get => _makePrivate;
+        set
+        {
+            _makePrivate = value;
+            if (windowsPanel != null) UpdateSharedBanner();
+        }
+    }
+
+    /// <summary>
+    /// Shows the row/table warning banner and its "Make private" button. The button is
+    /// driven by the resolved table path, not the row-name heuristic: a clone whose name
+    /// happens to match its vanilla row still points at a shared table and must offer the
+    /// escape hatch. The heuristic list only decides which warning wording to show.
+    /// </summary>
+    private void UpdateSharedBanner()
+    {
+        var shared = _card.Windows.Where(w => w.SharedRow).Select(w => w.RowName).Distinct().ToList();
+        var shareableTables = _card.Windows.Where(w => w.CanPrivatize)
+            .Select(w => w.TableRel)
+            .Where(t => !string.IsNullOrEmpty(t))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        bool canPrivatize = MakePrivate != null && shareableTables.Count > 0;
+
+        if (shared.Count == 0 && shareableTables.Count == 0)
+        {
+            panelShared.Visibility = Visibility.Collapsed;
+            return;
+        }
+
         if (shared.Count > 0)
         {
             txtSharedWarning.Text = "Shared row warning: these rows are not named after this attack and "
                 + "may be used by other attacks in the same family table - edits affect every user: "
                 + string.Join(", ", shared);
-            txtSharedWarning.Visibility = Visibility.Visible;
         }
+        else
+        {
+            txtSharedWarning.Text = "Hit row table is not private to this card: "
+                + string.Join(", ", shareableTables.Select(TableLabel))
+                + " - edits to its rows may affect other attacks that use it.";
+        }
+        if (MakePrivate == null && shareableTables.Count > 0)
+            txtSharedWarning.Text += " Clone this card first to make it private.";
+        btnMakePrivate.Visibility = canPrivatize ? Visibility.Visible : Visibility.Collapsed;
+        panelShared.Visibility = Visibility.Visible;
+    }
+
+    private static string TableLabel(string tableRel)
+        => System.IO.Path.GetFileNameWithoutExtension(
+            tableRel.Replace('/', System.IO.Path.DirectorySeparatorChar));
+
+    private void MakePrivate_Click(object sender, RoutedEventArgs e)
+    {
+        if (MakePrivate == null) return;
+        var confirm = MessageBox.Show(this,
+            "Copy this card's hit row into a private table of its own?\n\n"
+            + "Afterwards, edits to damage / parriable / stun on this card affect ONLY this "
+            + "card. The table copy is added to your CustomAssets library and ships with the "
+            + "export.",
+            "Make hit row private", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+        if (confirm != MessageBoxResult.OK) return;
+
+        string? err = MakePrivate();
+        if (err != null)
+        {
+            txtStatus.Text = $"Make private failed: {err}";
+            return;
+        }
+        foreach (var f in _fields)
+        {
+            f.Info.SharedRow = false;
+            f.Info.CanPrivatize = false;
+            if (f.Title != null) f.Title.Foreground = BlueBrush;
+        }
+        panelShared.Visibility = Visibility.Collapsed;
+        txtStatus.Text = "Hit row is private to this card now";
     }
 
     private void BuildWindows()
@@ -167,6 +256,7 @@ public partial class AttackDbEditorDialog : Window
                 TextTrimming = TextTrimming.CharacterEllipsis
             };
             header.Children.Add(title);
+            fields.Title = title;
             if (w.LookupStatus != VanillaLookupStatus.Ok)
             {
                 header.Children.Add(new TextBlock
@@ -470,6 +560,13 @@ public partial class AttackDbEditorDialog : Window
             "When the victim parries this attack, they are put into super-dizzy - the vulnerable dizzy state, not a normal stagger."),
         ["DizzyOnAvoid"] = ("Dizzy on avoid",
             "When the victim avoids/dodges this attack, they are put into super-dizzy."),
+        ["SharedRow"] = ("Shared hit row",
+            "This attack's hit window points at a row in a HitBoxData table that other attacks "
+            + "also use - editing damage / parriable / stun here changes those attacks too.\n\n"
+            + "\"Make private\" copies the table next to this card (CustomAssets, named after "
+            + "the card) and points this card at the copy. The copy ships with your export; "
+            + "nothing in the vanilla game files is touched. Recommended whenever you plan to "
+            + "keep hit-stat edits."),
         ["Armor"] = ("Armor / Resilience",
             "Attacker-side super armor, carried as an OrderServiceNotifyState on the attack's animation asset (not the hit windows or the AttackDB card). While the notify is active the attacker cannot be interrupted by flinches.\n\n"
             + "Tiers (selected by the notify's m_ServiceClass):\n"

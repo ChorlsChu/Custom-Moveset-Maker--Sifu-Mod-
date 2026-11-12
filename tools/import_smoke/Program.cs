@@ -43,6 +43,7 @@ internal static class Program
 
     private static readonly string SeanP1Rel = "Game/DB/AI/Archetypes/Sean/Sean_Combo_Phase1";
     private static readonly string FajarP2Rel = "Game/DB/AI/Archetypes/Fajar/Attacks/Fajar_Combo_P2";
+    private static readonly string MainCharRel = "Game/DB/_MainChar/Combos/MainChar_ComboTree";
 
     // Real mod paks for the surfaced-node / phantom-card regressions (Bug 1-3):
     // skipped when absent so the smoke stays runnable without the user's downloads.
@@ -75,6 +76,7 @@ internal static class Program
         Run("ConditionClear", TestConditionClear);
         Run("ConditionParam", TestConditionParam);
         Run("StartEntryProbability", TestStartEntryProbability);
+        Run("MainCharStartEntry", TestMainCharStartEntry);
         Run("AiPayloadEventToAttack", TestAiPayloadEventToAttack);
         Run("SurfacedEventNode", TestSurfacedEventNode);
         Run("UpdateChecker", TestUpdateChecker);
@@ -750,6 +752,80 @@ internal static class Program
         Expect(changed.Count > 0, "no start transition shows Probability=12.5");
         Expect(changed.All(x => Math.Abs(x.t.OriginalProbability - 12.5f) > 0.001f),
             "OriginalProbability was overwritten");
+    }
+
+    /// <summary>Player trees carry the same m_ComboStartNodesContainer as enemies, bound to
+    /// BP_MainCharComboStartStates. Start-entry diffs used to be skipped for MainChar, which
+    /// silently dropped MC start-entry edits on mod re-import.</summary>
+    private static void TestMainCharStartEntry()
+    {
+        var (source, written) = CopyToTemp(
+            Path.Combine(ContentRoot, "DB", "_MainChar", "Combos", "MainChar_ComboTree.uasset"), "mcstart");
+        var asset = Load(source);
+        var cont = StartContainerOf(asset);
+        Expect(cont?.Value?.Length > 0, "no start entries in MainChar fixture");
+
+        StructPropertyData? pick = null;
+        string pickLabel = "";
+        foreach (var en in cont!.Value!.OfType<StructPropertyData>())
+        {
+            var transitions = en.Value?.OfType<StructPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_ComboTransitions")?.Value;
+            string enumValue = en.Value?.OfType<StructPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_EnumState")?.Value
+                ?.OfType<NamePropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Value")
+                ?.Value?.Value?.ToString() ?? "";
+            if (!enumValue.Contains("BP_MainCharComboStartStates")) continue;
+            var rows = transitions?.OfType<ArrayPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Transitions")?.Value;
+            if (rows == null || rows.Length == 0) continue;
+            pick = en;
+            pickLabel = transitions?.OfType<NamePropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_ParentNodeName")
+                ?.Value?.Value?.ToString() ?? "?";
+            break;
+        }
+        Expect(pick != null, "no MainChar start entry with rows found");
+
+        var rowStructs = pick!.Value!
+            .OfType<StructPropertyData>()
+            .First(p => p.Name?.Value?.ToString() == "m_ComboTransitions").Value!
+            .OfType<ArrayPropertyData>()
+            .First(p => p.Name?.Value?.ToString() == "m_Transitions").Value!;
+        var fp = ((StructPropertyData)rowStructs[0]).Value!.OfType<FloatPropertyData>()
+            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_fProbability");
+        Expect(fp != null, "no m_fProbability on MainChar start transition");
+        fp!.Value = 12.5f;
+
+        // Input-only part of the diff: repoint row 1 at Special. Without input support
+        // this mod edit imported as "no changes" (the diff only compared probability
+        // and targets).
+        var gateRow = (StructPropertyData)rowStructs[0];
+        var inputProp = gateRow.Value!.OfType<EnumPropertyData>()
+            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_eInputTransition");
+        if (inputProp != null)
+            inputProp.Value = FName.FromString(asset, "EComboTransition::Special");
+        else
+            gateRow.Value!.Add(new EnumPropertyData
+            {
+                Name = FName.FromString(asset, "m_eInputTransition"),
+                Value = FName.FromString(asset, "EComboTransition::Special")
+            });
+        asset.Write(written);
+
+        var (result, graph) = RunImport(written, MainCharRel, "BareHands");
+        Expect(result.StartTransitionsChanged >= 1,
+            $"StartTransitionsChanged={result.StartTransitionsChanged}, expected >= 1 ('{pickLabel}')");
+        Expect(graph.StartEntries.SelectMany(e => e.Transitions)
+                .Any(t => Math.Abs(t.Probability - 12.5f) < 0.001f),
+            "no MainChar start transition shows Probability=12.5");
+        Expect(graph.StartEntries.SelectMany(e => e.Transitions)
+                .Any(t => InputCatalog.Normalize(t.InputEnum) == "Special"),
+            "no MainChar start transition shows InputEnum=Special");
+        Expect(graph.StartEntries.SelectMany(e => e.Transitions)
+                .Any(t => InputCatalog.LabelFor(t.InputEnum) == "S"),
+            "imported Special input does not display as 'S'");
     }
 
     private static void TestAiPayloadEventToAttack()

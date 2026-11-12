@@ -2271,6 +2271,13 @@ public partial class ExportDialog : Window
                                 $"{replacedPayloads} payload replaces"));
                         }
 
+                        int prunedRouteTargets = RemoveRouteTargets(asset, _graph);
+                        if (prunedRouteTargets > 0)
+                        {
+                            comboTreeModified = true;
+                            ErrorLog.Write("EXPORT", new Exception($"Removed card routes: {prunedRouteTargets}"));
+                        }
+
                         int removedMainTreeNodes = RemoveNodesFromComboAsset(asset, comboExport, _graph);
                         if (removedMainTreeNodes > 0)
                         {
@@ -2590,6 +2597,8 @@ public partial class ExportDialog : Window
                                     stagedExists: rel => File.Exists(Path.Combine(outputPath, "Sifu", "Content",
                                         rel.Replace('/', Path.DirectorySeparatorChar) + ".uasset")));
 
+                            int prunedEnemyRouteTargets = RemoveRouteTargets(enemyAsset, _graph);
+
                             int removedEnemyTreeNodes = custom != null
                                 ? 0
                                 : RemoveNodesFromComboAsset(enemyAsset, enemyComboExport, _graph);
@@ -2599,7 +2608,7 @@ public partial class ExportDialog : Window
                             // of vanilla (and, being staged, it shipped an unmodified tree).
                             if (custom != null
                                 ? appendedNodes > 0 || startEntriesPatched > 0
-                                : enemyComboBinSwaps.Count > 0 || enemyRedirectPatched > 0 || appendedNodes > 0 || appendedLinks > 0 || startEntriesPatched > 0 || chanceWritten > 0 || replacedPayloads > 0 || removedEnemyTreeNodes > 0)
+                                : enemyComboBinSwaps.Count > 0 || enemyRedirectPatched > 0 || appendedNodes > 0 || appendedLinks > 0 || startEntriesPatched > 0 || chanceWritten > 0 || replacedPayloads > 0 || removedEnemyTreeNodes > 0 || prunedEnemyRouteTargets > 0)
                             {
                                 Directory.CreateDirectory(Path.GetDirectoryName(enemyOutUasset)!);
                                 enemyAsset.Write(enemyOutUasset);
@@ -3821,7 +3830,7 @@ public partial class ExportDialog : Window
     private static AttackHitWindowInfo? ReadHitWindowInfo(string gameRoot, string cardRel, int index)
     {
         var card = AttackHitCard.ReadDbPath(gameRoot, cardRel)
-            ?? AttackHitCard.ReadDbPath(CustomAssets.Root, cardRel);
+            ?? AttackHitCard.ReadDbPath(CustomAssets.Root, cardRel, gameRoot);
         if (card == null || index < 0 || index >= card.Windows.Count) return null;
         return card.Windows[index];
     }
@@ -3873,19 +3882,18 @@ public partial class ExportDialog : Window
             // export's own FName and the card's self package-path entry when present;
             // same-name in-place writes are untouched. The export rename is per-reference
             // (a fresh name entry), so entries shared with other values like the
-            // m_AnimationRow row keep their strings.
+            // m_AnimationRow row keep their strings. Logic lives in CardRenamer (shared
+            // with the library-side card clone).
             string oldObj = Path.GetFileNameWithoutExtension(vanillaDbPath);
             string newObj = Path.GetFileNameWithoutExtension(outputDbPath);
             if (!string.Equals(oldObj, newObj, StringComparison.Ordinal))
             {
-                if (!TryGamePath(vanillaDbPath, out string oldPkg) || !TryGamePath(outputDbPath, out string newPkg))
+                if (!CardRenamer.TryGamePath(vanillaDbPath, out string oldPkg) || !CardRenamer.TryGamePath(outputDbPath, out string newPkg))
                 {
                     ErrorLog.Write("EXPORT", new Exception($"[DB PATCH] {Path.GetFileName(vanillaDbPath)}: cannot derive /Game/ paths for the '{oldObj}' -> '{newObj}' rename"));
                     return false;
                 }
-                dbExport.ObjectName = FName.FromString(asset, newObj);
-                if (asset.ContainsNameReference((FString)oldPkg))
-                    asset.SetNameReference(asset.SearchNameReference((FString)oldPkg), new FString(newPkg));
+                CardRenamer.Apply(asset, dbExport, oldObj, newObj, oldPkg, newPkg);
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(outputDbPath)!);
@@ -3898,25 +3906,6 @@ public partial class ExportDialog : Window
             ErrorLog.Write("EXPORT", new Exception($"[DB PATCH] Failed to patch {Path.GetFileName(vanillaDbPath)}: {ex.Message}"));
             return false;
         }
-    }
-
-    /// <summary>
-    /// Content-root file path to its /Game/ package path: "...\Sifu\Content\DB\X.uasset"
-    /// -> "/Game/DB/X". False when the path has no /Content/ segment or an empty root.
-    /// </summary>
-    private static bool TryGamePath(string filePath, out string gamePath)
-    {
-        gamePath = "";
-        string norm = filePath.Replace('\\', '/');
-        int i = norm.LastIndexOf("/Content/", StringComparison.OrdinalIgnoreCase);
-        if (i < 0) return false;
-        string rel = norm[(i + "/Content/".Length)..];
-        if (rel.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
-            rel = rel[..^".uasset".Length];
-        rel = rel.TrimEnd('/');
-        if (rel.Length == 0) return false;
-        gamePath = "/Game/" + rel;
-        return true;
     }
 
     /// <summary>
@@ -4410,17 +4399,10 @@ public partial class ExportDialog : Window
         return clone;
     }
 
-    private static string InputToEnumRaw(string inputName) => inputName switch
-    {
-        "" => "None",
-        "LMB" => "Light",
-        "RMB" => "Heavy",
-        "RMB Hold" => "HeavyHold",
-        "S" => "Special",
-        "Shift" => "Dodge",
-        "Q" => "Throw",
-        _ => "None"
-    };
+    /// <summary>Display label -> EComboTransition name. The shared catalog owns the
+    /// mapping (RMB Alt -> HeavyAlt, Rush values, ...); an unknown label passes through
+    /// verbatim instead of collapsing to None, which used to silently erase the input.</summary>
+    private static string InputToEnumRaw(string inputName) => InputCatalog.EnumFromLabel(inputName);
 
     private static string SanitizeNodeName(string s)
     {
@@ -4511,8 +4493,14 @@ public partial class ExportDialog : Window
     /// only structs in <paramref name="touchedStructs"/> are scanned - untouched
     /// vanilla always sums to 100. Returns structs fixed; each fix logs an info
     /// line (no WARNING marker - the shipped result is correct).
+    ///
+    /// Player trees (<paramref name="perInput"/>) normalize each input pool to its own
+    /// 100%: the engine rolls one winner per m_eInputTransition, and vanilla ships
+    /// Light 100 + Heavy 100 on the same node - node-wide scaling would silently halve
+    /// Heavy when Light is edited. Enemy trees stay node-wide.
     /// </summary>
-    public static int NormalizeChanceSums(ArrayPropertyData nodesArr, HashSet<int>? touchedStructs)
+    public static int NormalizeChanceSums(ArrayPropertyData nodesArr, HashSet<int>? touchedStructs,
+        bool perInput = false)
     {
         if (touchedStructs == null || touchedStructs.Count == 0 || nodesArr?.Value == null) return 0;
         int fixedStructs = 0;
@@ -4526,8 +4514,11 @@ public partial class ExportDialog : Window
                 .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Transitions");
             if (trans?.Value == null || trans.Value.Length == 0) continue;
 
+            // One pool per input on a player tree, one node-wide pool for enemies. The
+            // flat list preserves row order for the before/after log line.
             var probs = new List<FloatPropertyData>();
-            float sum = 0f;
+            var pools = new Dictionary<string, (List<FloatPropertyData> Probs, float Sum)>(
+                StringComparer.OrdinalIgnoreCase);
             foreach (var row in trans.Value)
             {
                 if (row is not StructPropertyData rowSp || rowSp.Value == null) continue;
@@ -4535,31 +4526,64 @@ public partial class ExportDialog : Window
                     .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_fProbability");
                 if (prob == null) continue;
                 probs.Add(prob);
-                sum += prob.Value;
+                string key = perInput ? RowInputGroupKey(rowSp) : "";
+                if (!pools.TryGetValue(key, out var pool))
+                    pool = (new List<FloatPropertyData>(), 0f);
+                pool.Probs.Add(prob);
+                pool.Sum += prob.Value;
+                pools[key] = pool;
             }
-            if (probs.Count == 0 || sum <= 0.01f) continue;   // all-zero: intentional-dead, warned elsewhere
-            if (Math.Abs(sum - TreeChanceMath.SumTarget) <= 0.01f) continue;
-
+            if (probs.Count == 0) continue;
             var beforeStr = probs.Select(p => p.Value.ToString("0.###")).ToList();
-            float delta = TreeChanceMath.SumTarget - sum;
-            var biggest = probs.OrderByDescending(p => p.Value).First();
-            if (biggest.Value + delta >= 0f)
+            bool anyFixed = false;
+            foreach (var (key, pool) in pools)
             {
-                biggest.Value += delta;
+                if (pool.Probs.Count == 0 || pool.Sum <= 0.01f) continue;   // all-zero: intentional-dead, warned elsewhere
+                if (Math.Abs(pool.Sum - TreeChanceMath.SumTarget) <= 0.01f) continue;
+
+                float delta = TreeChanceMath.SumTarget - pool.Sum;
+                var biggest = pool.Probs.OrderByDescending(p => p.Value).First();
+                if (biggest.Value + delta >= 0f)
+                {
+                    biggest.Value += delta;
+                }
+                else
+                {
+                    foreach (var p in pool.Probs) p.Value = p.Value * TreeChanceMath.SumTarget / pool.Sum;
+                }
+                anyFixed = true;
+                if (perInput)
+                {
+                    ErrorLog.Write("EXPORT", new Exception(
+                        $"  PROB POOL tree[{structIdx}] {InputCatalog.GroupLabel(key)}: "
+                        + $"{pool.Sum:0.###}% -> 100%"));
+                }
             }
-            else
-            {
-                foreach (var p in probs) p.Value = p.Value * TreeChanceMath.SumTarget / sum;
-            }
+            if (!anyFixed) continue;
+
             fixedStructs++;
             string dispName = nodeSp.Value.OfType<NamePropertyData>()
                 .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Name")?.Value?.Value?.ToString() ?? "?";
             var afterStr = probs.Select(p => p.Value.ToString("0.###")).ToList();
+            float total = probs.Sum(p => p.Value);
             ErrorLog.Write("EXPORT", new Exception(
-                $"  PROB RESCALE tree[{structIdx}] '{dispName}': sum {sum:0.###}% -> 100% "
+                $"  PROB RESCALE tree[{structIdx}] '{dispName}': "
+                + (perInput ? $"per-input pools -> 100% each (node total {total:0.###}%) " : "sum -> 100% ")
                 + $"[{string.Join(", ", beforeStr)}] -> [{string.Join(", ", afterStr)}]"));
         }
         return fixedStructs;
+    }
+
+    /// <summary>Per-input grouping key for a transition row's m_eInputTransition.
+    /// Accepts "EComboTransition::Light" and bare enum names; a row without the
+    /// property groups as "(no input)", and unknown enums pass through verbatim so
+    /// an imported tree keeps its own input pool.</summary>
+    private static string RowInputGroupKey(StructPropertyData rowSp)
+    {
+        if (rowSp?.Value == null) return InputCatalog.GroupKey(null);
+        var input = rowSp.Value.OfType<EnumPropertyData>()
+            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_eInputTransition");
+        return InputCatalog.GroupKey(input?.Value?.Value?.ToString());
     }
 
     /// <summary>
@@ -5144,6 +5168,38 @@ public partial class ExportDialog : Window
     }
 
     /// <summary>
+    /// Writes a start-transition row's m_eInputTransition from a bare enum name
+    /// ("Light", "HeavyHold", "None"). Rewrites the existing enum, or appends it when
+    /// the vanilla row omitted the property. Returns true when the value changed (or
+    /// the property was added); false when it already matched or the property exists
+    /// but is not an enum property (logged).
+    /// </summary>
+    private static bool SetInputTransitionProperty(UAsset asset, List<PropertyData> rowProps, string enumName)
+    {
+        if (string.IsNullOrEmpty(enumName)) return false;
+        var fname = FName.FromString(asset, "EComboTransition::" + enumName);
+        var prop = rowProps.FirstOrDefault(p => p.Name?.Value?.ToString() == "m_eInputTransition");
+        if (prop is EnumPropertyData existing)
+        {
+            if (existing.Value?.Value?.ToString() == fname.Value?.ToString()) return false;
+            existing.Value = fname;
+            return true;
+        }
+        if (prop != null)
+        {
+            ErrorLog.Write("EXPORT", new Exception(
+                "  START INPUT SKIP: m_eInputTransition exists but is not an enum property"));
+            return false;
+        }
+        rowProps.Add(new EnumPropertyData
+        {
+            Name = FName.FromString(asset, "m_eInputTransition"),
+            Value = fname
+        });
+        return true;
+    }
+
+    /// <summary>
     /// Empties a row's m_ConditionInstance to a null reference (FPackageIndex 0) -
     /// the vanilla "instance ref empty" layout a cleared row should match. Rewrites
     /// the existing property, or appends it when the row omitted the field entirely.
@@ -5336,6 +5392,106 @@ public partial class ExportDialog : Window
     /// target and renormalizes their probabilities. Run after appends so appended indices
     /// shift along with the base ones. Returns the number of removed nodes (0 = unchanged).
     /// </summary>
+    /// <summary>
+    /// Applies ComboGraph.RemovedRouteRows: prunes the recorded target values from each
+    /// row's m_TargetNodes, drops rows left with no target and renormalizes that struct's
+    /// chance pool. Unlike RemoveNodesFromComboAsset the slot node itself survives - a
+    /// custom AttackDB delete removes the routes that pointed at it, not the node.
+    /// Returns how many targets/rows were changed (0 = nothing to do).
+    /// </summary>
+    internal static int RemoveRouteTargets(UAsset asset, ComboGraph graph)
+    {
+        if (graph?.RemovedRouteRows == null || graph.RemovedRouteRows.Count == 0) return 0;
+        var nodesArr = asset.Exports.OfType<NormalExport>()
+            .SelectMany(e => e.Data ?? Enumerable.Empty<PropertyData>())
+            .OfType<ArrayPropertyData>()
+            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Nodes");
+        if (nodesArr?.Value == null) return 0;
+
+        int pruned = 0, droppedRows = 0;
+        foreach (var (structIdx, routes) in graph.RemovedRouteRows)
+        {
+            if (structIdx < 0 || structIdx >= nodesArr.Value.Length) continue;
+            if (nodesArr.Value[structIdx] is not StructPropertyData nodeSp || nodeSp.Value == null) continue;
+            var trans = nodeSp.Value.OfType<StructPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Transitions")?.Value
+                ?.OfType<ArrayPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Transitions");
+            if (trans?.Value == null) continue;
+
+            foreach (var route in routes)
+            {
+                if (route.RowIndex < 0 || route.RowIndex >= trans.Value.Length) continue;
+                if (trans.Value[route.RowIndex] is not StructPropertyData rowSp || rowSp.Value == null) continue;
+                var map = rowSp.Value.OfType<MapPropertyData>()
+                    .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_TargetNodes");
+                if (map?.Value == null) continue;
+
+                var drop = new HashSet<int>(route.TargetTreeIndices);
+                var kept = new TMap<PropertyData, PropertyData>();
+                foreach (var kvp in map.Value)
+                {
+                    int val = kvp.Value switch
+                    {
+                        IntPropertyData ip => ip.Value,
+                        BytePropertyData bp => bp.Value,
+                        _ => -1
+                    };
+                    if (val >= 0 && drop.Contains(val)) { pruned++; continue; }
+                    kept.Add(kvp.Key, kvp.Value);
+                }
+                map.Value = kept;
+            }
+
+            var keptRows = new List<PropertyData>(trans.Value.Length);
+            int localDropped = 0;
+            foreach (var row in trans.Value)
+            {
+                if (row is StructPropertyData rsp && rsp.Value != null)
+                {
+                    var map = rsp.Value.OfType<MapPropertyData>()
+                        .FirstOrDefault(x => x.Name?.Value?.ToString() == "m_TargetNodes");
+                    if (map != null && (map.Value == null || map.Value.Count == 0))
+                    {
+                        localDropped++;
+                        continue;
+                    }
+                }
+                keptRows.Add(row);
+            }
+            if (localDropped > 0)
+            {
+                trans.Value = keptRows.ToArray();
+                droppedRows += localDropped;
+                RenormalizeTransitionChances(trans.Value);
+            }
+        }
+
+        if (pruned > 0 || droppedRows > 0)
+            ErrorLog.Write("EXPORT", new Exception(
+                $"ATTACKDB DELETE: pruned {pruned} transition target(s), dropped {droppedRows} empty row(s)"));
+        return pruned + droppedRows;
+    }
+
+    private static void RenormalizeTransitionChances(PropertyData[] rows)
+    {
+        var probs = new List<FloatPropertyData>();
+        float sum = 0;
+        foreach (var row in rows)
+        {
+            if (row is not StructPropertyData rsp || rsp.Value == null) continue;
+            var fp = rsp.Value.OfType<FloatPropertyData>()
+                .FirstOrDefault(x => x.Name?.Value?.ToString() == "m_fProbability");
+            if (fp == null) continue;
+            probs.Add(fp);
+            sum += fp.Value;
+        }
+        if (probs.Count == 0 || sum <= 0.0001f) return;
+        if (Math.Abs(sum - TreeChanceMath.SumTarget) <= 0.0001f) return;
+        foreach (var fp in probs)
+            fp.Value = fp.Value * TreeChanceMath.SumTarget / sum;
+    }
+
     internal static int RemoveNodesFromComboAsset(UAsset asset, NormalExport comboExport, ComboGraph graph)
     {
         if (graph?.Nodes == null || comboExport?.Data == null) return 0;
@@ -5616,6 +5772,11 @@ public partial class ExportDialog : Window
     {
         if (graph == null || enemyNodesArr.Value == null) return (0, 0, 0, 0, 0, 0);
 
+        // Player trees roll probabilities per input (Light 100 + Heavy 100 on one node);
+        // enemy trees roll one set per node. This drives both the appended-link rebalance
+        // and the chance-sum guard below.
+        bool perInputChances = GraphIdentity.IsMainChar(graph);
+
         var newUserNodes = graph.Nodes
             .Where(n => n.TreeIndex < 0 && n.Kind == ComboNodeKind.UserCreated)
             .OrderBy(n => n.Id)
@@ -5680,7 +5841,8 @@ public partial class ExportDialog : Window
             int condAborted = ApplyConditionOverrides(graph, enemyAsset, enemyNodesArr, gameRoot);
             int rescaledAborted = NormalizeChanceSums(enemyNodesArr,
                 graph.TreeRowProbabilityOverrides == null
-                    ? null : new HashSet<int>(graph.TreeRowProbabilityOverrides.Keys));
+                    ? null : new HashSet<int>(graph.TreeRowProbabilityOverrides.Keys),
+                perInputChances);
             if (chanceAborted + condAborted > 0)
                 ErrorLog.Write("EXPORT", new Exception(
                     $"Condition overrides: {condAborted} edit(s) applied (template-less abort)"));
@@ -6330,40 +6492,67 @@ public partial class ExportDialog : Window
                 graph.TreeRowProbabilityOverrides.TryGetValue(s, out ovMap);
             var appendedIdx = grp.ToDictionary(r => r.rowIdx, r => r.edge);
             var beforeStr = new List<string>(rebArr.Value.Length);
-            var chanceRows = new List<TreeChanceMath.Row>(rebArr.Value.Length);
             var probs = new List<FloatPropertyData?>(rebArr.Value.Length);
-            var vanillaRows = new List<TreeChanceMath.Row>();
+            var curVals = new List<float>(rebArr.Value.Length);
+            var rowKeys = new List<string>(rebArr.Value.Length);
+            var isNewRows = new List<bool>(rebArr.Value.Length);
+            var explicitVals = new List<float?>(rebArr.Value.Length);
             for (int i = 0; i < rebArr.Value.Length; i++)
             {
                 FloatPropertyData? fp = null;
                 float cur = TreeChanceMath.SumTarget;
+                string rowKey = "";
                 if (rebArr.Value[i] is StructPropertyData rowSp && rowSp.Value != null)
                 {
+                    rowKey = perInputChances ? RowInputGroupKey(rowSp) : "";
                     fp = rowSp.Value.OfType<FloatPropertyData>()
                         .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_fProbability");
                     if (fp != null) cur = fp.Value;
                 }
                 probs.Add(fp);
+                curVals.Add(cur);
+                rowKeys.Add(rowKey);
                 beforeStr.Add(cur.ToString("0.###"));
                 bool isNew = appendedIdx.ContainsKey(i);
+                isNewRows.Add(isNew);
                 float? expl = null;
                 if (isNew) expl = appendedIdx[i].NewLinkProbability;
                 else if (ovMap != null && ovMap.TryGetValue(i, out var ov)) expl = ov;
-                var row = new TreeChanceMath.Row(expl, cur);
-                chanceRows.Add(row);
-                if (!isNew) vanillaRows.Add(row);
-            }
-            float newWeight = TreeChanceMath.NewRowAutoWeight(vanillaRows);
-            for (int i = 0; i < chanceRows.Count; i++)
-            {
-                if (!appendedIdx.ContainsKey(i) || chanceRows[i].Explicit.HasValue) continue;
-                chanceRows[i] = new TreeChanceMath.Row(null, newWeight);
+                explicitVals.Add(expl);
             }
 
-            var rebVals = TreeChanceMath.Compute(chanceRows, normalize: true);
+            // Player trees rebalance each input pool independently (a Light append must
+            // not take share from Heavy); enemy nodes rebalance their single node set.
+            var rebVals = new float[rebArr.Value.Length];
+            foreach (var pool in Enumerable.Range(0, rebArr.Value.Length)
+                         .GroupBy(i => rowKeys[i], StringComparer.OrdinalIgnoreCase))
+            {
+                var idxs = pool.ToList();
+                var vanillaRows = new List<TreeChanceMath.Row>();
+                foreach (int i in idxs)
+                {
+                    if (!isNewRows[i])
+                        vanillaRows.Add(new TreeChanceMath.Row(explicitVals[i], curVals[i]));
+                }
+                float newWeight = TreeChanceMath.NewRowAutoWeight(vanillaRows);
+
+                var chanceRows = new List<TreeChanceMath.Row>(idxs.Count);
+                foreach (int i in idxs)
+                {
+                    if (isNewRows[i] && !explicitVals[i].HasValue)
+                    {
+                        chanceRows.Add(new TreeChanceMath.Row(null, newWeight));
+                        continue;
+                    }
+                    chanceRows.Add(new TreeChanceMath.Row(explicitVals[i], curVals[i]));
+                }
+                var vals = TreeChanceMath.Compute(chanceRows, normalize: true);
+                for (int k = 0; k < idxs.Count; k++) rebVals[idxs[k]] = vals[k];
+            }
+
             bool anyWritten = false;
-            var afterStr = new List<string>(rebVals.Count);
-            for (int i = 0; i < rebVals.Count; i++)
+            var afterStr = new List<string>(rebVals.Length);
+            for (int i = 0; i < rebVals.Length; i++)
             {
                 afterStr.Add(rebVals[i].ToString("0.###"));
                 var p = probs[i];
@@ -6385,7 +6574,7 @@ public partial class ExportDialog : Window
         var chanceTouchedStructs = new HashSet<int>(appendedStructs);
         if (graph.TreeRowProbabilityOverrides != null)
             foreach (int k in graph.TreeRowProbabilityOverrides.Keys) chanceTouchedStructs.Add(k);
-        int chanceSumsRescaled = NormalizeChanceSums(enemyNodesArr, chanceTouchedStructs);
+        int chanceSumsRescaled = NormalizeChanceSums(enemyNodesArr, chanceTouchedStructs, perInputChances);
         // Phase A3: redirect continuation mirror. Vanilla keeps an attack's
         // continuation rows on its owning redirect struct (BellyPalm's rows live on
         // the BellyPalm owner, not the attack), and the engine continues from the
@@ -6636,8 +6825,6 @@ public partial class ExportDialog : Window
                     // conditional maps patch per key from the dialog's parallel lists.
                     var map = ts.Value.OfType<MapPropertyData>()
                         .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_TargetNodes");
-                    static byte MapKeyByte(PropertyData k) => k is BytePropertyData b ? b.Value
-                        : k is IntPropertyData ik ? (byte)ik.Value : (byte)255;
 
                     bool modelOk = t.Keys.Count == t.KeyCount
                         && t.KeyTargetTreeIndices.Count == t.KeyCount
@@ -6732,23 +6919,42 @@ public partial class ExportDialog : Window
                         rebuilt.Add(tsOriginal ?? ts);
                         continue;
                     }
+
+                    // Input patch: only when the row's input actually changed, so untouched
+                    // vanilla rows keep their exact m_eInputTransition FName (and rows that
+                    // never had the property stay property-less).
+                    if (!string.Equals(InputCatalog.Normalize(t.InputEnum),
+                            InputCatalog.Normalize(t.OriginalInputEnum), StringComparison.Ordinal)
+                        && SetInputTransitionProperty(enemyAsset, ts.Value, t.InputEnum))
+                    {
+                        entryPatched++;
+                        ErrorLog.Write("EXPORT", new Exception(
+                            $"  START INPUT: '{entry.Label}' row {t.OriginalIndex + 1} -> {t.InputEnum}"));
+                    }
                     rebuilt.Add(ts);
                 }
                 else
                 {
-                    // Added row: clone the entry's first vanilla transition (key bytes + condition
-                    // carried over), then patch probability and target - the proven ParryProto pattern.
-                    // Multi-key template rows (condition-outcome maps like {0:18, 1:19, 2:20}) cannot
-                    // carry one patched target - ApplyStartTargetValue needs a single-entry map -
-                    // so collapse them to the proven new-entry recipe: strip the condition instance
-                    // and keep exactly one unconditional key-255 entry.
-                    if (assetRows.Count == 0 || assetRows[0].Value == null)
+                    // Added row: clone the entry's template row - the live row with the lowest
+                    // vanilla index (same rule as StartEntry.CloneTemplateRow), so the seeded
+                    // input/key/condition matches what is written even when vanilla row 1 was
+                    // deleted. A conditioned multi-key template (condition-outcome maps like
+                    // {0:18, 1:19, 2:20}) is cloned verbatim: keep m_ConditionInstance and the
+                    // full key map, then patch every outcome's target from the model's parallel
+                    // per-key lists. Legacy rows (old saves without those lists) and
+                    // unconditional templates keep the proven new-entry recipe: strip the
+                    // condition instance and keep exactly one unconditional key-255 entry.
+                    var templateModel = live.FirstOrDefault(t =>
+                        t.OriginalIndex >= 0 && t.OriginalIndex < assetRows.Count);
+                    int templateIdx = templateModel?.OriginalIndex ?? 0;
+                    if (assetRows.Count == 0 || templateIdx >= assetRows.Count
+                        || assetRows[templateIdx].Value == null)
                     {
                         skipped++;
                         ErrorLog.Write("EXPORT", new Exception($"  START SKIP: '{entry.Label}' has no template transition to clone"));
                         continue;
                     }
-                    if (ClonePropSameAsset(assetRows[0]) is not StructPropertyData clone || clone.Value == null)
+                    if (ClonePropSameAsset(assetRows[templateIdx]) is not StructPropertyData clone || clone.Value == null)
                     {
                         skipped++;
                         continue;
@@ -6758,7 +6964,13 @@ public partial class ExportDialog : Window
                     if (prob != null) prob.Value = t.Probability;
                     var map = clone.Value.OfType<MapPropertyData>()
                         .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_TargetNodes");
-                    if (map?.Value != null && map.Value.Count != 1)
+                    bool modelOk = t.Keys.Count == t.KeyCount
+                        && t.KeyTargetTreeIndices.Count == t.KeyCount
+                        && t.KeyTargetNodeIds.Count == t.KeyCount;
+                    bool perKeyClone = map?.Value != null && map.Value.Count > 1
+                        && !string.IsNullOrEmpty((t.ConditionClass ?? "").Trim()) && modelOk;
+
+                    if (map?.Value != null && map.Value.Count != 1 && !perKeyClone)
                     {
                         clone.Value.RemoveAll(p => p.Name?.Value?.ToString() == "m_ConditionInstance");
                         while (map.Value.Count > 1)
@@ -6771,6 +6983,28 @@ public partial class ExportDialog : Window
                         ErrorLog.Write("EXPORT", new Exception(
                             $"  START KEY: '{entry.Label}' new row forced unconditional (255) - template row was multi-key"));
                     }
+                    // Added rows carry the model's input (the dialog seeds it from row 0).
+                    // Empty = old save: keep whatever the cloned template row has.
+                    if (!string.IsNullOrEmpty(t.InputEnum))
+                        SetInputTransitionProperty(enemyAsset, clone.Value, t.InputEnum);
+
+                    if (perKeyClone)
+                    {
+                        if (!ApplyStartTargetValues(map!, t, resolveIndex, out _, out string keyError))
+                        {
+                            skipped++;
+                            ErrorLog.Write("EXPORT", new Exception(
+                                $"  START SKIP: '{entry.Label}' new row multi-key target unusable: {keyError}"));
+                            continue;
+                        }
+                        rebuilt.Add(clone);
+                        entryPatched++;
+                        ErrorLog.Write("EXPORT", new Exception(
+                            $"  START NEW: '{entry.Label}' row from template {templateIdx + 1} "
+                            + $"(condition kept, {t.KeyCount} keys) at {t.Probability:0.###}%"));
+                        continue;
+                    }
+
                     int? want = ResolveStartTargetTree(t, resolveIndex);
                     if (map == null || want == null || !ApplyStartTargetValue(map, want.Value))
                     {
@@ -6781,6 +7015,11 @@ public partial class ExportDialog : Window
                     }
                     rebuilt.Add(clone);
                     entryPatched++;
+                    ErrorLog.Write("EXPORT", new Exception(
+                        $"  START NEW: '{entry.Label}' row from template {templateIdx + 1} "
+                        + $"(key {templateModel?.KeyByte.ToString() ?? "?"}, "
+                        + $"cond {(string.IsNullOrEmpty(templateModel?.ConditionClass) ? "none" : templateModel!.ConditionClass)}) "
+                        + $"-> tree {want.Value} at {t.Probability:0.###}%"));
                 }
             }
 
@@ -6802,7 +7041,7 @@ public partial class ExportDialog : Window
                     || Math.Abs(t.Probability - t.OriginalProbability) > 0.001f);
             if (probabilitiesTouched && Math.Abs(sum - 100f) > 0.5f)
                 ErrorLog.Write("EXPORT", new Exception(
-                    $"  START WARNING: '{entry.Label}' probabilities sum to {sum:0.###}% (vanilla always sums to 100)"));
+                    $"  START WARNING: '{entry.Label}' edited probabilities sum to {sum:0.###}% (edited entries should total 100)"));
 
             if (entryPatched > 0 || rebuilt.Count != assetRows.Count)
             {
@@ -6905,6 +7144,10 @@ public partial class ExportDialog : Window
                 var prob = row.Value.OfType<FloatPropertyData>()
                     .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_fProbability");
                 if (prob != null) prob.Value = t.Probability;
+                // New entries rebuild every row, so the input has to come from the model
+                // (the cloned template row's input would otherwise be copied to all rows).
+                if (!string.IsNullOrEmpty(t.InputEnum))
+                    SetInputTransitionProperty(enemyAsset, row.Value, t.InputEnum);
                 int? want = ResolveStartTargetTree(t, resolveIndex);
                 if (want == null || !ApplyStartTargetValue(map, want.Value))
                 {
@@ -6926,7 +7169,7 @@ public partial class ExportDialog : Window
             float nsum = liveNew.Sum(x => x.Probability);
             if (Math.Abs(nsum - 100f) > 0.5f)
                 ErrorLog.Write("EXPORT", new Exception(
-                    $"  START WARNING: new entry '{entry.Label}' probabilities sum to {nsum:0.###}% (vanilla always sums to 100)"));
+                    $"  START WARNING: new entry '{entry.Label}' probabilities sum to {nsum:0.###}% (new entries should total 100)"));
 
             narr.Value = rebuiltNew.ToArray();
             result.Add(newEntry);
@@ -7207,6 +7450,78 @@ public partial class ExportDialog : Window
             if (kvp.Value is IntPropertyData ip) ip.Value = value;
             else if (kvp.Value is BytePropertyData bp) bp.Value = (byte)value;
             else return false;
+        }
+        return true;
+    }
+
+    private static byte MapKeyByte(PropertyData k) => k is BytePropertyData b ? b.Value
+        : k is IntPropertyData ik ? (byte)ik.Value : (byte)255;
+
+    /// <summary>Patches every m_TargetNodes entry of a multi-key conditional row from the
+    /// model's parallel per-key lists. Entries for keys the model dropped (node deletion)
+    /// are removed; every remaining model key must get a resolvable target. Returns false
+    /// with an error instead of shipping a map that disagrees with the model.</summary>
+    private static bool ApplyStartTargetValues(
+        MapPropertyData map, StartTransition t, Func<int, int?> resolve, out bool changed, out string error)
+    {
+        changed = false;
+        error = "";
+        if (map.Value == null) { error = "row has no m_TargetNodes map"; return false; }
+        if (t.Keys.Count != t.KeyCount
+            || t.KeyTargetTreeIndices.Count != t.KeyCount
+            || t.KeyTargetNodeIds.Count != t.KeyCount)
+        {
+            error = "row has no per-key model";
+            return false;
+        }
+
+        var modelKeys = new HashSet<byte>(t.Keys);
+        var dropIdx = new List<int>();
+        int mapIdx = 0;
+        foreach (var kvp in map.Value)
+        {
+            if (!modelKeys.Contains(MapKeyByte(kvp.Key))) dropIdx.Add(mapIdx);
+            mapIdx++;
+        }
+        for (int di = dropIdx.Count - 1; di >= 0; di--)
+        {
+            map.Value.RemoveAt(dropIdx[di]);
+            changed = true;
+        }
+
+        for (int ki = 0; ki < t.KeyCount; ki++)
+        {
+            byte key = t.Keys[ki];
+            var entry = map.Value.FirstOrDefault(kvp => MapKeyByte(kvp.Key) == key);
+            if (entry.Key == null) { error = $"map is missing key {key}"; return false; }
+
+            int nodeId = t.KeyTargetNodeIds[ki];
+            int treeIndex = t.KeyTargetTreeIndices[ki];
+            int? want = nodeId >= 0 ? resolve(nodeId) : treeIndex >= 0 ? treeIndex : null;
+            if (want == null)
+            {
+                error = $"key {key} target unresolvable (node {nodeId})";
+                return false;
+            }
+
+            if (entry.Value is IntPropertyData ip)
+            {
+                if (ip.Value != want.Value) { ip.Value = want.Value; changed = true; }
+            }
+            else if (entry.Value is BytePropertyData bp)
+            {
+                if (want.Value > 255)
+                {
+                    error = $"key {key} target {want.Value} exceeds byte key";
+                    return false;
+                }
+                if (bp.Value != (byte)want.Value) { bp.Value = (byte)want.Value; changed = true; }
+            }
+            else
+            {
+                error = $"key {key} target has an unsupported type";
+                return false;
+            }
         }
         return true;
     }

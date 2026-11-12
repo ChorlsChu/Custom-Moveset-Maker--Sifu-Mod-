@@ -67,12 +67,28 @@ internal static class Program
         Run("ReplaceEventWithAction", () => TestReplaceEventWithAction(fajarP2, "replace-event-action"));
         Run("MergeIntoRow", () => TestMergeIntoRow(seanP1));
         Run("StartMultiKeyAddRow", () => TestStartMultiKeyAddRow(fajarP2, seanP1));
+        Run("MainCharStartEntries", () => TestMainCharStartEntries(mainCharCombo));
+        Run("MainCharConditionalRowAdd", () => TestMainCharConditionalRowAdd(mainCharCombo));
+        Run("CloneTemplateRules", TestCloneTemplateRules);
         Run("RehydrateKeyModels", TestRehydrateKeyModels);
+        Run("AddedTransitionLegacyCondition", TestAddedTransitionLegacyCondition);
         Run("ResolveRedirectFinal", TestResolveRedirectFinal);
         string yangP1 = Path.Combine(ContentRoot, "DB", "AI", "Archetypes", "Yang", "_DB", "Phase1", "Yang_P1_Combo.uasset");
         if (File.Exists(yangP1)) Run("RedirectMirror", () => TestRedirectMirror(yangP1));
         Run("AllZeroWarning", () => TestAllZeroWarning(seanP1));
         Run("ChanceRescale", () => TestChanceRescale(seanP1));
+        Run("MainCharChancePerInput", () => TestMainCharChancePerInput(mainCharCombo));
+        Run("ChanceGateVanillaAppend", TestChanceGateVanillaAppend);
+        Run("ChanceGateTypedFullPool", TestChanceGateTypedFullPool);
+        Run("ChanceGateOver100", TestChanceGateOver100);
+        Run("ChanceGateMainCharPerInput", TestChanceGateMainCharPerInput);
+        Run("ChanceGateRedirectStruct", TestChanceGateRedirectStruct);
+        Run("ChanceGateCustomNode", TestChanceGateCustomNode);
+        Run("ChanceGateDeletedLinkAuto", TestChanceGateDeletedLinkAuto);
+        Run("ChanceGateDeletedLinkTyped", TestChanceGateDeletedLinkTyped);
+        Run("ChanceGateDeletedCustomExplicit", TestChanceGateDeletedCustomExplicit);
+        Run("ChanceGateDeletedCustomAuto", TestChanceGateDeletedCustomAuto);
+        Run("DeleteChanceSources", TestDeleteChanceSources);
 
         Console.WriteLine();
         if (Failures.Count == 0)
@@ -213,10 +229,10 @@ internal static class Program
         RemoveAndAssert(asset, "remove-entry-target", new HashSet<int> { target });
     }
 
-    // Multi-key added-row: appending a probability row to an entry whose vanilla first
-    // row is a condition-outcome map ({0:a, 1:b, 2:c}) must collapse the export clone
-    // to a single unconditional key-255 target instead of failing the
-    // ApplyStartTargetValue Count==1 gate (the proven new-entry recipe).
+    // Multi-key added-row: a conditioned multi-key template ({0:a, 1:b, 2:c}) is copied
+    // verbatim - same condition instance, same full key map - and each key's target is
+    // patched from the model. A legacy multi-key row with no per-key lists (old save)
+    // still collapses to the proven unconditional key-255 recipe.
     private static void TestStartMultiKeyAddRow(string fajarP2, string seanP1)
     {
         static ArrayPropertyData? StartContainer(NormalExport c)
@@ -227,14 +243,47 @@ internal static class Program
                 .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_ComboTransitions")?.Value
                 ?.OfType<ArrayPropertyData>()
                 .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Transitions");
+        static List<PropertyData> Props(PropertyData? p)
+            => (p as StructPropertyData)?.Value ?? new List<PropertyData>();
+        static string PropName(PropertyData? p) => p?.Name?.Value?.ToString() ?? "";
+        static int CondRef(PropertyData? row)
+            => Props(row).OfType<ObjectPropertyData>()
+                .FirstOrDefault(o => PropName(o) == "m_ConditionInstance")?.Value?.Index ?? 0;
+        static string InputOf(PropertyData? row)
+            => Props(row).OfType<EnumPropertyData>()
+                .FirstOrDefault(e => PropName(e) == "m_eInputTransition")
+                ?.Value?.Value?.ToString() ?? "";
+        static float ProbOf(PropertyData? row)
+            => Props(row).OfType<FloatPropertyData>()
+                .FirstOrDefault(f => PropName(f) == "m_fProbability")?.Value ?? 0f;
+        static MapPropertyData? TargetMap(PropertyData? row)
+            => Props(row).OfType<MapPropertyData>()
+                .FirstOrDefault(m => PropName(m) == "m_TargetNodes");
+        static (List<byte> keys, List<int> targets) MapPairs(PropertyData? row)
+        {
+            var keys = new List<byte>();
+            var targets = new List<int>();
+            var map = TargetMap(row);
+            if (map?.Value == null) return (keys, targets);
+            foreach (var kvp in map.Value)
+            {
+                keys.Add(kvp.Key is BytePropertyData b ? b.Value
+                    : kvp.Key is IntPropertyData i ? (byte)i.Value : (byte)255);
+                targets.Add(kvp.Value is IntPropertyData ti ? ti.Value
+                    : kvp.Value is BytePropertyData tb ? tb.Value : -1);
+            }
+            return (keys, targets);
+        }
 
         UAsset? asset = null;
         NormalExport? combo = null;
         ArrayPropertyData? nodes = null;
         ArrayPropertyData? cont = null;
-        int entryIdx = -1, rowCount = 0, keyCount = 0;
+        int entryIdx = -1, rowCount = 0, keyCount = 0, cond0 = 0;
         float prob0 = 100f;
-        string label = "";
+        string label = "", input0 = "";
+        var keys0 = new List<byte>();
+        var targets0 = new List<int>();
 
         foreach (var file in new[] { fajarP2, seanP1 })
         {
@@ -250,10 +299,13 @@ internal static class Program
                 var map = row0?.Value?.OfType<MapPropertyData>()
                     .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_TargetNodes");
                 if (map?.Value == null || map.Value.Count <= 1) continue;
+                int candidateCond = CondRef(row0);
+                if (candidateCond == 0) continue; // only conditioned maps are cloned verbatim
                 (asset, combo, nodes, cont) = (a, c, n, ct);
                 entryIdx = i;
                 rowCount = arr!.Value.Length;
                 keyCount = map.Value.Count;
+                cond0 = candidateCond;
                 label = en.Value?.OfType<StructPropertyData>()
                     .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_ComboTransitions")?.Value
                     ?.OfType<NamePropertyData>()
@@ -261,15 +313,23 @@ internal static class Program
                     .Value?.Value?.ToString() ?? "";
                 prob0 = row0!.Value.OfType<FloatPropertyData>()
                     .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_fProbability")?.Value ?? 100f;
+                input0 = InputOf(row0);
+                (keys0, targets0) = MapPairs(row0);
                 break;
             }
             if (asset != null) break;
         }
         Expect(asset != null && combo != null && nodes != null && cont != null,
-            "no multi-key start entry found in Fajar P2 or Sean P1");
+            "no conditioned multi-key start entry found in Fajar P2 or Sean P1");
+
+        // Retarget one outcome so the per-key patch is observable.
+        int retargetTree = targets0[0] == 0 ? 1 : 0;
+        var expectedTargets = new List<int>(targets0);
+        expectedTargets[0] = retargetTree;
 
         // Model: the vanilla multi-key row passes through untouched (empty per-key model
-        // skips the export per-key patch), plus one added row targeting base node 1.
+        // skips the export per-key patch). The added conditioned row is the dialog's
+        // verbatim copy at 0%, and the legacy row proves old saves still collapse.
         var entry = new StartEntry { VanillaIndex = entryIdx, Label = label };
         entry.Transitions.Add(new StartTransition
         {
@@ -283,12 +343,26 @@ internal static class Program
         entry.Transitions.Add(new StartTransition
         {
             OriginalIndex = -1,
-            Probability = 100f - prob0,
-            KeyByte = 255,
-            KeyCount = 1,
-            TargetNodeId = 1,
-            TargetTreeIndex = 0,
-            TargetName = "Base0"
+            Probability = 40f,
+            ConditionClass = "BP_IsTargetKnockedDownComboCondition_C",
+            KeyByte = keys0[0],
+            KeyCount = keyCount,
+            TargetNodeId = -1,
+            TargetTreeIndex = retargetTree,
+            Keys = new List<byte>(keys0),
+            KeyTargetTreeIndices = new List<int>(expectedTargets),
+            KeyTargetNodeIds = Enumerable.Repeat(-1, keyCount).ToList(),
+            KeyTargetNames = Enumerable.Repeat("", keyCount).ToList(),
+            TargetSummary = string.Join(", ", keys0.Zip(expectedTargets, (k, v) => $"{k}→{v}"))
+        });
+        entry.Transitions.Add(new StartTransition
+        {
+            OriginalIndex = -1,
+            Probability = 60f,
+            KeyByte = keys0[0],
+            KeyCount = keyCount,
+            TargetNodeId = -1,
+            TargetTreeIndex = 0
         });
         var graph = new ComboGraph
         {
@@ -300,55 +374,466 @@ internal static class Program
         Expect(r.startEntries > 0, "start-entry patch reported nothing");
 
         var outRows = EntryRows(cont!.Value[entryIdx] as StructPropertyData);
-        Expect(outRows?.Value?.Length == rowCount + 1,
-            $"rows {outRows?.Value?.Length} != {rowCount + 1}");
+        Expect(outRows?.Value?.Length == rowCount + 2,
+            $"rows {outRows?.Value?.Length} != {rowCount + 2}");
 
-        var last = outRows!.Value[^1] as StructPropertyData;
-        Expect(last?.Value != null, "added row missing");
-        Expect(!last!.Value.Any(p => p.Name?.Value?.ToString() == "m_ConditionInstance"),
-            "added row kept a condition instance");
-        var lastProb = last.Value.OfType<FloatPropertyData>()
-            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_fProbability");
-        Expect(lastProb != null && Math.Abs(lastProb.Value - (100f - prob0)) < 0.001f,
-            $"added row probability {lastProb?.Value} != {100f - prob0:0.###}");
-        var lastMap = last.Value.OfType<MapPropertyData>()
-            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_TargetNodes");
-        Expect(lastMap?.Value?.Count == 1, $"added row map has {lastMap?.Value?.Count} entries, expected 1");
-        byte lastKey = 0;
-        int lastVal = -1;
-        foreach (var kvp in lastMap!.Value)
-        {
-            lastKey = kvp.Key switch { BytePropertyData b => b.Value, IntPropertyData i => (byte)i.Value, _ => (byte)0 };
-            lastVal = kvp.Value switch { IntPropertyData i => i.Value, BytePropertyData b => b.Value, _ => -1 };
-        }
-        Expect(lastKey == 255, $"added row key {lastKey} != 255");
-        Expect(lastVal == 0, $"added row target {lastVal} != tree 0");
+        var clone = outRows!.Value[rowCount] as StructPropertyData;
+        Expect(clone?.Value != null, "conditioned added row missing");
+        Expect(CondRef(clone) == cond0,
+            $"added row condition {CondRef(clone)} != template condition {cond0}");
+        Expect(Math.Abs(ProbOf(clone) - 40f) < 0.001f,
+            $"added row probability {ProbOf(clone)} != 40");
+        Expect(InputOf(clone) == input0,
+            $"added row input '{InputOf(clone)}' != template input '{input0}'");
+        var (cloneKeys, cloneTargets) = MapPairs(clone);
+        Expect(cloneKeys.SequenceEqual(keys0),
+            $"added row keys [{string.Join(",", cloneKeys)}] != template keys [{string.Join(",", keys0)}]");
+        Expect(cloneTargets.SequenceEqual(expectedTargets),
+            $"added row targets [{string.Join(",", cloneTargets)}] != patch [{string.Join(",", expectedTargets)}]");
+
+        var legacy = outRows.Value[rowCount + 1] as StructPropertyData;
+        Expect(legacy?.Value != null, "legacy added row missing");
+        Expect(CondRef(legacy) == 0, "legacy added row kept a condition instance");
+        var legacyMap = TargetMap(legacy);
+        Expect(legacyMap?.Value?.Count == 1, $"legacy added row map has {legacyMap?.Value?.Count} entries, expected 1");
+        var (legacyKeys, legacyTargets) = MapPairs(legacy);
+        Expect(legacyKeys.Count == 1 && legacyKeys[0] == 255, $"legacy added row key {legacyKeys.FirstOrDefault()} != 255");
+        Expect(legacyTargets.Count == 1 && legacyTargets[0] == 0, $"legacy added row target {legacyTargets.FirstOrDefault()} != 0");
 
         // Vanilla first row untouched: multi-key map still multi-key. (outRows.Value[0]
         // is a row struct, not an entry - read its map directly.)
         var row0Out = outRows.Value[0] as StructPropertyData;
-        var row0Map = row0Out?.Value?.OfType<MapPropertyData>()
-            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_TargetNodes");
-        Expect(row0Map?.Value?.Count == keyCount, "vanilla multi-key row map was modified");
+        var (row0Keys, row0Targets) = MapPairs(row0Out);
+        Expect(row0Keys.SequenceEqual(keys0) && row0Targets.SequenceEqual(targets0),
+            "vanilla multi-key row map was modified");
+        Expect(CondRef(row0Out) == cond0, "vanilla multi-key row condition was modified");
 
         string outPath = WriteAndValidate(asset!, "start-multikey-addrow");
         var a2 = Load(outPath);
         var (c2, _) = ComboOf(a2);
         var rows2 = EntryRows(StartContainer(c2)?.Value?[entryIdx] as StructPropertyData);
-        Expect(rows2?.Value?.Length == rowCount + 1, $"reparse rows {rows2?.Value?.Length} != {rowCount + 1}");
-        var last2 = rows2!.Value[^1] as StructPropertyData;
-        var lastMap2 = last2?.Value?.OfType<MapPropertyData>()
-            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_TargetNodes");
-        Expect(lastMap2?.Value?.Count == 1, "reparse added row map is not single-entry");
-        byte reKey = 0;
-        foreach (var kvp in lastMap2!.Value)
-            reKey = kvp.Key switch { BytePropertyData b => b.Value, IntPropertyData i => (byte)i.Value, _ => (byte)0 };
-        Expect(reKey == 255, $"reparse added row key {reKey} != 255");
+        Expect(rows2?.Value?.Length == rowCount + 2, $"reparse rows {rows2?.Value?.Length} != {rowCount + 2}");
+        var clone2 = rows2!.Value[rowCount] as StructPropertyData;
+        var (clone2Keys, clone2Targets) = MapPairs(clone2);
+        Expect(CondRef(clone2) == cond0, "reparse lost the added row condition instance");
+        Expect(clone2Keys.SequenceEqual(keys0) && clone2Targets.SequenceEqual(expectedTargets),
+            "reparse lost the added row key map or targets");
+        var legacy2 = rows2.Value[rowCount + 1] as StructPropertyData;
+        var (legacy2Keys, legacy2Targets) = MapPairs(legacy2);
+        Expect(CondRef(legacy2) == 0, "reparse kept a condition on the legacy row");
+        Expect(legacy2Keys.Count == 1 && legacy2Keys[0] == 255
+            && legacy2Targets.Count == 1 && legacy2Targets[0] == 0,
+            "reparse lost the legacy unconditional row shape");
+    }
+
+    /// <summary>
+    /// MainChar start entries round trip. Player trees bind the container to
+    /// BP_MainCharComboStartStates instead of BP_AIAttackTIcketNames; the writer must
+    /// patch an existing state in place and, for a new entry, keep the cloned template's
+    /// MC m_Enum while rewriting m_Value to the requested state.
+    /// </summary>
+    private static void TestMainCharStartEntries(string targetFile)
+    {
+        static ArrayPropertyData? StartContainer(NormalExport c)
+            => c.Data?.OfType<ArrayPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_ComboStartNodesContainer");
+        static ArrayPropertyData? EntryRows(StructPropertyData? en)
+            => en?.Value?.OfType<StructPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_ComboTransitions")?.Value
+                ?.OfType<ArrayPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Transitions");
+        static string NameOf(StructPropertyData? en, string prop)
+            => en?.Value?.OfType<StructPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_ComboTransitions")?.Value
+                ?.OfType<NamePropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == prop)
+                ?.Value?.Value?.ToString() ?? "";
+        static string EnumValueOf(StructPropertyData en)
+            => en.Value?.OfType<StructPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_EnumState")?.Value
+                ?.OfType<NamePropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Value")
+                ?.Value?.Value?.ToString() ?? "";
+        static ObjectPropertyData? EnumRefOf(StructPropertyData en)
+            => en.Value?.OfType<StructPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_EnumState")?.Value
+                ?.OfType<ObjectPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Enum");
+        static string InputOf(PropertyData? row)
+            => (row as StructPropertyData)?.Value?.OfType<EnumPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_eInputTransition")
+                ?.Value?.Value?.ToString() ?? "";
+
+        var asset = Load(targetFile);
+        var (combo, nodes) = ComboOf(asset);
+        var cont = StartContainer(combo);
+        Expect(cont?.Value?.Length > 0, "MainChar tree has no start entries");
+        int baseEntries = cont!.Value!.Length;
+
+        // "KnockedDown" ships two plain single-key rows with probability 100 and target 0.
+        int entryIdx = -1, rowCount = 0;
+        string label = "", enumValue = "";
+        for (int i = 0; i < baseEntries; i++)
+        {
+            if (cont.Value[i] is not StructPropertyData en) continue;
+            if (NameOf(en, "m_ParentNodeName") != "KnockedDown") continue;
+            var rows = EntryRows(en);
+            if (rows?.Value?.Length is not > 0) continue;
+            entryIdx = i;
+            rowCount = rows.Value.Length;
+            label = "KnockedDown";
+            enumValue = EnumValueOf(en);
+            break;
+        }
+        Expect(entryIdx >= 0, "MainChar tree has no 'KnockedDown' start state");
+        Expect(enumValue.StartsWith("BP_MainCharComboStartStates::", StringComparison.Ordinal),
+            $"start state enum '{enumValue}' is not BP_MainCharComboStartStates");
+        var mcEnumRefIndex = EnumRefOf((StructPropertyData)cont.Value[entryIdx]!)?.Value?.Index ?? 0;
+        Expect(mcEnumRefIndex != 0, "start state m_Enum is a null ref");
+
+        // Vanilla input snapshot: row 1 must keep exactly this value (untouched rows
+        // are never rewritten), while row 0 gets a different input on purpose.
+        var vanillaRows = EntryRows(cont.Value[entryIdx] as StructPropertyData);
+        string vanillaRow1Input = InputOf(vanillaRows?.Value?[1]);
+
+        var entry = new StartEntry { VanillaIndex = entryIdx, Label = label, TicketEnumValue = enumValue };
+        entry.Transitions.Add(new StartTransition
+        {
+            OriginalIndex = 0,
+            Probability = 55f,
+            OriginalProbability = 100f,
+            // Input-only edit: proves the row's m_eInputTransition is rewritten in place.
+            InputEnum = "Special",
+            OriginalInputEnum = "",
+            TargetNodeId = 0,
+            OriginalTargetNodeId = -1,
+            KeyByte = 255,
+            KeyCount = 1
+        });
+        entry.Transitions.Add(new StartTransition
+        {
+            OriginalIndex = 1,
+            Probability = 100f,
+            OriginalProbability = 100f,
+            InputEnum = "",
+            OriginalInputEnum = "",
+            TargetNodeId = 0,
+            OriginalTargetNodeId = -1,
+            KeyByte = 255,
+            KeyCount = 1
+        });
+        // Added row: carries its own input (inherited from row 1 in the dialog).
+        entry.Transitions.Add(new StartTransition
+        {
+            OriginalIndex = -1,
+            Probability = 0f,
+            InputEnum = "HeavyHold",
+            KeyByte = 255,
+            KeyCount = 1,
+            TargetNodeId = 0,
+            TargetTreeIndex = 0,
+            TargetName = "Base0"
+        });
+
+        // New entry: clone lands from the container template, so this also proves the
+        // exported m_Enum keeps pointing at the player start-state enum.
+        var added = new StartEntry
+        {
+            VanillaIndex = -1,
+            Label = "SmokeState",
+            TicketEnumValue = "BP_MainCharComboStartStates::NewEnumerator99",
+            PhaseName = "None",
+            MCDominationFlags = 15
+        };
+        added.Transitions.Add(new StartTransition
+        {
+            OriginalIndex = -1,
+            Probability = 100f,
+            // New-entry rows write the model's input (the cloned template row's input
+            // must not leak onto every row).
+            InputEnum = "Heavy",
+            KeyByte = 255,
+            KeyCount = 1,
+            TargetNodeId = 0,
+            TargetTreeIndex = 0,
+            TargetName = "Base0"
+        });
+
+        var graph = new ComboGraph
+        {
+            Nodes = new List<ComboNode> { BaseNode(0, 0) },
+            StartEntries = new List<StartEntry> { entry, added }
+        };
+
+        var r = ExportDialog.AppendEnemyAuthoredContent(graph, asset, combo, nodes, ContentRoot);
+        Expect(r.startEntries > 0, "start-entry patch reported nothing");
+        Expect(cont.Value.Length == baseEntries + 1,
+            $"container has {cont.Value.Length} entries, expected {baseEntries + 1}");
+
+        // Existing state: probability and input rewritten in place, the untouched row
+        // keeps its exact vanilla input, and the added row lands at the end with its
+        // own input.
+        var patchedRows = EntryRows(cont.Value[entryIdx] as StructPropertyData);
+        Expect(patchedRows?.Value?.Length == rowCount + 1,
+            $"patched state rows {patchedRows?.Value?.Length} != {rowCount + 1}");
+        var row0Prob = (patchedRows!.Value![0] as StructPropertyData)?.Value
+            .OfType<FloatPropertyData>()
+            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_fProbability");
+        Expect(row0Prob != null && Math.Abs(row0Prob.Value - 55f) < 0.001f,
+            $"patched probability {row0Prob?.Value.ToString() ?? "null"} != 55");
+        Expect(InputOf(patchedRows.Value![0]) == "EComboTransition::Special",
+            $"patched row 1 input '{InputOf(patchedRows.Value![0])}' != 'EComboTransition::Special'");
+        Expect(InputOf(patchedRows.Value![1]) == vanillaRow1Input,
+            $"untouched row 2 input '{InputOf(patchedRows.Value![1])}' != vanilla '{vanillaRow1Input}'");
+        Expect(InputOf(patchedRows.Value![^1]) == "EComboTransition::HeavyHold",
+            $"added row input '{InputOf(patchedRows.Value![^1])}' != 'EComboTransition::HeavyHold'");
+
+        // New state: MC enum preserved, m_Value/name written from the model.
+        var newEntry = cont.Value[^1] as StructPropertyData;
+        Expect(newEntry != null, "new start entry missing");
+        Expect(((ObjectPropertyData?)EnumRefOf(newEntry!))?.Value?.Index == mcEnumRefIndex,
+            "new entry m_Enum no longer points at BP_MainCharComboStartStates");
+        Expect(EnumValueOf(newEntry!) == "BP_MainCharComboStartStates::NewEnumerator99",
+            $"new entry m_Value '{EnumValueOf(newEntry!)}'");
+        Expect(NameOf(newEntry!, "m_ParentNodeName") == "SmokeState",
+            $"new entry label '{NameOf(newEntry!, "m_ParentNodeName")}'");
+        var newRows = EntryRows(newEntry);
+        Expect(newRows?.Value?.Length == 1 && InputOf(newRows.Value![0]) == "EComboTransition::Heavy",
+            $"new entry row input '{InputOf(newRows?.Value?.FirstOrDefault())}' != 'EComboTransition::Heavy'");
+
+        string outPath = WriteAndValidate(asset, "mainchar-start-entries");
+        var a2 = Load(outPath);
+        var (c2, _) = ComboOf(a2);
+        var cont2 = StartContainer(c2);
+        Expect(cont2?.Value?.Length == baseEntries + 1,
+            $"reparse container {cont2?.Value?.Length} != {baseEntries + 1}");
+        var newEntry2 = cont2!.Value![^1] as StructPropertyData;
+        Expect(newEntry2 != null && EnumValueOf(newEntry2) == "BP_MainCharComboStartStates::NewEnumerator99",
+            "reparse lost the new MC start state");
+        Expect(EnumRefOf(newEntry2!)?.Value?.Index == mcEnumRefIndex,
+            "reparse lost the MC enum reference on the new entry");
+    }
+
+    // Bug 1 regression: the MainChar "Default" state routes each input through a
+    // condition (BP_TargetIsParryVictim_C) on single-key rows, and "Idle" does the same
+    // with BP_IsInInvertAttack_C. Those rows used to disable "+ Add Transition" outright
+    // because the gate only accepted key 255 or multi-key rows. A new row must clone the
+    // template row verbatim - same key, same condition instance, inherited input - and
+    // only probability + target are patched.
+    private static void TestMainCharConditionalRowAdd(string targetFile)
+    {
+        static ArrayPropertyData? StartContainer(NormalExport c)
+            => c.Data?.OfType<ArrayPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_ComboStartNodesContainer");
+        static ArrayPropertyData? EntryRows(StructPropertyData? en)
+            => en?.Value?.OfType<StructPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_ComboTransitions")?.Value
+                ?.OfType<ArrayPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Transitions");
+        static string NameOf(StructPropertyData? en, string prop)
+            => en?.Value?.OfType<StructPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_ComboTransitions")?.Value
+                ?.OfType<NamePropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == prop)
+                ?.Value?.Value?.ToString() ?? "";
+        static List<PropertyData> Props(PropertyData? p)
+            => (p as StructPropertyData)?.Value ?? new List<PropertyData>();
+        static float ProbOf(PropertyData? p)
+            => Props(p).OfType<FloatPropertyData>()
+                .FirstOrDefault(f => f.Name?.Value?.ToString() == "m_fProbability")?.Value ?? 0f;
+        static string InputOf(PropertyData? p)
+            => Props(p).OfType<EnumPropertyData>()
+                .FirstOrDefault(f => f.Name?.Value?.ToString() == "m_eInputTransition")
+                ?.Value?.Value?.ToString() ?? "";
+        static (byte key, int target) MapOf(PropertyData? p)
+        {
+            var map = Props(p).OfType<MapPropertyData>()
+                .FirstOrDefault(m => m.Name?.Value?.ToString() == "m_TargetNodes");
+            if (map?.Value == null || map.Value.Count == 0) return ((byte)255, -1);
+            // TMap enumerates KeyValuePair<PropertyData,PropertyData>; its int indexer is
+            // not positional, so take the first pair from enumeration.
+            foreach (var kv in map.Value)
+            {
+                byte key = kv.Key is BytePropertyData b ? b.Value
+                    : kv.Key is IntPropertyData i ? (byte)i.Value : (byte)255;
+                int target = kv.Value is IntPropertyData ti ? ti.Value : -1;
+                return (key, target);
+            }
+            return ((byte)255, -1);
+        }
+        static int CondOf(PropertyData? p)
+            => Props(p).OfType<ObjectPropertyData>()
+                .FirstOrDefault(o => o.Name?.Value?.ToString() == "m_ConditionInstance")
+                ?.Value?.Index ?? 0;
+
+        var asset = Load(targetFile);
+        var (combo, nodes) = ComboOf(asset);
+        var cont = StartContainer(combo);
+        Expect(cont?.Value?.Length > 0, "MainChar tree has no start entries");
+
+        int entryIdx = -1;
+        for (int i = 0; i < cont!.Value!.Length; i++)
+        {
+            if (cont.Value[i] is StructPropertyData en && NameOf(en, "m_ParentNodeName") == "Default")
+            {
+                entryIdx = i;
+                break;
+            }
+        }
+        Expect(entryIdx >= 0, "MainChar tree has no 'Default' start state");
+        var entryStruct = (StructPropertyData)cont.Value[entryIdx]!;
+        var vanillaRows = EntryRows(entryStruct);
+        int rowCount = vanillaRows?.Value?.Length ?? 0;
+        Expect(rowCount > 0, "'Default' has no vanilla rows");
+
+        var row0 = vanillaRows!.Value![0];
+        var (vKey, _) = MapOf(row0);
+        int vCond = CondOf(row0);
+        Expect(vKey != 255 && vCond != 0,
+            $"'Default' row 1 is not condition-routed (key {vKey}, condition {vCond})");
+
+        var entry = new StartEntry { VanillaIndex = entryIdx, Label = "Default" };
+        // Vanilla rows keep their keys/targets; row 1 splits its 100% with the new row so
+        // the Light trigger group still totals 100 (the player per-group rule).
+        for (int i = 0; i < rowCount; i++)
+        {
+            var (k, tgt) = MapOf(vanillaRows.Value[i]);
+            float p = ProbOf(vanillaRows.Value[i]);
+            entry.Transitions.Add(new StartTransition
+            {
+                OriginalIndex = i,
+                Probability = i == 0 ? 60f : p,
+                OriginalProbability = p,
+                TargetNodeId = -1,
+                TargetTreeIndex = tgt,
+                OriginalTargetTreeIndex = tgt,
+                KeyByte = k,
+                KeyCount = 1,
+                Keys = new List<byte> { k },
+                KeyTargetTreeIndices = new List<int> { tgt },
+                OriginalKeyTargetTreeIndices = new List<int> { tgt }
+            });
+        }
+        // The row the dialog's + button now adds: same key/condition as the template
+        // (row 1), new target, 40% of the trigger group.
+        entry.Transitions.Add(new StartTransition
+        {
+            OriginalIndex = -1,
+            Probability = 40f,
+            TargetNodeId = 0,
+            TargetTreeIndex = 0,
+            KeyByte = vKey,
+            KeyCount = 1
+        });
+
+        var graph = new ComboGraph
+        {
+            Nodes = new List<ComboNode> { BaseNode(0, 0) },
+            StartEntries = new List<StartEntry> { entry }
+        };
+        var r = ExportDialog.AppendEnemyAuthoredContent(graph, asset, combo, nodes, ContentRoot);
+        Expect(r.startEntries > 0, "conditional start row patch reported nothing");
+
+        var patched = EntryRows((StructPropertyData)cont.Value[entryIdx]!);
+        Expect(patched?.Value?.Length == rowCount + 1,
+            $"patched rows {patched?.Value?.Length} != {rowCount + 1}");
+        Expect(Math.Abs(ProbOf(patched!.Value![0]) - 60f) < 0.001f,
+            $"row 1 probability {ProbOf(patched.Value![0])} != 60");
+        var addedRow = patched.Value[^1];
+        var (aKey, aTarget) = MapOf(addedRow);
+        Expect(aKey == vKey, $"added row key {aKey} != template key {vKey} (collapsed to unconditional?)");
+        Expect(aTarget == 0, $"added row target {aTarget} != 0");
+        Expect(CondOf(addedRow) == vCond,
+            $"added row condition {CondOf(addedRow)} != template condition {vCond}");
+        Expect(InputOf(addedRow) == InputOf(row0),
+            $"added row input '{InputOf(addedRow)}' != template input '{InputOf(row0)}'");
+        Expect(Math.Abs(ProbOf(addedRow) - 40f) < 0.001f,
+            $"added row probability {ProbOf(addedRow)} != 40");
+
+        // Round-trip: the written asset keeps the same shape.
+        string outPath = WriteAndValidate(asset, "mainchar-conditional-row");
+        var a2 = Load(outPath);
+        var (c2, _) = ComboOf(a2);
+        var cont2 = StartContainer(c2);
+        var patched2 = EntryRows(cont2?.Value?[entryIdx] as StructPropertyData);
+        Expect(patched2?.Value?.Length == rowCount + 1,
+            $"reparse rows {patched2?.Value?.Length} != {rowCount + 1}");
+        var added2 = patched2!.Value![^1];
+        var (rKey, rTarget) = MapOf(added2);
+        Expect(rKey == vKey && rTarget == 0,
+            $"reparse lost the added row key/target ({rKey}/{rTarget})");
+        Expect(CondOf(added2) == vCond, "reparse lost the added row condition instance");
+    }
+
+    // Pure-model rules shared by the "+ Add Transition" gate and the exporter.
+    private static void TestCloneTemplateRules()
+    {
+        // Idle-shaped entry: two conditioned single-key rows, one per input.
+        var idle = new StartEntry { VanillaIndex = 6, Label = "Idle" };
+        idle.Transitions.Add(new StartTransition
+        {
+            OriginalIndex = 0,
+            InputEnum = "Light",
+            KeyByte = 0,
+            KeyCount = 1,
+            ConditionClass = "BP_IsInInvertAttack_C",
+            Probability = 100,
+            OriginalProbability = 100
+        });
+        idle.Transitions.Add(new StartTransition
+        {
+            OriginalIndex = 1,
+            InputEnum = "Heavy",
+            KeyByte = 1,
+            KeyCount = 1,
+            ConditionClass = "BP_IsInInvertAttack_C",
+            Probability = 100,
+            OriginalProbability = 100
+        });
+        var template = idle.CloneTemplateRow();
+        Expect(template != null && template.OriginalIndex == 0, "template is not vanilla row 1");
+        Expect(StartEntry.CanCloneTemplate(template!), "condition-routed template must be cloneable");
+        Expect(template!.ProbabilityGroupKey != idle.Transitions[1].ProbabilityGroupKey,
+            "Light and Heavy rows must be separate probability groups");
+        var split = new StartTransition
+        {
+            OriginalIndex = 2,
+            InputEnum = "Light",
+            KeyByte = 3,
+            ConditionClass = "BP_TargetIsParryVictim_C"
+        };
+        Expect(split.ProbabilityGroupKey == template.ProbabilityGroupKey,
+            "same input must share one pool regardless of key/condition (vanilla node 1)");
+
+        // A bare single-key row (no condition) stays blocked.
+        var bare = new StartTransition { OriginalIndex = 0, KeyByte = 3, KeyCount = 1, InputEnum = "Light" };
+        Expect(!StartEntry.CanCloneTemplate(bare), "bare keyed row without condition must not be cloneable");
+
+        // Multi-key templates are cloneable: the dialog copies their condition + key map
+        // verbatim, and export only collapses legacy rows that lack a per-key model.
+        var multi = new StartTransition { OriginalIndex = 0, KeyByte = 0, KeyCount = 3 };
+        Expect(StartEntry.CanCloneTemplate(multi), "multi-key template must be cloneable");
+
+        // Deleting vanilla row 1 moves the template to the next live vanilla row, never
+        // to an added row that happens to sit earlier in the list.
+        var deleted = new StartEntry();
+        deleted.Transitions.Add(new StartTransition { OriginalIndex = 0, Removed = true });
+        deleted.Transitions.Add(new StartTransition { OriginalIndex = -1, Probability = 50 });
+        deleted.Transitions.Add(new StartTransition
+        {
+            OriginalIndex = 2,
+            KeyByte = 0,
+            KeyCount = 1,
+            ConditionClass = "BP_TargetIsParryVictim_C"
+        });
+        Expect(deleted.CloneTemplateRow()?.OriginalIndex == 2, "deleted row 1 must fall through to row 3");
     }
 
     // Old saves (pre per-key editing) carry KeyCount + TargetSummary but empty
     // Keys/KeyTarget* lists - RehydrateStartEntryKeyModels rebuilds them from the
-    // summary and the graph's TreeIndex-stable nodes.
+    // summary and the graph's TreeIndex-stable nodes. Saves older than the per-row
+    // condition change also lost the row's ConditionClass (only the entry kept it),
+    // which the same pass restores for rows that are conditioned by construction.
     private static void TestRehydrateKeyModels()
     {
         var graph = new ComboGraph
@@ -359,7 +844,12 @@ internal static class Program
                 new() { Id = 2, TreeIndex = 9, Name = "WhiffFollow" }
             }
         };
-        var entry = new StartEntry { VanillaIndex = 1, Label = "Parry" };
+        var entry = new StartEntry
+        {
+            VanillaIndex = 1,
+            Label = "Parry",
+            ConditionClass = "BP_TargetIsParryVictim_C"
+        };
 
         // Old-save multi-key row: empty lists, summary from the vanilla map.
         var legacy = new StartTransition
@@ -414,6 +904,16 @@ internal static class Program
         };
         entry.Transitions.Add(junk);
 
+        // Unconditional row inside a conditioned entry: must NOT inherit the class.
+        var unconditional = new StartTransition
+        {
+            OriginalIndex = 4,
+            KeyCount = 1,
+            KeyByte = 255,
+            Probability = 0
+        };
+        entry.Transitions.Add(unconditional);
+
         graph.StartEntries = new List<StartEntry> { entry };
         graph.RehydrateStartEntryKeyModels();
 
@@ -432,10 +932,126 @@ internal static class Program
         Expect(fresh.Keys.Count == 2 && fresh.TargetSummary == "stale", "fresh-model row was touched");
         Expect(junk.Keys.Count == 0, "unparsable summary produced keys");
 
+        // Per-row condition backfill: conditioned rows inherit the entry class, the
+        // unconditional key-255 row stays unconditional.
+        Expect(legacy.ConditionClass == entry.ConditionClass, "legacy row condition not backfilled");
+        Expect(condensed.ConditionClass == entry.ConditionClass, "condensed row condition not backfilled");
+        Expect(fresh.ConditionClass == entry.ConditionClass, "hydrated legacy row condition not backfilled");
+        Expect(unconditional.ConditionClass == "", "key-255 row wrongly inherited the entry condition");
+
         // Idempotent: a second pass changes nothing.
         graph.RehydrateStartEntryKeyModels();
         Expect(legacy.Keys.Count == 2 && legacy.KeyTargetNodeIds.SequenceEqual(new[] { 1, 2 }),
             "second rehydrate pass changed a hydrated row");
+        Expect(legacy.ConditionClass == entry.ConditionClass, "second pass changed the backfilled condition");
+    }
+
+    // "+ Add Transition" on a project saved before per-row conditions: the template row
+    // has the full key model but no ConditionClass of its own, so the entry's class is
+    // the fallback. The added row must still duplicate the whole map at 0%.
+    private static void TestAddedTransitionLegacyCondition()
+    {
+        const string entryCond = "BP_IsTargetKnockedDownComboCondition_C";
+        var template = new StartTransition
+        {
+            OriginalIndex = 0,
+            Probability = 100,
+            OriginalProbability = 100,
+            KeyByte = 0,
+            KeyCount = 2,
+            TargetNodeId = 10,
+            TargetTreeIndex = 0,
+            TargetName = "DownAttack",
+            InputEnum = "None",
+            // Legacy save: row class lost, entry kept it.
+            ConditionClass = "",
+            Keys = new List<byte> { 0, 1 },
+            KeyTargetTreeIndices = new List<int> { 0, 1 },
+            KeyTargetNodeIds = new List<int> { 10, 11 },
+            KeyTargetNames = new List<string> { "DownAttack", "Hook" },
+            TargetSummary = "0→0, 1→1"
+        };
+
+        var added = StartEntry.CreateAddedTransition(template, entryCond);
+        Expect(added.OriginalIndex == -1, "added row must be new");
+        Expect(Math.Abs(added.Probability) < 0.001f, "added row must start at 0%");
+        Expect(added.ConditionClass == entryCond, "added row lost the entry condition fallback");
+        Expect(added.KeyByte == 0 && added.KeyCount == 2, "added row did not keep the 2-key map");
+        Expect(added.Keys.SequenceEqual(template.Keys), "added row keys differ from template");
+        Expect(added.KeyTargetTreeIndices.SequenceEqual(template.KeyTargetTreeIndices),
+            "added row targets differ from template");
+        Expect(added.KeyTargetNodeIds.SequenceEqual(template.KeyTargetNodeIds),
+            "added row node ids differ from template");
+        Expect(added.KeyTargetNames.SequenceEqual(template.KeyTargetNames),
+            "added row node names differ from template");
+        Expect(added.TargetSummary == template.TargetSummary, "added row summary differs from template");
+        Expect(added.TargetNodeId == template.TargetNodeId
+            && added.TargetTreeIndex == template.TargetTreeIndex
+            && added.TargetName == template.TargetName,
+            "added row top-level target differs from template");
+        Expect(added.InputEnum == template.InputEnum, "added row input differs from template");
+        Expect(added.IsModified(), "added row must read as modified");
+
+        // A fresh row keeps its own class even when the entry says something else.
+        var fresh = template.Clone();
+        fresh.ConditionClass = "BP_IsInInvertAttack_C";
+        var freshAdded = StartEntry.CreateAddedTransition(fresh, entryCond);
+        Expect(freshAdded.ConditionClass == "BP_IsInInvertAttack_C",
+            "fresh row class must win over the entry fallback");
+
+        // Legacy conditioned single-key row: copy the one outcome, not key 255.
+        var single = new StartTransition
+        {
+            OriginalIndex = 0,
+            Probability = 100,
+            KeyByte = 0,
+            KeyCount = 1,
+            TargetNodeId = 5,
+            TargetTreeIndex = 5,
+            TargetName = "",
+            InputEnum = "None",
+            ConditionClass = "",
+            TargetSummary = ""
+        };
+        var singleAdded = StartEntry.CreateAddedTransition(single, entryCond);
+        Expect(singleAdded.ConditionClass == entryCond && singleAdded.KeyByte == 0
+            && singleAdded.KeyCount == 1, "legacy single-key conditioned row collapsed");
+        Expect(singleAdded.TargetNodeId == 5 && singleAdded.TargetTreeIndex == 5,
+            "legacy single-key row lost its target");
+        Expect(StartEntry.CanCloneTemplate(single, entryCond), "entry-aware gate must allow the legacy row");
+        Expect(!StartEntry.CanCloneTemplate(single), "single-arg gate lost its old contract");
+
+        // Legacy multi-key row without a per-key model: export cannot write the map, so
+        // the add must still collapse to the unconditional key-255 recipe.
+        var noModel = template.Clone();
+        noModel.Keys.Clear();
+        noModel.KeyTargetTreeIndices.Clear();
+        noModel.KeyTargetNodeIds.Clear();
+        noModel.KeyTargetNames.Clear();
+        var collapsed = StartEntry.CreateAddedTransition(noModel, entryCond);
+        Expect(collapsed.ConditionClass == "" && collapsed.KeyByte == 255 && collapsed.KeyCount == 1,
+            "legacy model-less multi-key row did not collapse to key 255");
+        Expect(collapsed.TargetNodeId == -1 && collapsed.TargetTreeIndex == -1,
+            "collapsed row kept a target from the template");
+
+        // Unconditional template stays unconditional even inside a conditioned entry.
+        var unconditional = new StartTransition
+        {
+            OriginalIndex = 0,
+            Probability = 100,
+            KeyByte = 255,
+            KeyCount = 1,
+            TargetNodeId = 4,
+            TargetTreeIndex = 4,
+            TargetName = "Hook",
+            InputEnum = "None"
+        };
+        var unconditionalAdded = StartEntry.CreateAddedTransition(unconditional, entryCond);
+        Expect(unconditionalAdded.ConditionClass == "" && unconditionalAdded.KeyByte == 255
+            && unconditionalAdded.KeyCount == 1,
+            "unconditional template inherited a condition");
+        Expect(unconditionalAdded.TargetNodeId == -1,
+            "unconditional clone must not seed a single-key target");
     }
 
     // ResolveRedirectFinal walks a redirect's ResolvedRedirectNodeId chain to the
@@ -2783,5 +3399,445 @@ internal static class Program
         Expect(Math.Abs(pd[0] - 50f) <= 0.01f, $"over-100 row0 {pd[0]:0.###} != 50 (proportional scale)");
         Expect(Math.Abs(pd[1] - 50f) <= 0.01f, $"over-100 row1 {pd[1]:0.###} != 50 (proportional scale)");
         Expect(ErrorLog.Warnings == before4, "over-100 rescale must be info-only (warning count changed)");
+    }
+
+    /// <summary>Player trees roll one winner per input. An edited Light pool must return
+    /// to 100% on its own - vanilla ships Light 100 + Heavy 100 on the same node, so a
+    /// node-wide scale would silently halve Heavy. An over-100 input only trims itself,
+    /// and the same per-input rule must be wired through AppendEnemyAuthoredContent.</summary>
+    private static void TestMainCharChancePerInput(string targetFile)
+    {
+        static List<PropertyData> RowsOf(StructPropertyData sp)
+            => sp.Value?.OfType<StructPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Transitions")?.Value
+                ?.OfType<ArrayPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Transitions")
+                ?.Value?.ToList() ?? new List<PropertyData>();
+        static FloatPropertyData? ProbProp(PropertyData? row)
+            => (row as StructPropertyData)?.Value?.OfType<FloatPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_fProbability");
+        static float ProbOf(PropertyData? row) => ProbProp(row)?.Value ?? float.NaN;
+        static void SetProb(PropertyData? row, float value)
+        {
+            var prob = ProbProp(row);
+            if (prob != null) prob.Value = value;
+        }
+        static string InputOf(PropertyData? row)
+            => (row as StructPropertyData)?.Value?.OfType<EnumPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_eInputTransition")
+                ?.Value?.Value?.ToString() ?? "";
+
+        // Vanilla MC shape: a node with at least two inputs, every input pool at 100%.
+        static (int idx, List<PropertyData> rows, Dictionary<string, List<int>> pools) FindVanillaPools(
+            ArrayPropertyData nodes)
+        {
+            for (int i = 0; i < nodes.Value.Length; i++)
+            {
+                if (nodes.Value[i] is not StructPropertyData sp) continue;
+                var rows = RowsOf(sp);
+                if (rows.Count < 2) continue;
+                var pools = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+                for (int r = 0; r < rows.Count; r++)
+                {
+                    string input = InputOf(rows[r]);
+                    if (!pools.TryGetValue(input, out var list))
+                        pools[input] = list = new List<int>();
+                    list.Add(r);
+                }
+                if (pools.Count < 2) continue;
+                if (pools.Values.Any(p => Math.Abs(p.Sum(r => ProbOf(rows[r])) - 100f) > 0.01f))
+                    continue;
+                return (i, rows, pools);
+            }
+            return (-1, new List<PropertyData>(), new Dictionary<string, List<int>>());
+        }
+
+        static void ExpectPoolsAt100(string label, List<PropertyData> rows,
+            Dictionary<string, List<int>> pools)
+        {
+            foreach (var kv in pools)
+            {
+                float sum = kv.Value.Sum(r => ProbOf(rows[r]));
+                Expect(Math.Abs(sum - 100f) <= 0.01f,
+                    $"{label}: input '{kv.Key}' pool {sum:0.###} != 100");
+            }
+        }
+
+        // Case A: Light row typed down to 40 - only the Light pool absorbs the missing
+        // 60; Heavy stays exactly 100 (node-wide scaling would ship 60/100).
+        {
+            var asset = Load(targetFile);
+            var (_, nodes) = ComboOf(asset);
+            var found = FindVanillaPools(nodes);
+            Expect(found.idx >= 0, "no MainChar node with one 100% pool per input found");
+            string lightKey = found.pools.Keys.First();
+            string heavyKey = found.pools.Keys.Skip(1).First();
+            int lightRow = found.pools[lightKey][0];
+            SetProb(found.rows[lightRow], 40f);
+            int fixedPools = ExportDialog.NormalizeChanceSums(nodes,
+                new HashSet<int> { found.idx }, perInput: true);
+            Expect(fixedPools == 1, $"per-input rescale reported {fixedPools} structs, expected 1");
+            float lightSum = found.pools[lightKey].Sum(r => ProbOf(found.rows[r]));
+            Expect(Math.Abs(lightSum - 100f) <= 0.01f,
+                $"under-100 Light pool {lightSum:0.###} != 100");
+            Expect(Math.Abs(ProbOf(found.rows[lightRow]) - 100f) <= 0.01f,
+                $"Light row {ProbOf(found.rows[lightRow]):0.###} != 100");
+            foreach (int r in found.pools[heavyKey])
+                Expect(Math.Abs(ProbOf(found.rows[r]) - 100f) <= 0.01f,
+                    $"Heavy row {ProbOf(found.rows[r]):0.###} was rescaled by the Light edit");
+        }
+
+        // Case B: Light typed over 100 - only the Light pool is trimmed; Heavy untouched.
+        {
+            var asset = Load(targetFile);
+            var (_, nodes) = ComboOf(asset);
+            var found = FindVanillaPools(nodes);
+            Expect(found.idx >= 0, "no MainChar node with one 100% pool per input found");
+            string lightKey = found.pools.Keys.First();
+            string heavyKey = found.pools.Keys.Skip(1).First();
+            int lightRow = found.pools[lightKey][0];
+            SetProb(found.rows[lightRow], 125f);
+            _ = ExportDialog.NormalizeChanceSums(nodes, new HashSet<int> { found.idx }, perInput: true);
+            float lightSum = found.pools[lightKey].Sum(r => ProbOf(found.rows[r]));
+            Expect(Math.Abs(lightSum - 100f) <= 0.01f,
+                $"over-100 Light pool {lightSum:0.###} != 100");
+            foreach (int r in found.pools[heavyKey])
+                Expect(Math.Abs(ProbOf(found.rows[r]) - 100f) <= 0.01f,
+                    $"Heavy row {ProbOf(found.rows[r]):0.###} was rescaled by the Light edit");
+        }
+
+        // Case C: same rule through the real append pass - an MC identity must pick the
+        // per-input guard and leave the other input's 100% alone.
+        {
+            var asset = Load(targetFile);
+            var (combo, nodes) = ComboOf(asset);
+            var found = FindVanillaPools(nodes);
+            Expect(found.idx >= 0, "no MainChar node with one 100% pool per input found");
+            string lightKey = found.pools.Keys.First();
+            string heavyKey = found.pools.Keys.Skip(1).First();
+            int lightRow = found.pools[lightKey][0];
+            var graph = new ComboGraph
+            {
+                SourceGamePath = "Game/DB/_MainChar/Combos/MainChar_ComboTree",
+                Nodes = new List<ComboNode> { BaseNode(1, found.idx) }
+            };
+            graph.TreeRowProbabilityOverrides[found.idx] =
+                new Dictionary<int, float> { [lightRow] = 40f };
+            _ = ExportDialog.AppendEnemyAuthoredContent(graph, asset, combo, nodes, ContentRoot);
+            var patched = (StructPropertyData)nodes.Value[found.idx]!;
+            var patchedRows = RowsOf(patched);
+            ExpectPoolsAt100("append pass", patchedRows, found.pools);
+            foreach (int r in found.pools[heavyKey])
+                Expect(Math.Abs(ProbOf(patchedRows[r]) - 100f) <= 0.01f,
+                    $"append pass rescaled Heavy row {ProbOf(patchedRows[r]):0.###}");
+        }
+    }
+
+    // --- Cautious link check (BranchChanceGate) ------------------------------------
+    // Synthetic graphs: the gate only needs TreeRows/overrides/edges, so these run
+    // without touching a vanilla asset.
+
+    private static TreeRowInfo TRow(int idx, string input, float probability) => new()
+    {
+        RowIndex = idx,
+        InputName = input,
+        OriginalProbability = probability
+    };
+
+    private static (ComboGraph Graph, ComboNode Source) GateGraph(
+        string sourcePath = "", params TreeRowInfo[] rows)
+    {
+        var graph = new ComboGraph { SourceGamePath = sourcePath };
+        var source = BaseNode(1, 0);
+        var target = BaseNode(2, 1);
+        graph.Nodes.AddRange(new[] { source, target });
+        if (rows.Length > 0) graph.TreeRows[0] = rows.ToList();
+        return (graph, source);
+    }
+
+    /// <summary>Untyped vanilla rows + a new link rebalance to exactly 100 and give the
+    /// link a real share - the clean case must not open the dialog.</summary>
+    private static void TestChanceGateVanillaAppend()
+    {
+        var (graph, source) = GateGraph("", TRow(0, "Light", 100f));
+        var edge = new ComboEdge { FromNodeId = 1, ToNodeId = 2, InputName = "Light", IsNewLink = true };
+        graph.Edges.Add(edge);
+
+        var gate = BranchChanceGate.Evaluate(graph, source, edge);
+        Expect(!gate.NeedsAttention, $"clean append flagged: {gate.Summary}");
+        Expect(!gate.NewLinkUnreachable, "clean append reported the new link unreachable");
+        Expect(gate.Pools.Count == 1, $"enemy node should expose one pool, got {gate.Pools.Count}");
+        Expect(Math.Abs(gate.Pools[0].Total - 100f) <= 0.5f,
+            $"pool total {gate.Pools[0].Total:0.###} != 100");
+        Expect(gate.NewLinkEffective > 0f, "new link got 0% on a clean pool");
+    }
+
+    /// <summary>Existing rows typed to consume the whole pool: the sum is still 100 but
+    /// the brand-new link resolves to 0%, so the caution check must fire.</summary>
+    private static void TestChanceGateTypedFullPool()
+    {
+        var (graph, source) = GateGraph("", TRow(0, "Light", 100f));
+        graph.TreeRowProbabilityOverrides[0] = new Dictionary<int, float> { [0] = 100f };
+        var edge = new ComboEdge { FromNodeId = 1, ToNodeId = 2, InputName = "Light", IsNewLink = true };
+        graph.Edges.Add(edge);
+
+        var gate = BranchChanceGate.Evaluate(graph, source, edge);
+        Expect(gate.NeedsAttention, "typed-100 pool did not flag the dead new link");
+        Expect(gate.NewLinkUnreachable, "new link was not reported unreachable");
+        Expect(gate.Pools.Count == 1 && gate.Pools[0].Ok,
+            "typed-100 pool should still total 100 (only the 0% trigger fires)");
+        Expect(gate.Summary.Contains("new link lands at 0%", StringComparison.Ordinal),
+            $"summary missing the 0% reason: '{gate.Summary}'");
+    }
+
+    /// <summary>Typed rows over 100 both break the pool sum and leave the new link at 0.</summary>
+    private static void TestChanceGateOver100()
+    {
+        var (graph, source) = GateGraph("", TRow(0, "Light", 60f), TRow(1, "Light", 60f));
+        graph.TreeRowProbabilityOverrides[0] = new Dictionary<int, float> { [0] = 60f, [1] = 60f };
+        var edge = new ComboEdge { FromNodeId = 1, ToNodeId = 2, InputName = "Light", IsNewLink = true };
+        graph.Edges.Add(edge);
+
+        var gate = BranchChanceGate.Evaluate(graph, source, edge);
+        Expect(gate.NeedsAttention, "over-100 pool did not flag");
+        Expect(gate.NewLinkUnreachable, "over-100 pool did not leave the new link at 0%");
+        Expect(gate.Pools.Count == 1 && !gate.Pools[0].Ok,
+            $"over-100 pool reported ok (total {gate.Pools[0].Total:0.###})");
+    }
+
+    /// <summary>A player append only rebalances its own input; Heavy's 100% must not be
+    /// touched (the node has no single node-wide pool to scale).</summary>
+    private static void TestChanceGateMainCharPerInput()
+    {
+        var (graph, source) = GateGraph(
+            "Game/DB/_MainChar/Combos/MainChar_ComboTree",
+            TRow(0, "Light", 50f), TRow(1, "Light", 50f), TRow(2, "Heavy", 100f));
+        var edge = new ComboEdge { FromNodeId = 1, ToNodeId = 2, InputName = "Light", IsNewLink = true };
+        graph.Edges.Add(edge);
+
+        var gate = BranchChanceGate.Evaluate(graph, source, edge);
+        Expect(gate.PerInput, "MainChar graph did not switch to per-input pools");
+        Expect(gate.Pools.Count == 2, $"expected Light+Heavy pools, got {gate.Pools.Count}");
+        foreach (var p in gate.Pools)
+            Expect(Math.Abs(p.Total - 100f) <= 0.5f, $"input '{p.Label}' pool {p.Total:0.###} != 100");
+        Expect(!gate.NeedsAttention, $"clean per-input append flagged: {gate.Summary}");
+
+        var rows = new[]
+        {
+            new BranchChanceRow("Light", null, 50f, false),
+            new BranchChanceRow("Light", null, 50f, false),
+            new BranchChanceRow("Heavy", null, 100f, false),
+            new BranchChanceRow("Light", null, 0f, true)
+        };
+        var eff = BranchChanceGate.ComputeEffective(rows, perInput: true);
+        Expect(Math.Abs(eff[2] - 100f) <= 0.01f,
+            $"Heavy row {eff[2]:0.###} was rescaled by the Light append");
+        Expect(Math.Abs(eff[0] + eff[1] + eff[3] - 100f) <= 0.01f,
+            $"Light pool {eff[0] + eff[1] + eff[3]:0.###} != 100 after the append");
+        Expect(eff[3] > 0f, "new Light link got 0% on a clean Light pool");
+    }
+
+    /// <summary>An A' owning redirect decides which struct the link writes, so the gate
+    /// must evaluate that struct - not the source node's own (typed-100) rows.</summary>
+    private static void TestChanceGateRedirectStruct()
+    {
+        var graph = new ComboGraph();
+        var source = BaseNode(1, 0);
+        var redirect = new ComboNode
+        {
+            Id = 3,
+            TreeIndex = 1,
+            IsRedirect = true,
+            OwnedContinuation = true,
+            ResolvedRedirectNodeId = 1,
+            DisplayName = "redirect"
+        };
+        var target = BaseNode(2, 2);
+        graph.Nodes.AddRange(new[] { source, redirect, target });
+        graph.TreeRows[0] = new List<TreeRowInfo> { TRow(0, "Light", 100f) };
+        graph.TreeRows[1] = new List<TreeRowInfo> { TRow(0, "Light", 100f) };
+        // The source's own struct is fully typed; the owning struct is untouched. Using
+        // the wrong struct would report the new link at 0%.
+        graph.TreeRowProbabilityOverrides[0] = new Dictionary<int, float> { [0] = 100f };
+        var edge = new ComboEdge { FromNodeId = 1, ToNodeId = 2, InputName = "Light", IsNewLink = true };
+        graph.Edges.Add(edge);
+
+        var gate = BranchChanceGate.Evaluate(graph, source, edge);
+        Expect(gate.Pools.Count == 1, $"expected one owning-struct pool, got {gate.Pools.Count}");
+        Expect(Math.Abs(gate.Pools[0].Total - 100f) <= 0.5f,
+            $"owning pool total {gate.Pools[0].Total:0.###} != 100");
+        Expect(!gate.NewLinkUnreachable && gate.NewLinkEffective > 0f,
+            "gate evaluated the source's own typed rows instead of the redirect-owned struct");
+    }
+
+    /// <summary>A row-less custom node with one link splits the full 100 on its own.</summary>
+    private static void TestChanceGateCustomNode()
+    {
+        var graph = new ComboGraph();
+        var source = new ComboNode
+        {
+            Id = 1,
+            TreeIndex = -1,
+            Kind = ComboNodeKind.UserCreated,
+            DisplayName = "custom"
+        };
+        var target = BaseNode(2, 0);
+        graph.Nodes.AddRange(new[] { source, target });
+        var edge = new ComboEdge { FromNodeId = 1, ToNodeId = 2, InputName = "Light", IsNewLink = true };
+        graph.Edges.Add(edge);
+
+        var gate = BranchChanceGate.Evaluate(graph, source, edge);
+        Expect(!gate.NeedsAttention, $"custom-node link flagged: {gate.Summary}");
+        Expect(gate.Pools.Count == 1 && Math.Abs(gate.Pools[0].Total - 100f) <= 0.5f,
+            "custom-node link should own the whole 100% pool");
+        Expect(Math.Abs(gate.NewLinkEffective - 100f) <= 0.01f,
+            $"custom-node link effective {gate.NewLinkEffective:0.###} != 100");
+    }
+
+    /// <summary>
+    /// Deleting one of two links from a vanilla node: the row disappears, the automatic
+    /// rows split the 100 between them, and the pool check stays silent.
+    /// </summary>
+    private static void TestChanceGateDeletedLinkAuto()
+    {
+        var (graph, source) = GateGraph("", TRow(0, "Light", 100f));
+        var toB = new ComboEdge { FromNodeId = 1, ToNodeId = 2, InputName = "Light", IsNewLink = true };
+        var toC = new ComboEdge { FromNodeId = 1, ToNodeId = 3, InputName = "Light", IsNewLink = true };
+        graph.Edges.AddRange(new[] { toB, toC });
+
+        // Simulate deleting B: only its row leaves the model.
+        graph.Edges.Remove(toB);
+        var gate = BranchChanceGate.EvaluatePool(graph, source);
+        Expect(!gate.NeedsAttention, $"clean post-delete pool flagged: {gate.Summary}");
+        Expect(gate.Pools.Count == 1 && Math.Abs(gate.Pools[0].Total - 100f) <= 0.5f,
+            $"auto rows should absorb the removed share (total {gate.Pools[0].Total:0.###})");
+    }
+
+    /// <summary>
+    /// Typed rows cannot absorb the removed share: 40 + 40 leaves the pool at 80, so the
+    /// post-delete check must flag it for Conditions &amp; Chances.
+    /// </summary>
+    private static void TestChanceGateDeletedLinkTyped()
+    {
+        var (graph, source) = GateGraph("",
+            TRow(0, "Light", 50f), TRow(1, "Light", 50f));
+        graph.TreeRowProbabilityOverrides[0] = new Dictionary<int, float> { [0] = 40f, [1] = 40f };
+        var toB = new ComboEdge { FromNodeId = 1, ToNodeId = 2, InputName = "Light", IsNewLink = true };
+        graph.Edges.Add(toB);
+
+        graph.Edges.Remove(toB);
+        var gate = BranchChanceGate.EvaluatePool(graph, source);
+        Expect(gate.NeedsAttention, "typed 40/40 pool did not flag after the delete");
+        Expect(gate.Pools.Count == 1 && Math.Abs(gate.Pools[0].Total - 80f) <= 0.5f,
+            $"expected an 80% pool, got {gate.Pools[0].Total:0.###}");
+        Expect(gate.Summary.Contains("80", StringComparison.Ordinal),
+            $"summary should name the 80% total: '{gate.Summary}'");
+    }
+
+    /// <summary>
+    /// A custom node's rows are its links: removing one leaves the other at its typed
+    /// 40%, so the pool is broken exactly like the vanilla case.
+    /// </summary>
+    private static void TestChanceGateDeletedCustomExplicit()
+    {
+        var graph = new ComboGraph();
+        var source = new ComboNode
+        {
+            Id = 1,
+            TreeIndex = -1,
+            Kind = ComboNodeKind.UserCreated,
+            DisplayName = "custom"
+        };
+        graph.Nodes.AddRange(new[] { source, BaseNode(2, 0), BaseNode(3, 1) });
+        var toB = new ComboEdge
+        {
+            FromNodeId = 1, ToNodeId = 2, InputName = "Light", IsNewLink = true, NewLinkProbability = 40f
+        };
+        var toC = new ComboEdge
+        {
+            FromNodeId = 1, ToNodeId = 3, InputName = "Light", IsNewLink = true, NewLinkProbability = 40f
+        };
+        graph.Edges.AddRange(new[] { toB, toC });
+
+        graph.Edges.Remove(toB);
+        var gate = BranchChanceGate.EvaluatePool(graph, source);
+        Expect(gate.NeedsAttention, "typed custom-node pool did not flag after the delete");
+        Expect(gate.Pools.Count == 1 && Math.Abs(gate.Pools[0].Total - 40f) <= 0.5f,
+            $"expected a 40% pool, got {gate.Pools[0].Total:0.###}");
+    }
+
+    /// <summary>The same custom node with automatic links re-splits the 100 and stays clean.</summary>
+    private static void TestChanceGateDeletedCustomAuto()
+    {
+        var graph = new ComboGraph();
+        var source = new ComboNode
+        {
+            Id = 1,
+            TreeIndex = -1,
+            Kind = ComboNodeKind.UserCreated,
+            DisplayName = "custom"
+        };
+        graph.Nodes.AddRange(new[] { source, BaseNode(2, 0), BaseNode(3, 1) });
+        var toB = new ComboEdge { FromNodeId = 1, ToNodeId = 2, InputName = "Light", IsNewLink = true };
+        var toC = new ComboEdge { FromNodeId = 1, ToNodeId = 3, InputName = "Light", IsNewLink = true };
+        graph.Edges.AddRange(new[] { toB, toC });
+
+        graph.Edges.Remove(toB);
+        var gate = BranchChanceGate.EvaluatePool(graph, source);
+        Expect(!gate.NeedsAttention, $"automatic custom pool flagged: {gate.Summary}");
+        Expect(Math.Abs(gate.Pools[0].Total - 100f) <= 0.5f,
+            $"remaining automatic link should own 100%, got {gate.Pools[0].Total:0.###}");
+    }
+
+    /// <summary>
+    /// The post-delete source collector only reports surviving rows that really vanish:
+    /// merged links (row survives), redirect hops, edges from removed nodes, and
+    /// duplicate links to the same target are all excluded.
+    /// </summary>
+    private static void TestDeleteChanceSources()
+    {
+        var graph = new ComboGraph();
+        var alive = BaseNode(1, 0);
+        var removedSource = BaseNode(2, 1);
+        removedSource.Removed = true;
+        var mergedSource = BaseNode(3, 2);
+        var redirectSource = new ComboNode
+        {
+            Id = 5, TreeIndex = 3, IsRedirect = true, DisplayName = "redirect"
+        };
+        graph.Nodes.AddRange(new[] { alive, removedSource, mergedSource, redirectSource,
+            BaseNode(4, 6), BaseNode(10, 4), BaseNode(11, 5) });
+
+        var normal = new ComboEdge { FromNodeId = 1, ToNodeId = 10, InputName = "Light", IsNewLink = true };
+        var duplicate = new ComboEdge { FromNodeId = 1, ToNodeId = 10, InputName = "Heavy", IsNewLink = true };
+        var merged = new ComboEdge
+        {
+            FromNodeId = 3, ToNodeId = 10, InputName = "Light", IsNewLink = true, MergedIntoStruct = 0
+        };
+        var redirect = new ComboEdge { FromNodeId = 5, ToNodeId = 10, InputName = "Light", IsNewLink = true, IsRedirect = true };
+        var fromRemoved = new ComboEdge { FromNodeId = 2, ToNodeId = 10, InputName = "Light", IsNewLink = true };
+        var elsewhere = new ComboEdge { FromNodeId = 4, ToNodeId = 11, InputName = "Light", IsNewLink = true };
+        graph.Edges.AddRange(new[] { normal, duplicate, merged, redirect, fromRemoved, elsewhere });
+
+        var sources = NodeDeleteChanceCheck.CollectAffectedSources(graph, new[] { 10 });
+        Expect(sources.Count == 1 && sources[0] == 1,
+            $"expected only source 1, got [{string.Join(", ", sources)}]");
+
+        // Deleting the redirect node 11 as well (the real target is being removed) must
+        // also report the surviving link that pointed into the redirect.
+        var viaRedirect = NodeDeleteChanceCheck.CollectAffectedSources(graph, new[] { 10, 11 });
+        Expect(viaRedirect.Count == 2 && viaRedirect[0] == 1 && viaRedirect[1] == 4,
+            $"expected sources [1, 4] through a broken redirect, got [{string.Join(", ", viaRedirect)}]");
+
+        Expect(NodeDeleteChanceCheck.AffectedSourceForEdge(graph, normal) == 1,
+            "normal deleted link should report its source");
+        Expect(NodeDeleteChanceCheck.AffectedSourceForEdge(graph, merged) == -1,
+            "merged link must not report a chance source");
+        Expect(NodeDeleteChanceCheck.AffectedSourceForEdge(graph, redirect) == -1,
+            "redirect link must not report a chance source");
+        Expect(NodeDeleteChanceCheck.AffectedSourceForEdge(graph, fromRemoved) == -1,
+            "a removed source must be excluded");
+        Expect(NodeDeleteChanceCheck.CollectAffectedSources(graph, Array.Empty<int>()).Count == 0,
+            "empty removal set should produce no sources");
     }
 }

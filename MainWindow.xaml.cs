@@ -203,12 +203,21 @@ public partial class MainWindow : Window
     // Node ids hidden from the combo canvas while _showAiNodes is false (rebuilt by
     // RenderComboGraph; null = nothing hidden). Root nodes are never included.
     private HashSet<int>? _hiddenAiNodeIds;
+    // Display-only input badge text per node, derived from incoming edges. The parser
+    // fills ComboNode.InputLabel only for nodes that came from the tree, so a
+    // user-created node would render with no input chip even after being linked with
+    // LMB. Rebuilt on every RenderComboGraph and never written to the model - the
+    // label is a project-matching key (ProjectMigrator), so it must stay parse-time.
+    private Dictionary<int, string> _derivedInputLabels = new();
     private bool _initialized = false;
     private ComboGraph? _comboGraph;
     private Dictionary<int, Point> _nodePositions = new();
     private const int UNDO_MAX = 50;
-    private readonly List<UndoEntry> _undoStack = new();
-    private readonly List<UndoEntry> _redoStack = new();
+    // Undo belongs to the unit loaded in the combo graph: each cache key (arch + variant
+    // + weapon) keeps its own history, so switching away and back preserves it while a
+    // graph from another unit can never be restored by mistake.
+    private readonly Dictionary<string, List<UndoEntry>> _undoByUnit = new();
+    private readonly Dictionary<string, List<UndoEntry>> _redoByUnit = new();
     private const double NODE_WIDTH = 140;
     private const double NODE_HEIGHT = 32;
     private const double INPUT_HEIGHT = 22;
@@ -237,6 +246,10 @@ public partial class MainWindow : Window
     private Popup? _dragPopup;
     private Border? _draggedCard;
     private DispatcherTimer? _dragTimer;
+
+    // Create AttackDB "pick a template in the library" mode: non-null while waiting for
+    // the user to click an AttackDB card (or click outside the library to cancel).
+    private TaskCompletionSource<MoveInfo?>? _templatePick;
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern bool GetCursorPos(out System.Drawing.Point lpPoint);
@@ -383,6 +396,7 @@ public partial class MainWindow : Window
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         ErrorLog.Init();
+        WireTutorialOverlay();
         await webView.EnsureCoreWebView2Async(null);
         webView.CoreWebView2.WebMessageReceived += OnWebViewMessage;
         webView.NavigationCompleted += WebView_NavigationCompleted;
@@ -766,6 +780,8 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void Help_Click(object sender, RoutedEventArgs e) => await OpenHelpAsync(null);
+
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
         txtSettingsContentPath.Text = _contentPath;
@@ -1147,7 +1163,8 @@ public partial class MainWindow : Window
         var vanillaMoves = filtered.Where(m =>
             !IsCustom(m) && m.IsUsed && m.IsValid && !string.IsNullOrWhiteSpace(m.DisplayName) &&
             IsVanillaLibraryCard(m)).ToList();
-        // Other: everything non-custom that isn't a valid used vanilla card
+        // Animations: every non-custom animation file (used or not), plus any
+        // unrecognized/broken card that isn't a valid vanilla attack card
         // (includes !IsValid so a missing dependency can't blank the whole library)
         var unusedMoves = filtered.Where(m =>
             !IsCustom(m) && !string.IsNullOrWhiteSpace(m.DisplayName) &&
@@ -1178,23 +1195,23 @@ public partial class MainWindow : Window
         listLoco.ItemsSource = filteredLoco;
 
         tabHeaderVanilla.Text = $"Vanilla ({vanillaMoves.Count})";
-        tabHeaderUnused.Text = $"Other ({unusedMoves.Count})";
+        tabHeaderUnused.Text = $"Animations ({unusedMoves.Count})";
         tabHeaderLoco.Text = $"Stances ({filteredLoco.Count})";
         tabHeaderCustom.Text = $"Custom ({customMoves.Count})";
         if (_aiNodes.Count > 0)
             RefreshAiList();
         txtMoveCount.Text = _aiLibraryMode
             ? $"{CountAiActions()} actions / {CountAiEvents()} events"
-            : $"{vanillaMoves.Count} vanilla / {unusedMoves.Count} other / {filteredLoco.Count} stances / {customMoves.Count} custom";
+            : $"{vanillaMoves.Count} vanilla / {unusedMoves.Count} animations / {filteredLoco.Count} stances / {customMoves.Count} custom";
         if (logTiming)
         {
             // Materialized row counts matter: these ItemsControls are unvirtualized, so
             // expanded accordion groups realize one container per row on the UI thread.
             int Rows(System.Collections.IList? src) => src?.Count ?? -1;
             ErrorLog.WriteRaw($"[RESET] FilterMoves {filterSw.ElapsedMilliseconds} ms "
-                + $"(cards: all={_allMoves.Count}, vanilla={vanillaMoves.Count}, other={unusedMoves.Count}, custom={customMoves.Count}; "
+                + $"(cards: all={_allMoves.Count}, vanilla={vanillaMoves.Count}, animations={unusedMoves.Count}, custom={customMoves.Count}; "
                 + $"rows materialized: vanilla={Rows(listVanilla.ItemsSource as System.Collections.IList)}, "
-                + $"other={Rows(listUnused.ItemsSource as System.Collections.IList)}, "
+                + $"animations={Rows(listUnused.ItemsSource as System.Collections.IList)}, "
                 + $"custom={Rows(listCustom.ItemsSource as System.Collections.IList)})");
         }
     }
@@ -1570,10 +1587,10 @@ public partial class MainWindow : Window
         listLoco.ItemsSource = _allLocomotion;
 
         tabHeaderVanilla.Text = $"Vanilla ({vanillaMoves.Count})";
-        tabHeaderUnused.Text = $"Other ({unusedMoves.Count})";
+        tabHeaderUnused.Text = $"Animations ({unusedMoves.Count})";
         tabHeaderLoco.Text = $"Stances ({_allLocomotion.Count})";
         tabHeaderCustom.Text = $"Custom ({customMoves.Count})";
-        txtMoveCount.Text = $"{vanillaMoves.Count} vanilla / {unusedMoves.Count} other / {_allLocomotion.Count} stances / {customMoves.Count} custom";
+        txtMoveCount.Text = $"{vanillaMoves.Count} vanilla / {unusedMoves.Count} animations / {_allLocomotion.Count} stances / {customMoves.Count} custom";
     }
 
     private void LogLibraryDiagnostics()
@@ -1682,6 +1699,11 @@ public partial class MainWindow : Window
         ["LMB"] = Color.FromRgb(0xa6, 0xe3, 0xa1),
         ["RMB"] = Color.FromRgb(0xf3, 0x8b, 0xa8),
         ["RMB Hold"] = Color.FromRgb(0xf5, 0xc2, 0xe7),
+        // HeavyAlt must not share Heavy's pink: a rewritten alt edge that looks
+        // identical to RMB hides the input change (and exports as a different enum).
+        ["RMB Alt"] = Color.FromRgb(0xeb, 0xa0, 0xac),
+        ["LMB Rush"] = Color.FromRgb(0xfa, 0xb3, 0x87),
+        ["RMB Rush"] = Color.FromRgb(0xfa, 0xb3, 0x87),
         ["RMB Delay"] = Color.FromRgb(0xf3, 0x8b, 0xa8),
         ["S"] = Color.FromRgb(0xf9, 0xe2, 0xaf),
         ["Shift"] = Color.FromRgb(0x89, 0xdc, 0xeb),
@@ -1859,7 +1881,7 @@ public partial class MainWindow : Window
 
         var card = AttackHitCard.ReadDbPath(AttackDbContentDir(), cardPath);
         if (card == null || card.Windows.Count == 0)
-            card = AttackHitCard.ReadDbPath(CustomAssets.Root, cardPath);
+            card = AttackHitCard.ReadDbPath(CustomAssets.Root, cardPath, AttackDbContentDir());
         if (card == null || card.Windows.Count == 0)
         {
             txtStatus.Text = "No readable hit windows on this card";
@@ -1881,6 +1903,36 @@ public partial class MainWindow : Window
         }
 
         var dialog = new AttackDbEditorDialog(card, node.HitEdits, armor) { Owner = this };
+
+        // "Make private" escape hatch: only a card that already lives in CustomAssets
+        // (a clone) can be rewritten in place - a vanilla card would have to be cloned
+        // first. Same path the clone dialog's checkbox uses.
+        string cardRel = AttackDbCard.GamePathToContentRel(cardPath);
+        string customCardFile = CustomAssets.FileForContentRel(cardRel + ".uasset");
+        if (File.Exists(customCardFile))
+        {
+            dialog.MakePrivate = () =>
+            {
+                _suppressCustomWatcher = true;
+                try
+                {
+                    if (!HitRowPrivatizer.Privatize(customCardFile, cardRel,
+                            AttackDbContentDir(), out var privErr))
+                        return privErr;
+                    AttackHitCard.Invalidate(customCardFile);
+                    try { _parser.MountCustomIntoProvider(CustomAssets.Root); } catch { }
+                    return null;
+                }
+                catch (Exception pex) { return pex.Message; }
+                finally
+                {
+                    _suppressCustomWatcher = false;
+                    lock (_customWatcherPending) _customWatcherPending.Clear();
+                    _lastCustomFileWriteUtc = DateTime.UtcNow;
+                }
+            };
+        }
+
         bool? ok = dialog.ShowDialog();
         if (ok != true) return;
 
@@ -2451,9 +2503,29 @@ public partial class MainWindow : Window
     {
         if (mainChar && node.IsRedirect)
             return ChainHighlightBorder;
-        if (mainChar && !string.IsNullOrEmpty(node.InputLabel))
-            return GetInputColor(node.InputLabel);
+        var inputLabel = EffectiveInputLabel(node);
+        if (mainChar && !string.IsNullOrEmpty(inputLabel))
+            return GetInputColor(inputLabel);
         return ChainHighlightBorder;
+    }
+
+    /// <summary>Input badge text for a node: the parse-time label when the node came
+    /// from a tree, otherwise the label derived from its incoming edges this render.
+    /// User-created nodes never get an InputLabel from the parser, so without the
+    /// fallback a freshly linked LMB node would show no input chip at all.</summary>
+    private string EffectiveInputLabel(ComboNode node)
+    {
+        string derived = _derivedInputLabels.TryGetValue(node.Id, out var d) ? d : "";
+        if (string.IsNullOrEmpty(node.InputLabel)) return derived;
+        if (string.IsNullOrEmpty(derived)) return node.InputLabel;
+        // Merge instead of replacing: the derived set also carries inputs named only by
+        // start-entry rows (no inbound edge), and those must show on the badge too.
+        var parts = node.InputLabel.Split(" / ")
+            .Concat(derived.Split(" / "))
+            .Where(s => s.Length > 0)
+            .Distinct()
+            .OrderBy(s => s);
+        return string.Join(" / ", parts);
     }
 
     private void RestoreNodeVisual(Border border, ComboNode node)
@@ -2608,6 +2680,26 @@ public partial class MainWindow : Window
 
     private async void MoveCard_Click(object sender, MouseButtonEventArgs e)
     {
+        // Walkthroughs own the screen: a click on the spotlighted card must not select it,
+        // change the status bar or kick off a 3D preview. It only exists to be dragged.
+        if (_tutorial != null) return;
+
+        // Template-pick mode (Create AttackDB): only an AttackDB card is actionable;
+        // everything else is swallowed so the click never selects or previews.
+        if (_templatePick != null)
+        {
+            e.Handled = true;
+            if (sender is Border pickBorder && pickBorder.Tag is MoveInfo pickMove)
+            {
+                if (MoveInfo.IsAttackDbGamePath(pickMove.FullPath))
+                    FinishTemplatePick(pickMove);
+                else
+                    txtStatus.Text = "That card isn't an AttackDB - pick an AttackDB card "
+                                   + "(click anywhere else to cancel).";
+            }
+            return;
+        }
+
         if (sender is Border aiBorder && aiBorder.Tag is AiNodeInfo ai)
         {
             ClearNodeSelection();
@@ -2638,8 +2730,801 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>The MoveInfo a card context menu / opening event belongs to.</summary>
+    private static MoveInfo? ResolveMoveCard(object sender)
+    {
+        if (sender is FrameworkElement fe && fe.Tag is MoveInfo m) return m;
+        if (sender is MenuItem mi)
+        {
+            if (mi.Tag is MoveInfo m2) return m2;
+            if (mi.Parent is ContextMenu cm && cm.PlacementTarget is FrameworkElement fe2
+                && fe2.Tag is MoveInfo m3)
+                return m3;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// The card menu is shared by every MoveInfo row, so the opening event picks the
+    /// action that fits: Clone on vanilla attack cards, Create/Open on animation files.
+    /// Everything else leaves the menu empty (and the event handled).
+    /// </summary>
+    private void MoveCard_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        // A walkthrough never needs the card menu, and Clone/Delete would rewrite the sandbox.
+        if (_tutorial != null)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (_templatePick != null)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        var move = ResolveMoveCard(sender);
+        var cm = (sender as FrameworkElement)?.ContextMenu;
+        if (cm == null)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        bool isAttackDb = move != null && MoveInfo.IsAttackDbGamePath(move.FullPath);
+        bool isAnimation = move != null
+            && string.Equals(move.SourceType, "Animation File", StringComparison.OrdinalIgnoreCase);
+        bool isCustom = move != null
+            && string.Equals(move.Category, "Custom", StringComparison.OrdinalIgnoreCase);
+        bool canClone = isAttackDb && !isCustom;
+        bool canDelete = isAttackDb && isCustom;
+        bool hasMappedDb = isAnimation
+            && _parser.AnimToDbPath.ContainsKey(move!.FullPath);
+
+        foreach (var item in cm.Items.OfType<MenuItem>())
+        {
+            switch (item.Name)
+            {
+                case "miCloneAttackCard":
+                    item.Visibility = canClone ? Visibility.Visible : Visibility.Collapsed;
+                    break;
+                case "miCreateAttackDb":
+                    item.Visibility = isAnimation ? Visibility.Visible : Visibility.Collapsed;
+                    break;
+                case "miOpenExistingAttackDb":
+                    item.Visibility = hasMappedDb ? Visibility.Visible : Visibility.Collapsed;
+                    break;
+                case "miRenameCustomAttackDb":
+                    item.Visibility = canDelete ? Visibility.Visible : Visibility.Collapsed;
+                    break;
+                case "miDeleteCustomAttackDb":
+                    item.Visibility = canDelete ? Visibility.Visible : Visibility.Collapsed;
+                    break;
+            }
+        }
+
+        if (!canClone && !isAnimation && !canDelete) e.Handled = true;
+    }
+
+    /// <summary>
+    /// Node menus are how a link or a chance pool is opened, so walkthroughs allow them only
+    /// on those steps. Elsewhere Clone/Remove/Retarget would rewrite the training sandbox.
+    /// </summary>
+    private void ComboNode_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.ContextMenu is not ContextMenu menu) return;
+
+        if (_tutorial == null)
+        {
+            // Menus are cached per node, so re-enable anything a walkthrough greyed out.
+            foreach (var item in menu.Items.OfType<MenuItem>())
+                item.IsEnabled = true;
+            return;
+        }
+
+        if (!TutorialAllowsNodeMenu)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        // The menu is open only because the step needs one action from it, so grey out
+        // Remove/Clone/Retarget and leave just that item usable.
+        string keep = TutorialStepExpects(TutorialEvents.ChancesClosed)
+            ? "Conditions & Chances…"
+            : "Connect to…";
+
+        foreach (var item in menu.Items.OfType<MenuItem>())
+            item.IsEnabled = string.Equals(item.Header as string, keep, StringComparison.Ordinal);
+    }
+
+    private void CloneAttackCardMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        var move = ResolveMoveCard(sender);
+        if (move == null) return;
+        CloneAttackCard(move);
+    }
+
+    private async void CreateAttackDbMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        var move = ResolveMoveCard(sender);
+        if (move == null) return;
+        await CreateAttackDbFromAnimation(move);
+    }
+
+    private void OpenExistingAttackDbMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        var move = ResolveMoveCard(sender);
+        if (move == null) return;
+        if (!_parser.AnimToDbPath.TryGetValue(move.FullPath, out var dbPath)
+            || string.IsNullOrEmpty(dbPath))
+        {
+            txtStatus.Text = "No existing AttackDB is mapped to this animation.";
+            return;
+        }
+
+        txtStatus.Text = $"Existing AttackDB: {Path.GetFileNameWithoutExtension(dbPath)}";
+        _ = FindCardInLibrary(dbPath);
+    }
+
+    private async void DeleteCustomAttackDbMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        var move = ResolveMoveCard(sender);
+        if (move == null) return;
+        await DeleteCustomAttackDbAsync(move);
+    }
+
+    /// <summary>
+    /// Permanently deletes a custom AttackDB. The plan runs over every cached unit
+    /// graph plus the active one: direct card references are reverted, and Conditions
+    /// &amp; Chances / Start Entries routes that target those slots are removed (vanilla
+    /// m_Transitions targets are recorded on the graph so export prunes them too).
+    /// A single usage popup offers Cancel / Delete Anyway; unused cards get a plain
+    /// permanent-delete confirmation. The card leaves the library immediately and any
+    /// in-flight custom scan is invalidated so stale results cannot re-add it.
+    /// </summary>
+    private async Task DeleteCustomAttackDbAsync(MoveInfo move)
+    {
+        if (_opInProgress || _templatePick != null) return;
+        if (!MoveInfo.IsAttackDbGamePath(move.FullPath)
+            || !string.Equals(move.Category, "Custom", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        // Graph edits in other units live in the caches; make sure the active graph is
+        // one of them before analysis so the Usage list covers what is on screen.
+        if (_comboGraph != null) SaveCurrentUnitToCache();
+        var units = new List<(string UnitKey, ComboGraph Graph)>();
+        foreach (var kvp in _unitCaches)
+            if (kvp.Value?.Graph != null) units.Add((kvp.Key, kvp.Value.Graph));
+        if (_comboGraph != null && !units.Any(u => ReferenceEquals(u.Graph, _comboGraph)))
+            units.Add((GetUnitCacheKey(), _comboGraph));
+
+        CustomAttackDbDeletePlan plan;
+        try
+        {
+            Mouse.OverrideCursor = Cursors.Wait;
+            plan = await Task.Run(() => CustomAttackDbDelete.Build(move.FullPath, units, CustomAssets.Root));
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("CUSTOM", ex);
+            txtStatus.Text = $"Delete failed: {ex.Message}";
+            MessageBox.Show(this, $"Could not inspect that card:\n{ex.Message}", "Delete AttackDB",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+        finally { Mouse.OverrideCursor = null; }
+
+        bool used = plan.AnyUsage;
+        string detail = plan.BuildUsageDetail();
+        string usedBody = plan.TotalRemovedNodes > 0
+            ? $"Delete \"{move.DisplayNameClean}\" anyway?\n\n"
+              + $"{plan.TotalRemovedNodes} custom node(s) created from this card are removed with it. "
+              + "Vanilla slots that used the card are reverted and the routes listed below are removed."
+            : $"Delete \"{move.DisplayNameClean}\" anyway?\n\n"
+              + "Direct card slots are reverted and the routes listed below are removed.";
+        var dialog = new ConfirmDialog(
+            used ? "This AttackDB card is being used" : "Delete AttackDB",
+            used
+                ? usedBody
+                : $"Permanently delete \"{move.DisplayNameClean}\"?\n\n"
+                  + "The card and its private hit row are removed from CustomAssets.",
+            used ? "Delete Anyway" : "Delete",
+            "Cancel",
+            used ? detail + "\n\nDelete is permanent and clears undo history." : detail);
+        dialog.Owner = this;
+        if (dialog.ShowDialog() != true)
+        {
+            txtStatus.Text = $"Delete cancelled: {move.DisplayNameClean}";
+            return;
+        }
+
+        _opInProgress = true;
+        _suppressCustomWatcher = true;
+        try
+        {
+            int changedUnits = 0;
+            foreach (var (unitKey, graph) in units)
+                if (CustomAttackDbDelete.Apply(plan, unitKey, graph)) changedUnits++;
+
+            // Nodes removed with the card must not leave layout/selection ghosts behind
+            // in the active graph or in any cached unit's saved positions.
+            foreach (var (unitKey, graph) in units)
+            {
+                if (!_unitCaches.TryGetValue(unitKey, out var entry) || entry.Positions == null)
+                    continue;
+                var live = graph.Nodes.Select(n => n.Id).ToHashSet();
+                entry.Positions = entry.Positions
+                    .Where(kv => live.Contains(kv.Key))
+                    .ToDictionary(kv => kv.Key, kv => kv.Value);
+            }
+            if (_comboGraph != null)
+            {
+                var live = _comboGraph.Nodes.Select(n => n.Id).ToHashSet();
+                foreach (int id in _nodePositions.Keys.Where(k => !live.Contains(k)).ToList())
+                    _nodePositions.Remove(id);
+                if (_selectedNodeId >= 0 && !live.Contains(_selectedNodeId))
+                    ClearNodeSelection();
+            }
+
+            // Graph edits across cached units cannot be captured by the single-graph undo
+            // entry, and the files are gone either way - a partial undo would be a lie.
+            ClearUndoHistory();
+
+            int deleted = CustomAssets.DeleteEntries(plan.Files);
+            _allMoves?.RemoveAll(m => MoveInfo.IsAttackDbGamePath(m.FullPath)
+                && CustomAttackDbDelete.SameCard(m.FullPath, plan.CardRel));
+
+            if (_selectedMoveBorder?.Tag is MoveInfo selected
+                && CustomAttackDbDelete.SameCard(selected.FullPath, plan.CardRel))
+                ClearMoveSelection();
+
+            if (_comboGraph != null)
+            {
+                RenderComboGraph();
+                UpdateAttackDbPanel(null);
+            }
+            FilterMoves();
+            UpdateCustomLibraryInfo();
+            tabMoves.SelectedItem = tabCustom;
+
+            // Any scan already in flight enumerated the card before it was deleted.
+            // Dropping the task makes its apply callback discard the stale result.
+            lock (_customAttackScanLock) { _customAttackScanTask = null; _customAttackScanDirty = false; }
+            RequestCustomAttackCardScan();
+            _ = ApplyCustomAttackScanAsync(showOverlay: false);
+
+            txtStatus.Text = $"Deleted {move.DisplayNameClean} ({deleted} file(s))"
+                + (plan.TotalRemovedNodes > 0 ? $", {plan.TotalRemovedNodes} node(s) removed" : "")
+                + (changedUnits > 0 ? $", {changedUnits} unit(s) updated" : "");
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("CUSTOM", ex);
+            txtStatus.Text = $"Delete failed: {ex.Message}";
+        }
+        finally
+        {
+            _suppressCustomWatcher = false;
+            lock (_customWatcherPending) _customWatcherPending.Clear();
+            _lastCustomFileWriteUtc = DateTime.UtcNow;
+            _opInProgress = false;
+        }
+    }
+
+    private async void RenameCustomAttackDbMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        var move = ResolveMoveCard(sender);
+        if (move == null) return;
+        await RenameCustomAttackDbAsync(move);
+    }
+
+    /// <summary>
+    /// Renames a custom AttackDB for real: the card file (and its private HitBoxData
+    /// table, when exclusively owned) moves to the new name, internals are renamed and
+    /// every cached unit graph is repointed. Undo history is cleared because the change
+    /// spans files and multiple unit graphs; the new files are accepted in the close
+    /// prompt's manifest so choosing "No" cannot delete the renamed card.
+    /// </summary>
+    private async Task RenameCustomAttackDbAsync(MoveInfo move)
+    {
+        if (_opInProgress || _templatePick != null) return;
+        if (!MoveInfo.IsAttackDbGamePath(move.FullPath)
+            || !string.Equals(move.Category, "Custom", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        string cardRel = AttackDbCard.GamePathToContentRel(move.FullPath);
+        string cardUasset = CustomAssets.FileForContentRel(cardRel + ".uasset");
+        if (!File.Exists(cardUasset))
+        {
+            txtStatus.Text = $"Rename failed: card file not found ({cardRel})";
+            return;
+        }
+
+        CustomAttackDbInspect info;
+        try
+        {
+            Mouse.OverrideCursor = Cursors.Wait;
+            info = await Task.Run(() => CustomAttackDbRenamer.Inspect(cardRel));
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("CUSTOM", ex);
+            txtStatus.Text = $"Rename failed: {ex.Message}";
+            MessageBox.Show(this, $"Could not inspect that card:\n{ex.Message}", "Rename AttackDB",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+        finally { Mouse.OverrideCursor = null; }
+
+        var existing = (_allMoves ?? new List<MoveInfo>())
+            .Where(m => MoveInfo.IsAttackDbGamePath(m.FullPath))
+            .Select(m => m.FullPath).ToList();
+        var dlg = new RenameAttackCardDialog(move.DisplayNameClean, cardRel, info, existing,
+            AttackDbContentDir())
+        { Owner = this };
+        if (dlg.ShowDialog() != true)
+        {
+            txtStatus.Text = $"Rename cancelled: {move.DisplayNameClean}";
+            return;
+        }
+        string newName = dlg.NewName;
+
+        // Graph edits in other units live in the caches; make sure the active graph is
+        // one of them before repointing so no unit keeps the old card path.
+        if (_comboGraph != null) SaveCurrentUnitToCache();
+        var units = new List<(string UnitKey, ComboGraph Graph)>();
+        foreach (var kvp in _unitCaches)
+            if (kvp.Value?.Graph != null) units.Add((kvp.Key, kvp.Value.Graph));
+        if (_comboGraph != null && !units.Any(u => ReferenceEquals(u.Graph, _comboGraph)))
+            units.Add((GetUnitCacheKey(), _comboGraph));
+
+        _opInProgress = true;
+        _suppressCustomWatcher = true;
+        try
+        {
+            CustomAttackDbRenameResult result;
+            Mouse.OverrideCursor = Cursors.Wait;
+            try
+            {
+                result = await Task.Run(() =>
+                {
+                    CustomAttackDbRenamer.Rename(cardRel, newName, AttackDbContentDir(), out var r);
+                    return r;
+                });
+            }
+            finally { Mouse.OverrideCursor = null; }
+
+            if (!result.Success)
+            {
+                txtStatus.Text = $"Rename failed: {result.Error}";
+                MessageBox.Show(this, $"Rename failed:\n{result.Error}", "Rename AttackDB",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            int changedUnits = 0;
+            foreach (var (_, graph) in units)
+                if (CustomAttackDbRenamer.RepointGraph(graph, cardRel, result.NewGamePath,
+                        result.OldName, result.NewName))
+                    changedUnits++;
+
+            // Library entry follows the file. The context menu's MoveInfo is the same
+            // object the Custom tab binds to, so updating it keeps selection/usage intact.
+            var renamedMove = _allMoves?.FirstOrDefault(m => MoveInfo.IsAttackDbGamePath(m.FullPath)
+                && CustomAttackDbDelete.SameCard(m.FullPath, cardRel));
+            if (renamedMove != null)
+            {
+                renamedMove.FullPath = result.NewGamePath;
+                if (string.Equals(renamedMove.DisplayName, result.OldName, StringComparison.Ordinal))
+                    renamedMove.DisplayName = result.NewName;
+            }
+            if (_selectedMoveBorder?.Tag is MoveInfo selected
+                && !ReferenceEquals(selected, renamedMove)
+                && CustomAttackDbDelete.SameCard(selected.FullPath, cardRel))
+            {
+                selected.FullPath = result.NewGamePath;
+                if (string.Equals(selected.DisplayName, result.OldName, StringComparison.Ordinal))
+                    selected.DisplayName = result.NewName;
+            }
+
+            // The rename touches files and every unit graph - a single-graph undo entry
+            // would be misleading (and could resurrect the old path).
+            ClearUndoHistory();
+            AcceptRenamedCustomFiles(result);
+
+            // The scan reads the card through the provider; mount the new file first.
+            try { _parser.MountCustomIntoProvider(CustomAssets.Root); } catch { }
+
+            // A leftover search could hide the renamed card from the Custom tab.
+            if (!string.IsNullOrEmpty(txtSearch.Text)) txtSearch.Text = "";
+            if (_comboGraph != null)
+            {
+                RenderComboGraph();
+                RefreshAttackDbPanel();
+            }
+            FilterMoves();
+            UpdateCustomLibraryInfo();
+            tabMoves.SelectedItem = tabCustom;
+
+            lock (_customAttackScanLock) { _customAttackScanTask = null; _customAttackScanDirty = false; }
+            RequestCustomAttackCardScan();
+            _ = ApplyCustomAttackScanAsync(showOverlay: false);
+
+            txtStatus.Text = $"Renamed {result.OldName} \u2192 {result.NewName}"
+                + (changedUnits > 0 ? $", {changedUnits} unit(s) updated" : "")
+                + (string.IsNullOrEmpty(result.Warning) ? "" : " - old files left behind");
+            if (!string.IsNullOrEmpty(result.Warning))
+                MessageBox.Show(this, result.Warning, "Rename AttackDB",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("CUSTOM", ex);
+            txtStatus.Text = $"Rename failed: {ex.Message}";
+        }
+        finally
+        {
+            _suppressCustomWatcher = false;
+            lock (_customWatcherPending) _customWatcherPending.Clear();
+            _lastCustomFileWriteUtc = DateTime.UtcNow;
+            _opInProgress = false;
+        }
+    }
+
+    /// <summary>
+    /// Marks the rename's new files as accepted in the close-prompt manifest and drops
+    /// its old entries. Only the renamed files change, so unrelated unaccepted files
+    /// still surface on the next close.
+    /// </summary>
+    private void AcceptRenamedCustomFiles(CustomAttackDbRenameResult result)
+    {
+        var accepted = new List<string>(_customAssetsAccepted ?? new List<string>());
+
+        var removed = new HashSet<string>(result.RemovedFiles, StringComparer.OrdinalIgnoreCase);
+        if (removed.Count > 0)
+            accepted.RemoveAll(e => removed.Contains(CustomAssets.RelOf(e)));
+
+        var currentByRel = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in CustomAssets.BuildManifest())
+        {
+            var rel = CustomAssets.RelOf(entry);
+            if (!currentByRel.ContainsKey(rel)) currentByRel[rel] = entry;
+        }
+
+        var created = new HashSet<string>(result.NewFiles, StringComparer.OrdinalIgnoreCase);
+        accepted.RemoveAll(e => created.Contains(CustomAssets.RelOf(e)));
+        foreach (var rel in result.NewFiles)
+            if (currentByRel.TryGetValue(rel, out var entry))
+                accepted.Add(entry);
+
+        _customAssetsAccepted = accepted.Count > 0 ? accepted : null;
+    }
+
+    /// <summary>
+    /// Clone flow: locate the source card (CustomAssets first, so re-cloning a library
+    /// card copies the library copy), collect the name, run AttackCardCloner with the
+    /// watcher suppressed, then rescan so the clone lands in the Custom tab.
+    /// </summary>
+    private void CloneAttackCard(MoveInfo move)
+    {
+        if (!MoveInfo.IsAttackDbGamePath(move.FullPath)) return;
+
+        string cardRel = AttackDbCard.GamePathToContentRel(move.FullPath);
+        string? sourcePath = CustomAssets.FileForContentRel(cardRel + ".uasset");
+        if (!File.Exists(sourcePath))
+            sourcePath = AttackDbCard.ResolveUassetPath(AttackDbContentDir(), move.FullPath);
+        if (sourcePath == null || !File.Exists(sourcePath))
+        {
+            txtStatus.Text = $"Clone failed: card file not found ({cardRel})";
+            return;
+        }
+
+        var existing = (_allMoves ?? new List<MoveInfo>())
+            .Where(m => MoveInfo.IsAttackDbGamePath(m.FullPath))
+            .Select(m => m.FullPath).ToList();
+
+        var dlg = new CloneAttackCardDialog(move.DisplayNameClean, cardRel, existing, AttackDbContentDir())
+        { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+
+        string newUasset, newGamePath, error;
+        _suppressCustomWatcher = true;
+        try
+        {
+            if (!AttackCardCloner.Clone(sourcePath, cardRel, dlg.NewName, dlg.CloneHitWindow,
+                    AttackDbContentDir(), out newUasset, out newGamePath, out error))
+            {
+                txtStatus.Text = $"Clone failed: {error}";
+                MessageBox.Show(this, $"Clone failed:\n{error}", "Clone attack card",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+            // The new card must be loadable by the scan (HasAttackStruct reads it
+            // through the provider) before RequestCustomAttackCardScan runs.
+            try { _parser.MountCustomIntoProvider(CustomAssets.Root); } catch { }
+        }
+        finally
+        {
+            _suppressCustomWatcher = false;
+            // Our own writes - drop any queued events so the flush after the flag
+            // clears can't pop the "custom files detected" dialog.
+            lock (_customWatcherPending) _customWatcherPending.Clear();
+            _lastCustomFileWriteUtc = DateTime.UtcNow;
+        }
+
+        txtStatus.Text = $"Cloned to {newGamePath}"
+            + (dlg.CloneHitWindow
+                ? " (private hit window)"
+                : " (shared hit row - you can make it private in Hit Windows)");
+
+        // Land on the clone: a leftover search could hide it from the Custom tab.
+        if (!string.IsNullOrEmpty(txtSearch.Text)) txtSearch.Text = "";
+        RequestCustomAttackCardScan();
+        _ = ApplyCustomAttackScanAsync(showOverlay: false);
+        tabMoves.SelectedItem = tabCustom;
+    }
+
+    /// <summary>
+    /// Create AttackDB flow: rank working cards as templates (exact anim→DB mapping
+    /// first, then the closest unit/weapon/folder + shared name tokens), let the user
+    /// confirm name/template/hit options, then clone → retarget m_Animation → optionally
+    /// scale the hit windows and write advanced overrides. Anything that fails rolls the
+    /// fresh clone back so the Custom tab never gets a half-built card.
+    /// </summary>
+    private async Task CreateAttackDbFromAnimation(MoveInfo anim)
+    {
+        if (anim == null
+            || !string.Equals(anim.SourceType, "Animation File", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        if (!anim.IsValid)
+        {
+            var proceed = MessageBox.Show(this,
+                "This animation did not validate (its skeleton could not be loaded). "
+                + "A card built from it may not animate in-game.\n\nCreate the card anyway?",
+                "Create AttackDB", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (proceed != MessageBoxResult.Yes) return;
+        }
+
+        string animPath = anim.FullPath;
+        _parser.AnimToDbPath.TryGetValue(animPath, out var mappedDb);
+        var templates = AttackDbTemplateRanker.Rank(anim, mappedDb, _allMoves);
+        if (templates.Count == 0)
+        {
+            MessageBox.Show(this,
+                "No working attack cards were found to use as a template. "
+                + "Extract vanilla content first, then try again.",
+                "Create AttackDB", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        float? newDuration = _parser.GetAnimationInfo(animPath)?.Duration;
+        float? TemplateDuration(string cardPath)
+        {
+            var templateAnim = _parser.ResolveAnimationFromDB(cardPath);
+            if (string.IsNullOrEmpty(templateAnim)) return null;
+            return _parser.GetAnimationInfo(templateAnim)?.Duration;
+        }
+
+        var existing = (_allMoves ?? new List<MoveInfo>())
+            .Where(m => MoveInfo.IsAttackDbGamePath(m.FullPath))
+            .Select(m => m.FullPath).ToList();
+
+        // The dialog is modal, so "Choose AttackDB Card in Library…" closes it (freeing
+        // the owner window), lets the user click a card, then reopens with this state.
+        var state = new CreateAttackDbDialogState();
+        CreateAttackDbDialog? dlg = null;
+        while (true)
+        {
+            dlg = new CreateAttackDbDialog(animPath, anim.DisplayNameClean, newDuration,
+                templates, mappedDb, TemplateDuration, existing, AttackDbContentDir(), state)
+            { Owner = this };
+
+            if (dlg.ShowDialog() == true) break;
+            if (!dlg.PickTemplateRequested) return;
+
+            state = dlg.SnapshotState();
+            var picked = await PickAttackDbTemplateAsync();
+            if (picked == null) continue;
+
+            state.Template = templates.FirstOrDefault(t =>
+                    string.Equals(t.GamePath, picked.FullPath, StringComparison.OrdinalIgnoreCase))
+                ?? new AttackDbTemplateOption
+                {
+                    GamePath = picked.FullPath,
+                    DisplayName = picked.DisplayName,
+                    DisplayNameClean = picked.DisplayNameClean,
+                    Character = picked.Character,
+                    WeaponType = picked.WeaponType,
+                    Category = picked.Category
+                };
+        }
+
+        if (dlg == null) return;
+
+        var template = dlg.Template;
+        if (template == null) return;
+
+        string templateRel = AttackDbCard.GamePathToContentRel(template.GamePath);
+        string destCardRel = dlg.DestinationFolderRel.Trim('/') + "/" + dlg.NewName;
+        string? templateFile = CustomAssets.FileForContentRel(templateRel + ".uasset");
+        if (!File.Exists(templateFile))
+            templateFile = AttackDbCard.ResolveUassetPath(AttackDbContentDir(), template.GamePath);
+        if (templateFile == null || !File.Exists(templateFile))
+        {
+            MessageBox.Show(this, "The selected template card file was not found.",
+                "Create AttackDB", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        string newUasset = "", newGamePath = "", error = "";
+        Mouse.OverrideCursor = Cursors.Wait;
+        _suppressCustomWatcher = true;
+        try
+        {
+            if (!AttackCardCloner.Clone(templateFile, destCardRel, dlg.NewName, dlg.PrivateHitRow,
+                    AttackDbContentDir(), out newUasset, out newGamePath, out error))
+            {
+                FailCreate(error);
+                return;
+            }
+
+            if (!AttackCardRetargeter.Retarget(newUasset, animPath, out error))
+            {
+                DeleteCreatedCard(destCardRel, dlg.PrivateHitRow);
+                FailCreate(error);
+                return;
+            }
+
+            if (dlg.ScaleHitWindows && dlg.ScaleRatio.HasValue
+                && Math.Abs(dlg.ScaleRatio.Value - 1f) > 0.0001f)
+            {
+                if (!AttackHitCard.ScaleCardFrames(newUasset, dlg.ScaleRatio.Value, out error))
+                {
+                    DeleteCreatedCard(destCardRel, dlg.PrivateHitRow);
+                    FailCreate(error);
+                    return;
+                }
+            }
+
+            if (dlg.BuildupOverride.HasValue || dlg.RangeOverride.HasValue)
+            {
+                if (!AttackDbCard.Write(newUasset, dlg.BuildupOverride, dlg.RangeOverride, out error))
+                {
+                    DeleteCreatedCard(destCardRel, dlg.PrivateHitRow);
+                    FailCreate(error);
+                    return;
+                }
+            }
+
+            // The new card must be loadable by the scan (HasAttackStruct reads it
+            // through the provider) before RequestCustomAttackCardScan runs.
+            try { _parser.MountCustomIntoProvider(CustomAssets.Root); } catch { }
+        }
+        finally
+        {
+            Mouse.OverrideCursor = null;
+            _suppressCustomWatcher = false;
+            lock (_customWatcherPending) _customWatcherPending.Clear();
+            _lastCustomFileWriteUtc = DateTime.UtcNow;
+        }
+
+        txtStatus.Text = $"Created AttackDB {dlg.NewName} → {newGamePath}";
+
+        // Land on the new card: a leftover search could hide it from the Custom tab.
+        if (!string.IsNullOrEmpty(txtSearch.Text)) txtSearch.Text = "";
+        RequestCustomAttackCardScan();
+        await ApplyCustomAttackScanAsync(showOverlay: false);
+        tabMoves.SelectedItem = tabCustom;
+        await FindCardInLibrary(newGamePath);
+
+        MessageBox.Show(this,
+            $"Created {dlg.NewName}.\n\n"
+            + "The card is in Custom Moves, but it isn't usable yet - assign it to a combo slot "
+            + "in the graph first. Then open Hit Windows to tune its frames and damage.",
+            "Create AttackDB", MessageBoxButton.OK, MessageBoxImage.Information);
+
+        void FailCreate(string message)
+        {
+            Mouse.OverrideCursor = null;
+            txtStatus.Text = $"Create AttackDB failed: {message}";
+            MessageBox.Show(this, $"Create AttackDB failed:\n{message}", "Create AttackDB",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+
+        static void DeleteCreatedCard(string cardRel, bool privateHitRow)
+        {
+            try
+            {
+                var card = CustomAssets.FileForContentRel(cardRel + ".uasset");
+                if (File.Exists(card)) File.Delete(card);
+                var cardUexp = Path.ChangeExtension(card, ".uexp");
+                if (File.Exists(cardUexp)) File.Delete(cardUexp);
+
+                if (!privateHitRow) return;
+                var table = CustomAssets.FileForContentRel(cardRel + "_HitBoxData.uasset");
+                if (File.Exists(table)) File.Delete(table);
+                var tableUexp = Path.ChangeExtension(table, ".uexp");
+                if (File.Exists(tableUexp)) File.Delete(tableUexp);
+            }
+            catch { }
+        }
+    }
+
+    /// <summary>
+    /// Starts the "pick a template in the library" mode. The Create dialog has already
+    /// closed (a modal dialog disables the owner window), so the library is live: an
+    /// AttackDB card click completes the task, and a click outside the library panel
+    /// cancels it. The caller reopens the dialog with the returned card (or the old one).
+    /// </summary>
+    private Task<MoveInfo?> PickAttackDbTemplateAsync()
+    {
+        ShowLibraryForTemplatePick();
+
+        var tcs = new TaskCompletionSource<MoveInfo?>();
+        _templatePick = tcs;
+        bannerTemplatePick.Visibility = Visibility.Visible;
+        txtStatus.Text = "Template: click an AttackDB card in the Move Library "
+                       + "(click anywhere else to cancel).";
+        Mouse.OverrideCursor = Cursors.Hand;
+        return tcs.Task;
+    }
+
+    /// <summary>
+    /// Puts the library somewhere a template can actually be clicked: attack cards live
+    /// in Vanilla/Custom, so the Animations or Stances tab (or AI mode) gets switched.
+    /// </summary>
+    private void ShowLibraryForTemplatePick()
+    {
+        if (_aiLibraryMode) SetLibraryMode(false);
+
+        if (tabMoves.SelectedItem == tabVanilla || tabMoves.SelectedItem == tabCustom)
+            return;
+
+        if (!string.IsNullOrEmpty(txtSearch.Text)) txtSearch.Text = "";
+        tabMoves.SelectedItem = tabVanilla;
+    }
+
+    private void FinishTemplatePick(MoveInfo? picked)
+    {
+        var tcs = _templatePick;
+        if (tcs == null) return;
+
+        _templatePick = null;
+        bannerTemplatePick.Visibility = Visibility.Collapsed;
+        Mouse.OverrideCursor = null;
+        txtStatus.Text = picked == null
+            ? "Template pick cancelled - keeping the previous template."
+            : $"Template: {picked.DisplayNameClean}";
+        tcs.TrySetResult(picked);
+    }
+
+    /// <summary>True when the click landed in the Move Library (the picker's valid area).</summary>
+    private bool IsLibraryClick(DependencyObject? source, Point positionInLibrary)
+    {
+        var current = source;
+        while (current != null)
+        {
+            if (current == libraryPanel) return true;
+            current = current is System.Windows.Media.Visual
+                or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(current)
+                : LogicalTreeHelper.GetParent(current);
+        }
+
+        // Content elements (Run inside a card's TextBlock) can lose their parent chain;
+        // fall back to the pointer position so a card click is never mistaken for outside.
+        return positionInLibrary.X >= 0 && positionInLibrary.Y >= 0
+            && positionInLibrary.X < libraryPanel.ActualWidth
+            && positionInLibrary.Y < libraryPanel.ActualHeight;
+    }
+
     private void MoveCard_MouseMove(object sender, MouseEventArgs e)
     {
+        if (_templatePick != null) return;
+
         if (e.LeftButton == MouseButtonState.Pressed &&
             sender is Border aiBorder && aiBorder.Tag is AiNodeInfo aiNode)
         {
@@ -2851,6 +3736,10 @@ public partial class MainWindow : Window
     /// </summary>
     private async System.Threading.Tasks.Task PreviewAsync(string? character, string animPath)
     {
+        // A walkthrough owns the screen: starting a 3D load here would open the loading
+        // popup and later reveal the airspace viewer on top of the step bubble.
+        if (_tutorial != null) return;
+
         bool sameAnim = string.Equals(animPath, _previewAnimPath, StringComparison.OrdinalIgnoreCase);
         bool sameMesh = string.IsNullOrEmpty(character)
             || string.Equals(character, _previewMeshCharacter, StringComparison.OrdinalIgnoreCase);
@@ -3291,21 +4180,23 @@ public partial class MainWindow : Window
         CommitAttackDbPanel();
         if (_comboGraph == null || string.IsNullOrEmpty(_activeStance)) return;
 
-        bool keyIsMainChar = string.Equals(_activeStance.Split('|')[0], "MainChar", StringComparison.OrdinalIgnoreCase);
-        bool graphHasStance = _comboGraph.Nodes.Any(n => n.Name == "MainChar_Stance");
-        bool graphIsEnemy = _comboGraph.Nodes.Any(n =>
-            !string.IsNullOrEmpty(n.DefaultDBPath) &&
-            n.DefaultDBPath.Contains("/AI/Archetypes/", StringComparison.OrdinalIgnoreCase));
-        // Graph-level identity only: a MainChar card dropped onto an enemy graph must
-        // not make the enemy graph read as MainChar (it used to, skipping the cache
-        // and losing the unit's edits on the next unit switch).
-        bool graphIsMainCharWeapon = !keyIsMainChar && GraphIsMainChar(_comboGraph);
-
-        if (keyIsMainChar && graphIsEnemy) return;
-        if (!keyIsMainChar && (graphHasStance || graphIsMainCharWeapon)) return;
+        // Graph-level identity only: the tree's own SourceGamePath (weapon tag as the
+        // old-save fallback), never the cards on the canvas. Adding an AI-library attack
+        // node sets node.DefaultDBPath and used to make a MainChar graph read as an enemy
+        // tree, which skipped this save and lost every edit on the next unit switch (and
+        // kept them out of the project file). Unknown identity caches under the active
+        // key instead of guessing - see UnitCachePolicy.
+        string arch = _activeStance.Split('|')[0];
+        if (!UnitCachePolicy.ShouldCache(arch, _comboGraph, out string cacheReason))
+        {
+            ErrorLog.Write("CACHE", new Exception(
+                $"skip save for {GetUnitCacheKey()} - {cacheReason} "
+                + $"(weapon '{_comboGraph.WeaponName}', {_comboGraph.Nodes.Count} nodes)"));
+            return;
+        }
 
         var key = GetUnitCacheKey();
-        string archForWeapon = _activeStance.Split('|')[0];
+        string archForWeapon = arch;
         _unitCaches[key] = new UnitCacheEntry
         {
             Graph = _comboGraph,
@@ -4876,7 +5767,7 @@ public partial class MainWindow : Window
                 || !AttackDbCard.SameRange(vanilla.Range, modVals.Range)))
                 range = modVals.Range;
 
-            var modHit = AttackHitCard.ReadDbPath(overlayContentRoot, modCard);
+            var modHit = AttackHitCard.ReadDbPath(overlayContentRoot, modCard, vanillaRoot);
             var hitEdits = AttackHitCard.DiffAgainst(AttackHitCard.ReadDbPath(vanillaRoot, modCard), modHit);
 
             if (buildup == null && range == null && hitEdits == null) continue;
@@ -5926,6 +6817,7 @@ public partial class MainWindow : Window
         _nodeBorders.Clear();
         _nodeLabels.Clear();
         _nodeInputBgs.Clear();
+        _derivedInputLabels = new Dictionary<int, string>();
         if (_comboGraph == null)
         {
             _hiddenAiNodeIds = null;
@@ -5942,11 +6834,41 @@ public partial class MainWindow : Window
 
         var existingNodeIds = new HashSet<int>(_comboGraph.Nodes.Select(n => n.Id));
         var nodeIdsWithEdges = new HashSet<int>();
+        var incomingInputs = new Dictionary<int, HashSet<string>>();
         foreach (var edge in _comboGraph.Edges)
         {
             nodeIdsWithEdges.Add(edge.FromNodeId);
             nodeIdsWithEdges.Add(edge.ToNodeId);
+            if (string.IsNullOrEmpty(edge.InputName)) continue;
+            if (!incomingInputs.TryGetValue(edge.ToNodeId, out var ins))
+                incomingInputs[edge.ToNodeId] = ins = new HashSet<string>();
+            ins.Add(edge.InputName);
         }
+        // Start-entry rows name the input too. A node reached only from an entry
+        // (CrookedFoot, GetUpAttack, Idle's openers) has no inbound edge to derive
+        // from, so without this it would render with no input badge at all.
+        if (_comboGraph.StartEntries != null)
+        {
+            foreach (var entry in _comboGraph.StartEntries.Where(e => !e.Removed))
+            {
+                foreach (var tr in entry.Transitions.Where(t => !t.Removed))
+                {
+                    var label = InputCatalog.LabelFor(tr.InputEnum);
+                    if (string.IsNullOrEmpty(label)) continue; // None = no input chip
+                    int nodeId = tr.TargetNodeId;
+                    if (nodeId < 0 && tr.TargetTreeIndex >= 0)
+                        nodeId = _comboGraph.Nodes.FirstOrDefault(n => n.TreeIndex == tr.TargetTreeIndex)?.Id ?? -1;
+                    if (nodeId < 0) continue;
+                    if (!incomingInputs.TryGetValue(nodeId, out var entryIns))
+                        incomingInputs[nodeId] = entryIns = new HashSet<string>();
+                    entryIns.Add(label);
+                }
+            }
+        }
+        // Mirrors AnimationParser's parse-time rule (join of the distinct inputs that
+        // reach the node), so derived labels read exactly like vanilla ones.
+        foreach (var kv in incomingInputs)
+            _derivedInputLabels[kv.Key] = string.Join(" / ", kv.Value.OrderBy(x => x));
         // Start-entry redirects (live target) are exempt from the orphan hide: vanilla
         // routes some AI tickets through a redirect nothing else links to - hiding it
         // blanked the Start Entries combo and broke the jump button.
@@ -6013,8 +6935,7 @@ public partial class MainWindow : Window
                         ctxMenu.Items.Add(resetItem);
                     }
 
-                    if (!IsCurrentGraphMainChar()
-                        && (HasBranchChanceData(node) || HasConditionData(node) || CanBackfillBranchRows(node)))
+                    if (HasBranchChanceData(node) || HasConditionData(node) || CanBackfillBranchRows(node))
                     {
                         var chancesItem = new MenuItem { Header = "Conditions & Chances…", Tag = node };
                         chancesItem.Click += BranchChancesMenuItem_Click;
@@ -6049,6 +6970,7 @@ public partial class MainWindow : Window
                 }
 
                 border.ContextMenu = ctxMenu;
+                border.ContextMenuOpening += ComboNode_ContextMenuOpening;
             }
 
             Canvas.SetLeft(border, pos.X);
@@ -6057,9 +6979,10 @@ public partial class MainWindow : Window
             Canvas.SetZIndex(border, NodeZIndex);
             _nodeBorders[node.Id] = border;
 
-            if (!string.IsNullOrEmpty(node.InputLabel) && !node.IsRoot)
+            string inputLabel = EffectiveInputLabel(node);
+            if (!string.IsNullOrEmpty(inputLabel) && !node.IsRoot)
             {
-                var inputColor = GetInputColor(node.InputLabel);
+                var inputColor = GetInputColor(inputLabel);
                 var inputBg = new Border
                 {
                     Background = new SolidColorBrush(Color.FromArgb(0xE0, 0x18, 0x18, 0x25)),
@@ -6070,7 +6993,7 @@ public partial class MainWindow : Window
                 };
                 var inputText = new TextBlock
                 {
-                    Text = node.InputLabel,
+                    Text = inputLabel,
                     Foreground = inputColor,
                     FontSize = 8,
                     FontWeight = FontWeights.Bold,
@@ -6250,6 +7173,18 @@ public partial class MainWindow : Window
 
     private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
+        // Create AttackDB template pick: any click outside the Move Library cancels and
+        // is swallowed so it can't also select a graph node / press a toolbar button.
+        if (_templatePick != null)
+        {
+            if (!IsLibraryClick(e.OriginalSource as DependencyObject, e.GetPosition(libraryPanel)))
+            {
+                e.Handled = true;
+                FinishTemplatePick(null);
+            }
+            return;
+        }
+
         if (!_isResetMode || e.ChangedButton != MouseButton.Left) return;
 
         var source = e.OriginalSource as DependencyObject;
@@ -6445,6 +7380,14 @@ public partial class MainWindow : Window
     {
         if (sender is Border border && border.Tag is ComboNode node)
         {
+            // Walkthrough clicks select or link, never drag a node around the canvas.
+            if (_tutorial != null)
+            {
+                _dragCandidate = false;
+                e.Handled = false;
+                return;
+            }
+
             _dragCandidate = true;
             _isDraggingNode = false;
             _dragNodeId = node.Id;
@@ -6484,9 +7427,24 @@ public partial class MainWindow : Window
 
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        // Closing mid-walkthrough would strand the sandbox: restore the real project first.
+        if (_tutorialSandboxActive && !_tutorialRestoring)
+        {
+            e.Cancel = true;
+            _ = RestoreTutorialAndCloseAsync();
+            return;
+        }
+
         CommitAttackDbPanel();
         StopCustomAssetsWatcher();
-        PromptKeepCustomAssets();
+        if (!PromptKeepCustomAssets())
+        {
+            // Cancel on the CustomAssets prompt aborts the close: the watcher was
+            // stopped above, so bring it back and skip the shutdown-only work.
+            e.Cancel = true;
+            StartCustomAssetsWatcher();
+            return;
+        }
         SaveSettings();
         if (webView?.CoreWebView2 != null)
         {
@@ -6522,12 +7480,14 @@ public partial class MainWindow : Window
     /// <summary>
     /// Close-time gate for the persistent CustomAssets library. Files that are new or
     /// modified against the last accepted manifest trigger the styled prompt: Yes keeps
-    /// them (manifest saved into settings, so the same files are never re-asked), No -
-    /// button, Esc, or window X - swaps the dialog into a "Deleting files…" progress
-    /// state and removes only those unaccepted files (everything previously accepted
-    /// stays). The deletion runs off the UI thread, so close never stalls.
+    /// them (manifest saved into settings, so the same files are never re-asked), No
+    /// swaps the dialog into a "Deleting files…" progress state and removes only those
+    /// unaccepted files (everything previously accepted stays). Cancel - button, Esc, or
+    /// window X - closes just the prompt and leaves every file in place. The deletion runs
+    /// off the UI thread, so close never stalls.
     /// </summary>
-    private void PromptKeepCustomAssets()
+    /// <returns>True when the app may close; false when the user cancelled the prompt.</returns>
+    private bool PromptKeepCustomAssets()
     {
         try
         {
@@ -6537,10 +7497,10 @@ public partial class MainWindow : Window
                 // Folder is empty - first run, or nothing left worth asking about.
                 if (_customAssetsAccepted != null && _customAssetsAccepted.Count > 0)
                     _customAssetsAccepted = null;
-                return;
+                return true;
             }
 
-            if (CustomAssets.ManifestEquals(current, _customAssetsAccepted)) return;
+            if (CustomAssets.ManifestEquals(current, _customAssetsAccepted)) return true;
 
             bool firstTime = _customAssetsAccepted == null || _customAssetsAccepted.Count == 0;
             string text = firstTime
@@ -6549,10 +7509,18 @@ public partial class MainWindow : Window
             var unaccepted = CustomAssets.NewOrChanged(current, _customAssetsAccepted);
 
             var dlg = new KeepCustomAssetsDialog(text, unaccepted) { Owner = this };
-            if (dlg.ShowDialog() == true)
+            bool? result = dlg.ShowDialog();
+            if (result == null || dlg.Cancelled)
+            {
+                // Cancel / X / Esc: keep the files and leave the accepted manifest as it
+                // is, so the same prompt appears the next time the user closes the app.
+                return false;
+            }
+
+            if (result == true)
             {
                 _customAssetsAccepted = current;
-                return;
+                return true;
             }
 
             int removed = dlg.RemovedCount;
@@ -6562,10 +7530,12 @@ public partial class MainWindow : Window
             if (removed > 0)
                 ErrorLog.Write("CUSTOM", new Exception(
                     $"Close prompt: discarded {removed} unaccepted custom file(s)"));
+            return true;
         }
         catch (Exception ex)
         {
             ErrorLog.Write("CUSTOM", ex);
+            return true;
         }
     }
 
@@ -6772,7 +7742,52 @@ public partial class MainWindow : Window
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (_templatePick != null && e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            FinishTemplatePick(null);
+            return;
+        }
+
+        // While a walkthrough is running the overlay owns input. Esc ends it; Ctrl+Z is
+        // allowed only on the undo step; everything else is swallowed so typing or a
+        // shortcut can't rewrite the sandbox behind the dim.
+        if (_tutorial != null)
+        {
+            if (e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                EndTutorialRun();
+                return;
+            }
+
+            if (e.Key == Key.Z && Keyboard.Modifiers == ModifierKeys.Control
+                && TutorialStepExpects(TutorialEvents.MoveUndone))
+            {
+                e.Handled = true;
+                Undo();
+                return;
+            }
+
+            // Let the bubble's own buttons keep working with the keyboard.
+            if (tutorialOverlay.IsKeyboardFocusWithin
+                && e.Key is Key.Space or Key.Enter or Key.Tab)
+            {
+                return;
+            }
+
+            e.Handled = true;
+            return;
+        }
+
         if (!_initialized) return;
+
+        if (e.Key == Key.F1)
+        {
+            e.Handled = true;
+            _ = OpenHelpAsync(null);
+            return;
+        }
 
         var focused = FocusManager.GetFocusedElement(this);
         if (focused is TextBox) return;
@@ -6798,6 +7813,19 @@ public partial class MainWindow : Window
             case Key.S: _keyS = true; e.Handled = true; break;
             case Key.D: _keyD = true; e.Handled = true; break;
         }
+    }
+
+    /// <summary>Text input is a separate routed event; without this a focused editor control
+    /// could still receive characters while the walkthrough owns the window.</summary>
+    private void MainWindow_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        if (_tutorial != null) e.Handled = true;
+    }
+
+    /// <summary>Wheel scrolling would slide a spotlighted card out of its hole mid-step.</summary>
+    private void MainWindow_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (_tutorial != null) e.Handled = true;
     }
 
     private void MainWindow_PreviewKeyUp(object sender, KeyEventArgs e)
@@ -6835,6 +7863,11 @@ public partial class MainWindow : Window
 
     private static SolidColorBrush GetInputColor(string input)
     {
+        // Order matters: "LMB Rush" contains LMB and "RMB Alt" contains RMB, so the
+        // derived variants must be matched before their base button. "RMB Hold"
+        // must also stay ahead of "RMB".
+        if (input.Contains("Rush")) return new SolidColorBrush(Color.FromRgb(0xfa, 0xb3, 0x87));
+        if (input.Contains("Alt")) return new SolidColorBrush(Color.FromRgb(0xeb, 0xa0, 0xac));
         if (input.Contains("LMB")) return new SolidColorBrush(Color.FromRgb(0xa6, 0xe3, 0xa1));
         if (input.Contains("RMB Hold")) return new SolidColorBrush(Color.FromRgb(0xf5, 0xc2, 0xe7));
         if (input.Contains("RMB")) return new SolidColorBrush(Color.FromRgb(0xf3, 0x8b, 0xa8));
@@ -6888,7 +7921,30 @@ public partial class MainWindow : Window
 
     private async System.Threading.Tasks.Task FindCardInLibrary(string animPath, ComboNode? sourceNode = null)
     {
-        if (string.IsNullOrEmpty(animPath) || (_allMoves.Count == 0 && _allLocomotion.Count == 0)) return;
+        // A node can have a card even when its animation path is empty (the card's
+        // m_Animation failed to resolve) - search the card rather than bailing out.
+        string nodeCardPath = sourceNode == null ? "" : AttackDbCard.EffectiveCardPath(sourceNode);
+        if ((string.IsNullOrEmpty(animPath) && string.IsNullOrEmpty(nodeCardPath))
+            || (_allMoves.Count == 0 && _allLocomotion.Count == 0)) return;
+
+        // Custom attack cards are scanned in the background at startup. A double-click
+        // right after launch can beat that scan; without waiting, a custom card node
+        // would fall through to the animation row it plays. Only do this for a card
+        // that actually exists under CustomAssets - a missing vanilla card cannot be
+        // fixed by the custom scan.
+        if (!string.IsNullOrEmpty(nodeCardPath)
+            && !_allMoves.Any(m => !string.IsNullOrEmpty(m.FullPath)
+                && m.FullPath.Equals(nodeCardPath, StringComparison.OrdinalIgnoreCase)))
+        {
+            var cardRel = AttackDbCard.GamePathToContentRel(nodeCardPath);
+            if (!string.IsNullOrEmpty(cardRel)
+                && File.Exists(CustomAssets.FileForContentRel(cardRel + ".uasset")))
+            {
+                txtStatus.Text = "Scanning custom attack cards...";
+                RequestCustomAttackCardScan();
+                await ApplyCustomAttackScanAsync(showOverlay: false);
+            }
+        }
 
         await System.Threading.Tasks.Task.Delay(100);
 
@@ -6896,32 +7952,13 @@ public partial class MainWindow : Window
             b.Tag is MoveInfo mi && mi.FullPath != null &&
             mi.FullPath.Equals(path, StringComparison.OrdinalIgnoreCase);
 
-        var searchPaths = new List<string>();
-        void AddSearchPath(string? p)
-        {
-            if (!string.IsNullOrEmpty(p) &&
-                !searchPaths.Any(s => s.Equals(p, StringComparison.OrdinalIgnoreCase)))
-                searchPaths.Add(p);
-        }
-
         // Replacement-aware order: a replaced node must land on the card/item that
         // replaced it, never the vanilla DefaultDBPath (which never changes on a
-        // drop). 1) payload-replaced attack card, 2) the drop's own identity (a
-        // replace sets AnimPath = move.FullPath), 3) the current card
-        // (SourceDBPath when swapped, else default), 4) anim->DB map,
-        // 5) vanilla card as fallback, 6) caller animPath last resort.
-        // Vanilla nodes are unaffected: AnimPath == DefaultAnimPath skips step 2
-        // and step 3 resolves to DefaultDBPath - same jump as before.
-        AddSearchPath(sourceNode?.ReplacedAttackCardRel);
-        if (sourceNode != null
-            && !string.Equals(sourceNode.AnimPath, sourceNode.DefaultAnimPath,
-                StringComparison.OrdinalIgnoreCase))
-            AddSearchPath(sourceNode.AnimPath);
-        AddSearchPath(AttackDbCard.EffectiveCardPath(sourceNode));
-        if (_parser.AnimToDbPath.TryGetValue(animPath, out var mappedDb))
-            AddSearchPath(mappedDb);
-        AddSearchPath(sourceNode?.DefaultDBPath);
-        AddSearchPath(animPath);
+        // drop). Authored (drag-dropped) nodes put their card first because their
+        // DefaultAnimPath is always empty - the animation would otherwise win and a
+        // double-click would open the Animations tab instead of the node's card.
+        _parser.AnimToDbPath.TryGetValue(animPath, out var mappedDb);
+        var searchPaths = LibraryCardLocator.SearchPaths(sourceNode, animPath, mappedDb);
 
         if (!string.IsNullOrEmpty(txtSearch.Text))
         {
@@ -7267,8 +8304,14 @@ public partial class MainWindow : Window
 
     private void SetWebViewVisible(bool visible)
     {
-        if (webView != null)
-            webView.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        if (webView == null) return;
+
+        // WebView2 is airspace: it draws above every WPF element, including the walkthrough
+        // overlay. While a walkthrough owns the screen it stays collapsed no matter who
+        // asks to show it (preview completion, popups, settings).
+        if (visible && _tutorial != null) return;
+
+        webView.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private Popup? _previewPopup;
@@ -7426,7 +8469,7 @@ public partial class MainWindow : Window
                             SetSourceTypeDisplay("Event");
                         else if (!string.IsNullOrEmpty(targetNode.AnimPath) || !string.IsNullOrEmpty(targetNode.DefaultDBPath))
                             SetSourceTypeDisplay(MoveInfo.SourceTypeFromPath(ComboNodeTypePath(targetNode)));
-                                if (!string.IsNullOrEmpty(targetNode.AnimPath))
+                                if (_tutorial == null && !string.IsNullOrEmpty(targetNode.AnimPath))
                                 {
                                     txtStatus.Text = $"Loading: {targetNode.DisplayName} ({targetNode.AnimPath})...";
                                     try
@@ -7507,7 +8550,12 @@ public partial class MainWindow : Window
 
             UpdateNodeDisplayNameLabel(node);
 
-            if (!string.IsNullOrEmpty(node.AnimPath))
+            if (_tutorial != null)
+            {
+                // The walkthrough only needs node selection; never start a preview behind
+                // its bubble or overwrite the step's status line.
+            }
+            else if (!string.IsNullOrEmpty(node.AnimPath))
             {
                 txtStatus.Text = $"Loading: {node.DisplayName} ({node.AnimPath})...";
                 try
@@ -7552,6 +8600,9 @@ public partial class MainWindow : Window
     /// </summary>
     private async System.Threading.Tasks.Task HandleActionNodeClickAsync(ComboNode node)
     {
+        // A walkthrough click only selects the node; action previews stay off.
+        if (_tutorial != null) return;
+
         if (!_aiScanStarted)
         {
             txtStatus.Text = $"Resolving action '{node.ActionClass}'...";
@@ -7898,6 +8949,7 @@ public partial class MainWindow : Window
         txtStatus.Text = createsRedirect
             ? "Redirect mode: click the node the redirect should forward to, Escape to cancel"
             : "Connect mode: click the node to link to, Escape to cancel";
+        if (!createsRedirect) TutorialEvent(TutorialEvents.LinkStarted);
     }
 
     private void ExitLinkMode()
@@ -7948,13 +9000,11 @@ public partial class MainWindow : Window
             yield return ("Default (None)", "");
             yield break;
         }
-        yield return ("Default (no input)", "");
-        yield return ("LMB (Light)", "LMB");
-        yield return ("RMB (Heavy)", "RMB");
-        yield return ("RMB Hold (HeavyHold)", "RMB Hold");
-        yield return ("S (Special)", "S");
-        yield return ("Shift (Dodge)", "Shift");
-        yield return ("Q (Throw)", "Q");
+        // One catalog for node links and start-entry rows, so the same input always
+        // reads and exports the same. HeavyAlt must read "RMB Alt" (plain "RMB"
+        // exports as Heavy); Rush values need labels of their own.
+        foreach (var choice in InputCatalog.Choices)
+            yield return (choice.MenuLabel, choice.Label);
     }
 
     /// <summary>True when the graph being edited is the player's moveset (full input list).</summary>
@@ -7963,17 +9013,9 @@ public partial class MainWindow : Window
         if (_activeStance != null
             && string.Equals(_activeStance.Split('|')[0], "MainChar", StringComparison.OrdinalIgnoreCase))
             return true;
-        if (_comboGraph != null)
-        {
-            var w = _comboGraph.WeaponName ?? "";
-            if (string.Equals(w, "MainChar", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(w, "BareHands", StringComparison.OrdinalIgnoreCase)
-                || w.StartsWith("MainChar_", StringComparison.OrdinalIgnoreCase))
-                return true;
-            if (GraphIsMainChar(_comboGraph))
-                return true;
-        }
-        return false;
+        // Shared identity helper: SourceGamePath first, player weapon tag as the
+        // old-save fallback (never the nodes sitting on the canvas).
+        return GraphIdentity.IsMainChar(_comboGraph);
     }
 
     /// <summary>Graph-level MainChar identity: the combo tree's own source path (stable),
@@ -7982,9 +9024,7 @@ public partial class MainWindow : Window
     /// sniff, which switched the link picker to player inputs and skipped the unit
     /// cache). MainChar graphs of every flavor (barehands + weapon variants) carry a
     /// DB/_MainChar SourceGamePath; enemy graphs carry DB/AI/Archetypes/....</summary>
-    private static bool GraphIsMainChar(ComboGraph? graph)
-        => graph?.SourceGamePath != null
-           && graph.SourceGamePath.Contains("DB/_MainChar", StringComparison.OrdinalIgnoreCase);
+    private static bool GraphIsMainChar(ComboGraph? graph) => GraphIdentity.IsMainChar(graph);
 
     private void ShowLinkInputPicker(ComboNode target, Border? targetBorder)
     {
@@ -8024,6 +9064,32 @@ public partial class MainWindow : Window
                 CommitLink(target, (string)((MenuItem)s!).Tag!);
             };
             menu.Items.Add(item);
+        }
+        // Player links can carry a raw EComboTransition name the catalog does not list.
+        // Stored verbatim as the edge's input label; export writes it unchanged.
+        if (IsCurrentGraphMainChar())
+        {
+            menu.Items.Add(new Separator());
+            var custom = new MenuItem { Header = "Custom input…" };
+            custom.Click += (s, ev) =>
+            {
+                // Claim the pick before opening the prompt: the context menu closes
+                // immediately, and the close handler would otherwise cancel the link.
+                _linkPickCommitted = true;
+                menu.Closed -= OnPickerClosed;
+                var raw = InputPrompt.Show(this, "Custom input value",
+                    "Raw EComboTransition name (for example Special or Dodge).\n"
+                        + "Only names EComboTransition declares do anything; anything else is written verbatim.",
+                    "");
+                if (raw == null)
+                {
+                    ExitLinkMode();
+                    txtStatus.Text = "Link cancelled";
+                    return;
+                }
+                CommitLink(target, raw);
+            };
+            menu.Items.Add(custom);
         }
 
         void OnPickerClosed(object? s, RoutedEventArgs ev)
@@ -8071,19 +9137,21 @@ public partial class MainWindow : Window
             };
             _comboGraph.Nodes.Add(redirectNode);
             _comboGraph.RedirectOriginalTargets[nextId] = target.Id;
-            _comboGraph.Edges.Add(new ComboEdge
+            var redirectEdge = new ComboEdge
             {
                 FromNodeId = source.Id,
                 ToNodeId = nextId,
                 InputName = inputName,
                 IsNewLink = true
-            });
+            };
+            _comboGraph.Edges.Add(redirectEdge);
             if (_nodePositions.TryGetValue(source.Id, out var sp))
                 _nodePositions[nextId] = new Point(sp.X + NODE_WIDTH + 90, sp.Y + 40);
             else
                 _nodePositions[nextId] = new Point(0, 0);
             RenderComboGraph();
             txtStatus.Text = $"Added redirect → '{target.DisplayName}', solid link from '{source.DisplayName}'";
+            MaybeOpenChancesAfterLink(source, redirectEdge);
         }
         else
         {
@@ -8093,18 +9161,40 @@ public partial class MainWindow : Window
                 return;
             }
             PushUndo("Add link");
-            _comboGraph.Edges.Add(new ComboEdge
+            var newEdge = new ComboEdge
             {
                 FromNodeId = source.Id,
                 ToNodeId = target.Id,
                 InputName = inputName,
                 IsNewLink = true
-            });
+            };
+            _comboGraph.Edges.Add(newEdge);
             RenderComboGraph();
             txtStatus.Text = string.IsNullOrEmpty(inputName)
                 ? $"Linked '{source.DisplayName}' → '{target.DisplayName}'"
                 : $"Linked '{source.DisplayName}' → '{target.DisplayName}' [{inputName}]";
+            TutorialEvent(TutorialEvents.LinkCreated);
+            MaybeOpenChancesAfterLink(source, newEdge);
         }
+    }
+
+    /// <summary>
+    /// Cautious link check: after a successful connect, evaluate the SOURCE node's
+    /// outgoing pool and open Conditions &amp; Chances when it can no longer roll
+    /// cleanly - any pool that doesn't total 100% (±0.5), or a brand-new link whose row
+    /// resolves to 0% (typed rows already consumed the whole pool). A clean pool leaves
+    /// the existing "Linked ..." status untouched.
+    /// </summary>
+    private void MaybeOpenChancesAfterLink(ComboNode source, ComboEdge newEdge)
+    {
+        if (_comboGraph == null) return;
+        // Old saves carry no TreeRows snapshot; parse it first so the gate evaluates the
+        // same vanilla rows the dialog is about to show.
+        if (CanBackfillBranchRows(source)) BackfillTreeRows();
+        var gate = BranchChanceGate.Evaluate(_comboGraph, source, newEdge);
+        if (!gate.NeedsAttention || !HasBranchChanceData(source)) return;
+        txtStatus.Text = $"{txtStatus.Text} · {gate.Summary} - opened Conditions & Chances";
+        OpenBranchChances(source);
     }
 
     private void DeleteNodeMenuItem_Click(object sender, RoutedEventArgs e)
@@ -8180,71 +9270,30 @@ public partial class MainWindow : Window
 
         PushUndo("Delete node");
 
-        // Delete Anyway: clear the offending start targets with the Start Entries dialog's
-        // semantics - vanilla rows/entries marked Removed (export drops them), new ones
-        // hard-removed - so the delete never leaves a ghost target behind. Multi-key rows
-        // only lose the keys that target this node; a row that loses its last key (or a
-        // single-key row) is removed whole.
-        foreach (var en in startBlockers)
-        {
-            foreach (var t in en.Transitions
-                .Where(t => !t.Removed && StartTransitionTargetsNode(t, node.Id)).ToList())
-            {
-                bool canTrim = t.KeyCount > 1
-                    && t.Keys.Count == t.KeyCount
-                    && t.KeyTargetNodeIds.Count == t.KeyCount
-                    && t.KeyTargetTreeIndices.Count == t.KeyCount
-                    && t.KeyTargetNames.Count == t.KeyCount;
-                if (canTrim)
-                {
-                    // Drop only the keys routed to the deleted node (parallel lists
-                    // stay in lockstep; export rebuilds m_TargetNodes from the model).
-                    for (int ki = t.KeyTargetNodeIds.Count - 1; ki >= 0; ki--)
-                    {
-                        if (t.KeyTargetNodeIds[ki] != node.Id) continue;
-                        t.Keys.RemoveAt(ki);
-                        t.KeyTargetTreeIndices.RemoveAt(ki);
-                        t.KeyTargetNodeIds.RemoveAt(ki);
-                        t.KeyTargetNames.RemoveAt(ki);
-                    }
-                    if (t.Keys.Count == 0)
-                    {
-                        if (t.OriginalIndex >= 0) t.Removed = true;
-                        else en.Transitions.Remove(t);
-                        continue;
-                    }
-                    if (t.Keys.Count != t.KeyCount)
-                    {
-                        t.KeyCount = t.Keys.Count;
-                        t.TargetSummary = string.Join(", ",
-                            t.Keys.Zip(t.KeyTargetTreeIndices, (k2, v2) => $"{k2}→{v2}"));
-                    }
-                    // Keep the row's single-target fallback pointed at a live key.
-                    if (t.TargetNodeId == node.Id)
-                    {
-                        t.TargetNodeId = t.KeyTargetNodeIds[0];
-                        t.TargetTreeIndex = t.KeyTargetTreeIndices[0];
-                        t.TargetName = t.KeyTargetNames[0];
-                    }
-                }
-                else
-                {
-                    if (t.OriginalIndex >= 0) t.Removed = true;
-                    else en.Transitions.Remove(t);
-                }
-            }
-            if (en.Transitions.Count(t => !t.Removed) == 0)
-            {
-                if (en.VanillaIndex >= 0) en.Removed = true;
-                else _comboGraph.StartEntries.Remove(en);
-            }
-        }
+        // Delete Anyway: clean the start targets with the shared Core rule - authored
+        // rows are deleted, vanilla rows retargeted here snap back to their original
+        // target when it still lives, and only drop otherwise. Multi-key rows reset just
+        // the keys that pointed at this node.
+        NodeDeleteStartEntries.Strip(_comboGraph, node);
 
         // Authored redirects pointing at the deleted node would render as orphans (hidden),
         // so remove them with their incoming links; vanilla redirects keep existing behavior.
         var brokenRedirects = _comboGraph.Nodes
             .Where(n => n.IsRedirect && n.Kind == ComboNodeKind.UserCreated && n.ResolvedRedirectNodeId == node.Id)
             .ToList();
+
+        // Sources that will lose a standalone chance row (the node itself plus authored
+        // redirects removed with it). Snapshot before those edges go so the post-delete
+        // check can still tell which pools changed - a surviving link INTO a broken
+        // redirect loses its row just like a link straight to the deleted node.
+        List<int> chanceSources = null;
+        if (node.TreeIndex < 0)
+        {
+            var removedIds = new HashSet<int> { node.Id };
+            foreach (var br in brokenRedirects) removedIds.Add(br.Id);
+            chanceSources = NodeDeleteChanceCheck.CollectAffectedSources(_comboGraph, removedIds);
+        }
+
         foreach (var br in brokenRedirects)
         {
             foreach (var ed in _comboGraph.Edges
@@ -8268,12 +9317,15 @@ public partial class MainWindow : Window
             node.Removed = true;
             ClearNodeSelection();
             RenderComboGraph();
+            int incomingRoutes = _comboGraph.Edges.Count(ed => ed.ToNodeId == node.Id && !ed.IsRedirect);
             txtStatus.Text = $"Marked removed: {node.DisplayName} (export drops it from the tree; "
                 + "Restore Node brings it back)"
-                + (brokenRedirects.Count > 0 ? $" (+{brokenRedirects.Count} linked redirect)" : "");
+                + (brokenRedirects.Count > 0 ? $" (+{brokenRedirects.Count} linked redirect)" : "")
+                + (incomingRoutes > 0 ? "; moves leading here have their odds rebalanced on export" : "");
             return;
         }
 
+        // Snapshot taken above, before the broken redirects and their links were removed.
         foreach (var ed in _comboGraph.Edges
             .Where(ed => ed.FromNodeId == node.Id || ed.ToNodeId == node.Id).ToList())
             ClearEdgeMerge(ed);
@@ -8285,9 +9337,46 @@ public partial class MainWindow : Window
         PurgeConditionOverridesForNode(node.Id);
         ClearNodeSelection();
         RenderComboGraph();
-        txtStatus.Text = $"Deleted node: {node.DisplayName}"
+        string deleteStatus = $"Deleted node: {node.DisplayName}"
             + (brokenRedirects.Count > 0 ? $" (+{brokenRedirects.Count} linked redirect)" : "")
             + (startBlockers.Count > 0 ? $" (+{startBlockers.Count} start entr{(startBlockers.Count == 1 ? "y" : "ies")} cleaned)" : "");
+        txtStatus.Text = deleteStatus;
+        OpenChancesAfterDelete(chanceSources, deleteStatus);
+    }
+
+    /// <summary>
+    /// Post-delete caution check: automatic chance rows absorb the share of a removed
+    /// branch, so a pool only stays off 100% when typed values leave no room for them.
+    /// For every affected source, open Conditions &amp; Chances (one after another when
+    /// a hub loses several incoming links) and explain why in the status bar. The delete
+    /// itself is already committed; Cancel in a dialog just leaves the values as typed.
+    /// </summary>
+    private void OpenChancesAfterDelete(IReadOnlyList<int> sourceIds, string statusBase)
+    {
+        if (_comboGraph == null || sourceIds.Count == 0) return;
+
+        // First pass only decides whether anything needs attention (and how many dialogs
+        // follow). Values are re-evaluated per dialog so an earlier fix can settle a
+        // source that shares a write struct.
+        var candidates = new List<ComboNode>();
+        foreach (int id in sourceIds)
+        {
+            var source = _comboGraph.Nodes.FirstOrDefault(n => n.Id == id && !n.Removed);
+            if (source == null || !HasBranchChanceData(source)) continue;
+            if (BranchChanceGate.EvaluatePool(_comboGraph, source).NeedsAttention)
+                candidates.Add(source);
+        }
+
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            var source = candidates[i];
+            var gate = BranchChanceGate.EvaluatePool(_comboGraph, source);
+            if (!gate.NeedsAttention) continue;
+            string progress = candidates.Count > 1 ? $" ({i + 1}/{candidates.Count})" : "";
+            txtStatus.Text = $"{statusBase}{progress} · '{source.DisplayName}' {gate.Summary}"
+                + " - opened Conditions & Chances";
+            OpenBranchChances(source);
+        }
     }
 
     /// <summary>Drops a link's merge: the AddedKeys entry the link owns leaves the row
@@ -8308,8 +9397,7 @@ public partial class MainWindow : Window
     /// <summary>True when a start transition (or one of its condition keys) targets
     /// the given graph node id.</summary>
     private static bool StartTransitionTargetsNode(StartTransition t, int nodeId)
-        => t.TargetNodeId == nodeId
-           || (t.KeyTargetNodeIds?.Count > 0 && t.KeyTargetNodeIds.Contains(nodeId));
+        => NodeDeleteStartEntries.TargetsNode(t, nodeId);
 
     /// <summary>Drops condition-override entries that still reference a deleted node id,
     /// so a later export never resolves a ghost id. Edge overrides keyed
@@ -8343,6 +9431,15 @@ public partial class MainWindow : Window
         foreach (var rowMap in _comboGraph.TreeRowConditionOverrides.Values)
             foreach (var edit in rowMap.Values)
                 CleanEdit(edit);
+
+        // Provenance values record the redirect that moved each outcome key. A deleted
+        // redirect must not keep claiming later re-retargets.
+        if (_comboGraph.RetargetProvenance != null)
+        {
+            foreach (var key in _comboGraph.RetargetProvenance
+                .Where(kv => kv.Value == nodeId).Select(kv => kv.Key).ToList())
+                _comboGraph.RetargetProvenance.Remove(key);
+        }
     }
 
     private void DeleteEdgeMenuItem_Click(object sender, RoutedEventArgs e)
@@ -8350,10 +9447,14 @@ public partial class MainWindow : Window
         if (sender is MenuItem mi && mi.Tag is ComboEdge edge && _comboGraph != null)
         {
             PushUndo("Delete link");
+            int chanceSourceId = NodeDeleteChanceCheck.AffectedSourceForEdge(_comboGraph, edge);
             ClearEdgeMerge(edge);
             _comboGraph.Edges.Remove(edge);
             RenderComboGraph();
-            txtStatus.Text = "Link removed";
+            string deleteStatus = "Link removed";
+            txtStatus.Text = deleteStatus;
+            if (chanceSourceId >= 0)
+                OpenChancesAfterDelete(new[] { chanceSourceId }, deleteStatus);
         }
     }
 
@@ -8590,6 +9691,12 @@ public partial class MainWindow : Window
     private void EdgeBatch_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (_comboGraph == null) return;
+        // No walkthrough step edits a link, so the edge menu stays shut the whole time.
+        if (_tutorial != null)
+        {
+            e.Handled = true;
+            return;
+        }
         var hit = HitTestEdge(e.GetPosition(comboCanvas));
         if (hit is not { Edge.IsNewLink: true }) return;
         var edgeMenu = new ContextMenu
@@ -8769,10 +9876,10 @@ public partial class MainWindow : Window
 
     private void UpdateUnitPropertiesButtonVisibility()
     {
-        bool isMainChar = IsMainCharStance();
         btnUnitProperties.Visibility = Visibility.Visible;
-        // AI start tickets only exist on enemy archetype combo trees.
-        btnStartEntries.Visibility = isMainChar ? Visibility.Collapsed : Visibility.Visible;
+        // Both enemy archetypes and the player carry m_ComboStartNodesContainer; only the
+        // bound enum differs (BP_AIAttackTIcketNames vs BP_MainCharComboStartStates).
+        btnStartEntries.Visibility = Visibility.Visible;
     }
 
     /// <summary>True when the currently loaded combo graph belongs to the player character.</summary>
@@ -8787,11 +9894,6 @@ public partial class MainWindow : Window
         if (_comboGraph == null)
         {
             txtStatus.Text = "No combo graph loaded";
-            return;
-        }
-        if (IsCurrentGraphMainChar())
-        {
-            txtStatus.Text = "Main character trees don't use AI start entries";
             return;
         }
         if (_customMoveset == null &&
@@ -8818,12 +9920,15 @@ public partial class MainWindow : Window
     private void ShowStartEntriesDialog(List<StartEntry>? resume)
     {
         if (_comboGraph == null) return;
+        BackfillConduitTargets();
         var dlg = new StartEntriesDialog(_comboGraph, _showAiNodes, SelectAndRevealNode, resume) { Owner = this };
         if (dlg.ShowDialog() == true && dlg.Result != null)
         {
             PushUndo("Edit start entries");
             _comboGraph.StartEntries = dlg.Result;
-            txtStatus.Text = $"Start entries updated ({dlg.Result.Count} tickets)";
+            txtStatus.Text = IsCurrentGraphMainChar()
+                ? $"Start entries updated ({dlg.Result.Count} start states)"
+                : $"Start entries updated ({dlg.Result.Count} tickets)";
             return;
         }
         if (dlg.SuspendedEntries == null || dlg.PickTransition == null) return; // plain Cancel
@@ -8963,9 +10068,9 @@ public partial class MainWindow : Window
 
     private void OpenBranchChances(ComboNode node)
     {
-        // MainChar (any variant) has no editable conditions/chances - the menu entry is
-        // hidden there too; this guard covers any future caller.
-        if (_comboGraph == null || IsCurrentGraphMainChar()) return;
+        // Chances and conditions live on m_Transitions / m_ConditionalAttacks for both
+        // enemy and player trees, so the dialog is editable everywhere.
+        if (_comboGraph == null) return;
         if (CanBackfillBranchRows(node))
             BackfillTreeRows();
         if (!HasBranchChanceData(node) && !HasConditionData(node))
@@ -8983,9 +10088,20 @@ public partial class MainWindow : Window
         BranchChancesDialog.PickSuspendState? resumeState = null)
     {
         if (_comboGraph == null) return;
-        var dlg = new BranchChancesDialog(_comboGraph, node, !IsCurrentGraphMainChar(),
+        BackfillConduitTargets();
+        var dlg = new BranchChancesDialog(_comboGraph, node, true,
             Setup.ContentDetector.ResolveContentDir(_contentPath), resumeState) { Owner = this };
-        if (dlg.ShowDialog() == true && dlg.ResultOverrides != null)
+        bool? shown;
+        bool tutorialPaused = SuspendTutorialForDialog();
+        try
+        {
+            shown = dlg.ShowDialog();
+        }
+        finally
+        {
+            ResumeTutorialAfterDialog(tutorialPaused);
+        }
+        if (shown == true && dlg.ResultOverrides != null)
         {
             PushUndo("Edit branch chances");
             _comboGraph.TreeRowProbabilityOverrides = dlg.ResultOverrides;
@@ -9115,6 +10231,34 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             ErrorLog.Write("BRANCHROWS", ex);
+        }
+    }
+
+    /// <summary>
+    /// Older saves persisted a mis-mapped ConduitTargets table: the parser translated
+    /// conduit targets through node ids captured after kept nodes were renumbered, so
+    /// e.g. Grunt Advanced conduit 20 claimed Hook/Sweep instead of FalconPunch/
+    /// RushFrontKick. ConduitTargets is a read-only display snapshot (export keeps the
+    /// raw conduit target), so re-parse the source once and adopt the corrected table.
+    /// </summary>
+    private void BackfillConduitTargets()
+    {
+        var graph = _comboGraph;
+        if (graph == null || graph.ConduitTargetsBackfillAttempted) return;
+        graph.ConduitTargetsBackfillAttempted = true;
+        if (string.IsNullOrEmpty(graph.SourceGamePath)) return;
+        try
+        {
+            var fresh = _parser.LoadComboTreeFromPath(graph.SourceGamePath, graph.WeaponName);
+            if (fresh == null) return;
+            // A source with no conduits must not wipe a snapshot that still describes
+            // the graph (e.g. a custom combo whose file differs from the cached one).
+            if (fresh.ConduitTargets.Count > 0)
+                graph.ConduitTargets = fresh.ConduitTargets;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("COMBO", ex);
         }
     }
 
@@ -9584,7 +10728,8 @@ public partial class MainWindow : Window
     private async Task LoadVariantComboGraphAsync(string variantTag, bool saveCurrent = true)
     {
         ClearNodeSelection();
-        ClearUndoHistory();
+        // Undo history is per unit (GetUnitCacheKey), so switching variants only changes
+        // which stack Ctrl+Z reads - it no longer has to be discarded.
         var comboPath = ResolveComboFilePath(variantTag);
         if (comboPath == null) { txtStatus.Text = $"No combo file for {variantTag}"; return; }
         string arch = _activeStance.Split('|')[0];
@@ -9716,7 +10861,7 @@ public partial class MainWindow : Window
     private async Task SwitchStanceAsync(string stance)
     {
         ClearNodeSelection();
-        ClearUndoHistory();
+        // Per-unit undo stacks: each archetype/variant keeps its own history.
         var contentDir = Path.Combine(_contentPath, "Content");
         if (!Directory.Exists(contentDir))
         {
@@ -10034,15 +11179,35 @@ public partial class MainWindow : Window
 
     private void ApplyLocalChangeName(ComboNode node, string? newName)
     {
-        var vanillaPath = !string.IsNullOrEmpty(node.VanillaAnimPath)
-            ? node.VanillaAnimPath
-            : node.DefaultAnimPath;
-        if (!string.IsNullOrEmpty(vanillaPath) &&
-            !string.Equals(node.AnimPath, vanillaPath, StringComparison.OrdinalIgnoreCase) &&
-            !string.IsNullOrEmpty(newName))
-            node.ImportedDisplayName = newName;
-        else
-            node.ImportedDisplayName = "";
+        // Authored nodes are the card: a new drop rewrites the node's identity so the
+        // graph label, inspector, exported m_Name and every route that resolves through
+        // this node id all read the new card. Vanilla/import-owned nodes keep their slot
+        // name - export patches the existing slot, so the swap belongs in ImportedDisplayName.
+        if (NodeCardIdentity.ApplyDropName(node, newName) && !string.IsNullOrEmpty(newName))
+            RefreshStartEntryTargetNames(node.Id, newName);
+    }
+
+    /// <summary>Refreshes the parse-time name snapshots on start transitions that point at
+    /// a renamed node. Routes are id-based, so this is cosmetic for live targets but keeps
+    /// saved projects from showing a stale name for condensed/conduit rows.</summary>
+    private void RefreshStartEntryTargetNames(int nodeId, string newName)
+    {
+        if (_comboGraph?.StartEntries == null) return;
+        foreach (var entry in _comboGraph.StartEntries)
+        {
+            foreach (var t in entry.Transitions)
+            {
+                if (t.TargetNodeId == nodeId)
+                    t.TargetName = newName;
+                if (t.KeyTargetNodeIds == null) continue;
+                for (int i = 0; i < t.KeyTargetNodeIds.Count; i++)
+                {
+                    if (t.KeyTargetNodeIds[i] == nodeId && t.KeyTargetNames != null
+                        && i < t.KeyTargetNames.Count)
+                        t.KeyTargetNames[i] = newName;
+                }
+            }
+        }
     }
 
     private void ApplyMoveSourceDbPath(ComboNode node, MoveInfo move)
@@ -10975,6 +12140,15 @@ public partial class MainWindow : Window
                 var move = e.Data.GetData(typeof(MoveInfo)) as MoveInfo;
                 if (move != null)
                 {
+                    // A walkthrough that asks for a blue node rejects edited targets before
+                    // anything is written, so a stray drop can't quietly break the lesson.
+                    if (!TutorialAllowsCardDrop(node.Id))
+                    {
+                        e.Effects = DragDropEffects.None;
+                        e.Handled = true;
+                        return;
+                    }
+
                     string moveName = move.DisplayName;
                     if (!string.IsNullOrEmpty(move.FullPath) && IsAttackDbPath(move.FullPath))
                     {
@@ -10991,6 +12165,7 @@ public partial class MainWindow : Window
 
                     // Flush any pending AttackDB edit into the pre-drop undo entry first.
                     CommitAttackDbPanel();
+                    string dropLabel = NodeCardIdentity.LabelOf(node);
                     PushUndo(attackPayload ? "Replace payload" : "Replace move");
                     node.IsImportedFromMod = false;
                     if (node.Name == "MainChar_Stance" && !string.IsNullOrEmpty(move.Character)
@@ -11011,10 +12186,13 @@ public partial class MainWindow : Window
                         RenderComboGraph();
                         txtStatus.Text = $"Payload replaced: {node.Name} -> attack {moveName}";
                     }
-                    else if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+                    else if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)
+                        && node.Kind != ComboNodeKind.UserCreated)
                     {
                         var linkedNodes = _comboGraph.Nodes
-                            .Where(n => !n.IsRedirect && n.DefaultAnimPath == node.DefaultAnimPath)
+                            .Where(n => !n.IsRedirect && !n.IsRoot
+                                && n.Kind != ComboNodeKind.UserCreated
+                                && n.DefaultAnimPath == node.DefaultAnimPath)
                             .ToList();
                         foreach (var ln in linkedNodes)
                         {
@@ -11034,11 +12212,13 @@ public partial class MainWindow : Window
                         ApplyLocalChangeName(node, moveName);
                         ApplyMoveSourceDbPath(node, move);
                         RenderComboGraph();
-                        txtStatus.Text = $"Replaced: {node.Name} -> {moveName}";
+                        txtStatus.Text = $"Replaced: {dropLabel} -> {moveName}";
                     }
 
                     if (_nodeBorders.TryGetValue(node.Id, out var newNodeBorder))
                         PlayFusionAnimation(newNodeBorder);
+
+                    TutorialEvent(TutorialEvents.CardDropped, node.Id);
                 }
             }
             e.Handled = true;
@@ -11068,6 +12248,13 @@ public partial class MainWindow : Window
 
         var canvasPos = e.GetPosition(comboCanvas);
         if (HitTestNode(canvasPos) != null) return; // owned by ComboNode_Drop
+
+        // The card walkthrough wants a slot swap, not a brand-new node on the background.
+        if (TutorialWantsVanillaDrop)
+        {
+            tutorialOverlay.ShowNudge("Drop it on a blue node — not the empty canvas.");
+            return;
+        }
 
         if (e.Data.GetDataPresent(typeof(AiNodeInfo)))
         {
@@ -11182,12 +12369,26 @@ public partial class MainWindow : Window
     private sealed class UndoEntry
     {
         public string Label = "";
+        public string UnitKey = "";
         public ComboGraph? Graph;
         public Dictionary<int, Point>? Positions;
         public UnitProperties? Props;
         // A card commit writes onto every unit sharing that card, so undo must carry the
-        // tuning fields of ALL caches - the graph clone only covers the active unit.
-        public Dictionary<string, Dictionary<int, (int? Buildup, float? Range, int? WinLo, int? WinHi)>>? CardTuning;
+        // tuning fields (including hit windows) of ALL caches - the graph clone only
+        // covers the active unit.
+        public Dictionary<string, Dictionary<int, CardTuningSnapshot>>? CardTuning;
+    }
+
+    /// <summary>Card-file tuning held by one node: buildup/range/delay live on the node,
+    /// hit edits list the per-window overrides. Cloned because undo snapshots must not
+    /// share lists with the live graph.</summary>
+    private sealed class CardTuningSnapshot
+    {
+        public int? Buildup;
+        public float? Range;
+        public int? WinLo;
+        public int? WinHi;
+        public List<AttackHitEdit>? HitEdits;
     }
 
     private UndoEntry CaptureCurrentState(string label)
@@ -11195,6 +12396,7 @@ public partial class MainWindow : Window
         return new UndoEntry
         {
             Label = label,
+            UnitKey = GetUnitCacheKey(),
             Graph = _comboGraph != null ? CloneGraph(_comboGraph) : null,
             Positions = new Dictionary<int, Point>(_nodePositions),
             Props = CloneUnitProps(_currentUnitProps),
@@ -11202,31 +12404,39 @@ public partial class MainWindow : Window
         };
     }
 
-    private Dictionary<string, Dictionary<int, (int? Buildup, float? Range, int? WinLo, int? WinHi)>>? CaptureCardTuning()
+    private Dictionary<string, Dictionary<int, CardTuningSnapshot>>? CaptureCardTuning()
     {
-        var result = new Dictionary<string, Dictionary<int, (int? Buildup, float? Range, int? WinLo, int? WinHi)>>();
+        var result = new Dictionary<string, Dictionary<int, CardTuningSnapshot>>();
         foreach (var kvp in _unitCaches)
         {
             var g = kvp.Value?.Graph;
             if (g == null) continue;
-            var fields = new Dictionary<int, (int? Buildup, float? Range, int? WinLo, int? WinHi)>();
+            var fields = new Dictionary<int, CardTuningSnapshot>();
             foreach (var n in g.Nodes)
                 if (n.AttackBuildupFrames.HasValue || n.AttackGameplayRange.HasValue
-                    || n.DelayWindowLo.HasValue || n.DelayWindowHi.HasValue)
-                    fields[n.Id] = (n.AttackBuildupFrames, n.AttackGameplayRange, n.DelayWindowLo, n.DelayWindowHi);
+                    || n.DelayWindowLo.HasValue || n.DelayWindowHi.HasValue
+                    || n.HitEdits != null)
+                    fields[n.Id] = new CardTuningSnapshot
+                    {
+                        Buildup = n.AttackBuildupFrames,
+                        Range = n.AttackGameplayRange,
+                        WinLo = n.DelayWindowLo,
+                        WinHi = n.DelayWindowHi,
+                        HitEdits = AttackHitEdit.CloneList(n.HitEdits)
+                    };
             if (fields.Count > 0) result[kvp.Key] = fields;
         }
         return result.Count > 0 ? result : null;
     }
 
-    private void RestoreCardTuning(Dictionary<string, Dictionary<int, (int? Buildup, float? Range, int? WinLo, int? WinHi)>>? snapshot)
+    private void RestoreCardTuning(Dictionary<string, Dictionary<int, CardTuningSnapshot>>? snapshot)
     {
         foreach (var kvp in _unitCaches)
         {
             var g = kvp.Value?.Graph;
             if (g == null) continue;
 
-            Dictionary<int, (int? Buildup, float? Range, int? WinLo, int? WinHi)>? fields = null;
+            Dictionary<int, CardTuningSnapshot>? fields = null;
             if (snapshot != null && snapshot.TryGetValue(kvp.Key, out var f)) fields = f;
 
             foreach (var n in g.Nodes)
@@ -11237,6 +12447,7 @@ public partial class MainWindow : Window
                     n.AttackGameplayRange = v.Range;
                     n.DelayWindowLo = v.WinLo;
                     n.DelayWindowHi = v.WinHi;
+                    n.HitEdits = AttackHitEdit.CloneList(v.HitEdits);
                 }
                 else
                 {
@@ -11244,55 +12455,76 @@ public partial class MainWindow : Window
                     n.AttackGameplayRange = null;
                     n.DelayWindowLo = null;
                     n.DelayWindowHi = null;
+                    n.HitEdits = null;
                 }
             }
         }
+    }
+
+    private List<UndoEntry> UndoStackForCurrentUnit()
+    {
+        string key = GetUnitCacheKey();
+        if (!_undoByUnit.TryGetValue(key, out var stack))
+            _undoByUnit[key] = stack = new List<UndoEntry>();
+        return stack;
+    }
+
+    private List<UndoEntry> RedoStackForCurrentUnit()
+    {
+        string key = GetUnitCacheKey();
+        if (!_redoByUnit.TryGetValue(key, out var stack))
+            _redoByUnit[key] = stack = new List<UndoEntry>();
+        return stack;
     }
 
     private void PushUndo(string label)
     {
         if (_comboGraph == null) return;
 
-        _undoStack.Add(CaptureCurrentState(label));
-        if (_undoStack.Count > UNDO_MAX) _undoStack.RemoveAt(0);
-        _redoStack.Clear();
+        var stack = UndoStackForCurrentUnit();
+        stack.Add(CaptureCurrentState(label));
+        if (stack.Count > UNDO_MAX) stack.RemoveAt(0);
+        RedoStackForCurrentUnit().Clear();
     }
 
     private void ClearUndoHistory()
     {
-        _undoStack.Clear();
-        _redoStack.Clear();
+        _undoByUnit.Clear();
+        _redoByUnit.Clear();
     }
 
     private void Undo()
     {
-        if (_undoStack.Count == 0)
+        var stack = UndoStackForCurrentUnit();
+        if (stack.Count == 0)
         {
-            txtStatus.Text = "Nothing to undo";
+            txtStatus.Text = "Nothing to undo for this unit";
             return;
         }
 
-        var entry = _undoStack[^1];
-        _undoStack.RemoveAt(_undoStack.Count - 1);
+        var entry = stack[^1];
+        stack.RemoveAt(stack.Count - 1);
 
-        _redoStack.Add(CaptureCurrentState(entry.Label));
+        RedoStackForCurrentUnit().Add(CaptureCurrentState(entry.Label));
 
         RestoreUndoEntry(entry);
         txtStatus.Text = $"Undid: {entry.Label}";
+        TutorialEvent(TutorialEvents.MoveUndone);
     }
 
     private void Redo()
     {
-        if (_redoStack.Count == 0)
+        var stack = RedoStackForCurrentUnit();
+        if (stack.Count == 0)
         {
-            txtStatus.Text = "Nothing to redo";
+            txtStatus.Text = "Nothing to redo for this unit";
             return;
         }
 
-        var entry = _redoStack[^1];
-        _redoStack.RemoveAt(_redoStack.Count - 1);
+        var entry = stack[^1];
+        stack.RemoveAt(stack.Count - 1);
 
-        _undoStack.Add(CaptureCurrentState(entry.Label));
+        UndoStackForCurrentUnit().Add(CaptureCurrentState(entry.Label));
 
         RestoreUndoEntry(entry);
         txtStatus.Text = $"Redid: {entry.Label}";
@@ -11346,8 +12578,16 @@ public partial class MainWindow : Window
             // TreeRows is a read-only parse snapshot (shared reference is safe);
             // overrides are mutable - deep-copy so undo clones stay isolated.
             TreeRows = graph.TreeRows,
+            RemovedRouteRows = graph.RemovedRouteRows.ToDictionary(
+                kv => kv.Key,
+                kv => kv.Value.Select(r => new RemovedRouteRow
+                {
+                    RowIndex = r.RowIndex,
+                    TargetTreeIndices = new List<int>(r.TargetTreeIndices)
+                }).ToList()),
             SourceGamePath = graph.SourceGamePath,
             TreeRowsBackfillAttempted = graph.TreeRowsBackfillAttempted,
+            ConduitTargetsBackfillAttempted = graph.ConduitTargetsBackfillAttempted,
             TreeNodeConditions = graph.TreeNodeConditions,
             TreeRowProbabilityOverrides = graph.TreeRowProbabilityOverrides
                 .ToDictionary(kv => kv.Key, kv => new Dictionary<int, float>(kv.Value)),

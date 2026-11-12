@@ -47,6 +47,9 @@ public class SavedUnitCache
     // (struct tree index -> row index -> value). Null on old saves -> dialog falls back
     // to new-link rows only, export still reads probabilities from the asset itself.
     public Dictionary<int, List<TreeRowInfo>>? TreeRows { get; set; }
+    // Transition-row targets pruned by a custom AttackDB delete (struct tree index ->
+    // rows). Null on old saves.
+    public Dictionary<int, List<RemovedRouteRow>>? RemovedRouteRows { get; set; }
     // Source combo game path for TreeRows backfill; null on old saves.
     public string? SourceGamePath { get; set; }
     public Dictionary<int, Dictionary<int, float>>? TreeRowProbabilityOverrides { get; set; }
@@ -185,6 +188,7 @@ public static class ProjectManager
                 Props = kvp.Value.Props,
                 StartEntries = graph.StartEntries,
                 TreeRows = graph.TreeRows,
+                RemovedRouteRows = graph.RemovedRouteRows,
                 SourceGamePath = graph.SourceGamePath,
                 TreeRowProbabilityOverrides = graph.TreeRowProbabilityOverrides,
                 TreeNodeConditions = graph.TreeNodeConditions,
@@ -224,7 +228,10 @@ public static class ProjectManager
     /// cards (DefaultDBPath/SourceDBPath/ReplacedAttackCardRel) and the HitBoxData
     /// tables behind those cards - so the project restores on a machine without the
     /// CustomAssets folder. References that don't resolve to a CustomAssets file are
-    /// vanilla content and are skipped. Returns null when nothing is embedded.
+    /// vanilla content and are skipped. Attack cards under CustomAssets/DB that NO node
+    /// references (a freshly cloned card, a hand-dropped card) are swept in too, together
+    /// with their private HitBoxData tables, so an unassigned clone still travels with the
+    /// .sifu-edit (spec 4.7). Returns null when nothing is embedded.
     /// </summary>
     public static List<SavedCustomFile>? CollectCustomFilePayloads(Dictionary<string, UnitCacheEntry>? caches)
     {
@@ -234,21 +241,22 @@ public static class ProjectManager
                 return null;
 
             var stems = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            void AddRef(string gamePath)
+            {
+                if (string.IsNullOrEmpty(gamePath)) return;
+                var rel = AttackDbCard.GamePathToContentRel(gamePath);
+                if (string.IsNullOrEmpty(rel)) return;
+                if (File.Exists(CustomAssets.FileForContentRel(rel + ".uasset")))
+                    stems.Add(rel);
+            }
+
             foreach (var kvp in caches)
             {
                 var graph = kvp.Value.Graph;
                 if (graph?.Nodes == null) continue;
                 foreach (var node in graph.Nodes)
                 {
-                    void AddRef(string gamePath)
-                    {
-                        if (string.IsNullOrEmpty(gamePath)) return;
-                        var rel = AttackDbCard.GamePathToContentRel(gamePath);
-                        if (string.IsNullOrEmpty(rel)) return;
-                        if (File.Exists(CustomAssets.FileForContentRel(rel + ".uasset")))
-                            stems.Add(rel);
-                    }
-
                     AddRef(node.AnimPath);
                     AddRef(node.DefaultDBPath);
                     AddRef(node.SourceDBPath);
@@ -263,6 +271,9 @@ public static class ProjectManager
                             AddRef(w.TableRel);
                 }
             }
+
+            SweepUnassignedCards(stems, AddRef);
+
             if (stems.Count == 0) return null;
 
             var payload = new List<SavedCustomFile>();
@@ -284,6 +295,53 @@ public static class ProjectManager
         {
             ErrorLog.Write("PROJECT", ex);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// 4.7: embed attack cards no graph node references - a clone that was never dragged
+    /// onto a node, or a hand-dropped card - so the project file stays complete on a
+    /// machine without the CustomAssets folder. Only the DB subtree is swept: that is
+    /// where attack cards live (the Custom tab scans the same shape) and it bounds the
+    /// walk against a big harvested library. Card shape is gated by the cheap byte-level
+    /// AttackDbCard.LooksLikeCard probe, so tables/blueprints/curves in the tree are
+    /// rejected without a UAssetAPI load; each accepted card then reads its windows for
+    /// the HitBoxData table refs (private card-named tables, modded shared tables) which
+    /// AddRef embeds when they live in CustomAssets. Results cache per file, so only the
+    /// first save of a session pays the full read.
+    /// </summary>
+    private static void SweepUnassignedCards(SortedSet<string> stems, Action<string> addRef)
+    {
+        try
+        {
+            var dbRoot = Path.Combine(CustomAssets.Root, "DB");
+            if (!Directory.Exists(dbRoot)) return;
+
+            foreach (var file in Directory.GetFiles(dbRoot, "*.uasset", SearchOption.AllDirectories))
+            {
+                var rel = Path.GetRelativePath(CustomAssets.Root, file).Replace('\\', '/');
+                var stem = CustomAssets.AssetStemOfRel(rel);
+                if (stems.Contains(stem)) continue; // already collected through a node
+                if (!AttackDbCard.LooksLikeCard(file)) continue; // HitBoxData/blueprint/curve...
+
+                var hit = AttackHitCard.Read(file);
+                if (hit == null || hit.Windows.Count == 0)
+                {
+                    // Card-shaped but no hit windows (e.g. a buildup-only asset): embed the
+                    // card alone - there is no table behind it to drag along.
+                    if (AttackDbCard.Read(file) != null) stems.Add(stem);
+                    continue;
+                }
+
+                stems.Add(stem);
+                foreach (var w in hit.Windows)
+                    if (!string.IsNullOrEmpty(w.TableRel))
+                        addRef(w.TableRel);
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("PROJECT", ex);
         }
     }
 
@@ -328,6 +386,7 @@ public static class ProjectManager
                 RedirectOriginalTargets = saved.RedirectOriginalTargets,
                 StartEntries = saved.StartEntries ?? new List<StartEntry>(),
                 TreeRows = saved.TreeRows ?? new Dictionary<int, List<TreeRowInfo>>(),
+                RemovedRouteRows = saved.RemovedRouteRows ?? new Dictionary<int, List<RemovedRouteRow>>(),
                 SourceGamePath = saved.SourceGamePath ?? "",
                 TreeRowProbabilityOverrides = saved.TreeRowProbabilityOverrides ?? new Dictionary<int, Dictionary<int, float>>(),
                 TreeNodeConditions = saved.TreeNodeConditions ?? new Dictionary<int, TreeNodeConditionInfo>(),

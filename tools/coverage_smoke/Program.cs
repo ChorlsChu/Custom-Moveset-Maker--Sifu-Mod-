@@ -252,6 +252,10 @@ internal static class Program
         }
         WriteCustom(cardRel, cardBytes);
         WriteCustom(animRel, animBytes);
+        // 4.7 sweep fixture: a DB-tree file no node references. It is NOT an attack card
+        // (3 junk bytes) so the sweep must reject it without crashing the collect.
+        var orphanRel = "DB/Test/OrphanNotACard";
+        WriteCustom(orphanRel, new byte[] { 1, 2, 3 });
 
         var caches = new Dictionary<string, UnitCacheEntry>
         {
@@ -283,7 +287,9 @@ internal static class Program
         Check(payloads != null, "payloads collected");
         Check(payloads!.Any(p => p.Rel.Equals(cardRel, StringComparison.OrdinalIgnoreCase)), "custom card embedded");
         Check(payloads!.Any(p => p.Rel.Equals(animRel, StringComparison.OrdinalIgnoreCase)), "custom anim embedded");
-        Check(payloads.Count == 2, $"vanilla refs excluded, got {payloads.Count} payload(s)");
+        Check(payloads!.Count == 2, $"vanilla refs excluded, got {payloads.Count} payload(s)");
+        Check(payloads!.All(p => !p.Rel.Equals(orphanRel, StringComparison.OrdinalIgnoreCase)),
+            "unassigned non-card DB file not swept in");
 
         // Save -> JSON round trip.
         var saveFile = Path.Combine(Path.GetTempPath(), "SifuCovSave" + Guid.NewGuid().ToString("N").Substring(0, 6) + ".sifu-edit");

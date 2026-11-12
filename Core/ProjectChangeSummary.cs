@@ -99,6 +99,16 @@ public static class ProjectChangeSummary
                         $"{t.OriginalProbability:0.###}%", $"{t.Probability:0.###}%",
                         $"{entry.Label}: transition {num} probability"));
                 }
+                if (!string.Equals(InputCatalog.Normalize(t.InputEnum),
+                        InputCatalog.Normalize(t.OriginalInputEnum), StringComparison.Ordinal))
+                {
+                    string was = InputCatalog.LabelFor(InputCatalog.Normalize(t.OriginalInputEnum));
+                    string now = InputCatalog.LabelFor(InputCatalog.Normalize(t.InputEnum));
+                    rows.Add(MakeValueRow($"{title}: input",
+                        string.IsNullOrEmpty(was) ? "(no input)" : was,
+                        string.IsNullOrEmpty(now) ? "(no input)" : now,
+                        $"{entry.Label}: transition {num} input (m_eInputTransition)"));
+                }
                 if (t.KeyCount > 1
                     && t.Keys.Count == t.KeyCount
                     && t.KeyTargetTreeIndices.Count == t.KeyCount
@@ -206,7 +216,7 @@ public static class ProjectChangeSummary
             {
                 var hitCard = AttackHitCard.ReadDbPath(contentDir, cardPath);
                 if (hitCard == null || hitCard.Windows.Count == 0)
-                    hitCard = AttackHitCard.ReadDbPath(CustomAssets.Root, cardPath);
+                    hitCard = AttackHitCard.ReadDbPath(CustomAssets.Root, cardPath, contentDir);
                 foreach (var e in n.HitEdits.Where(e => e != null && !e.IsEmpty()).OrderBy(e => e.Index))
                 {
                     var vanillaWin = hitCard != null && e.Index >= 0 && e.Index < hitCard.Windows.Count

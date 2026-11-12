@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Media;
 
 namespace SifuMovesetEditor;
@@ -18,8 +19,8 @@ namespace SifuMovesetEditor;
 /// Displayed chance values are the effective/export values; edits apply to a copy - OK
 /// commits, Cancel discards. Clearing a condition also syncs the entry back to the
 /// node's forward links: an outcome the collapse drops but the node still links to
-/// becomes its own chance row (auto-weighted mixup, staged until OK). For MainChar
-/// everything is view-only.
+/// becomes its own chance row (auto-weighted mixup, staged until OK). Player and enemy
+/// trees share the same row/condition data, so both are editable.
 /// </summary>
 public partial class BranchChancesDialog : Window
 {
@@ -51,6 +52,7 @@ public partial class BranchChancesDialog : Window
     private readonly int _structIdx;
     private readonly bool _vanillaAvailable;
     private readonly bool _canEditChances;
+    private readonly bool _isMainChar;
     private readonly string? _contentDir;
     private static List<ConditionInfo>? _condCatalog;
     private bool _catalogScanning;
@@ -137,6 +139,7 @@ public partial class BranchChancesDialog : Window
         _graph = graph;
         _node = node;
         _canEditChances = canEditChances;
+        _isMainChar = GraphIdentity.IsMainChar(graph);
         _contentDir = contentDir;
         _structIdx = node.TreeIndex < 0 ? -1 : TreeChanceMath.ResolveWriteStruct(graph, node);
 
@@ -312,7 +315,7 @@ public partial class BranchChancesDialog : Window
     }
 
     /// <summary>First dialog open kicks a background scan of every combo file so the
-    /// add-condition picker lists every condition class used across all enemy units
+    /// add-condition picker lists every condition class used across all units
     /// without a manual click; the static catalog keeps it one scan per session.</summary>
     private void KickCatalogScan()
     {
@@ -381,29 +384,47 @@ public partial class BranchChancesDialog : Window
     }
 
     /// <summary>Effective values: typed rows exact; automatic rows keep raw values with no
-    /// append, or share the remainder once new links append (mirrors export).</summary>
+    /// append, or share the remainder once new links append (mirrors export). The pooling
+    /// math itself lives in BranchChanceGate so the post-link caution check evaluates
+    /// exactly what this dialog displays.</summary>
     private void Recompute()
     {
-        bool hasAppends = _rows.Any(r => r.IsNewLink);
-        if (!hasAppends)
+        var rows = new BranchChanceRow[_rows.Count];
+        for (int i = 0; i < _rows.Count; i++)
         {
-            foreach (var r in _rows) r.Effective = r.Explicit ?? r.Original;
-            return;
+            var r = _rows[i];
+            rows[i] = new BranchChanceRow(r.InputName, r.Explicit, r.Original, r.IsNewLink);
         }
-
-        var vanillaChance = new List<TreeChanceMath.Row>();
-        foreach (var r in _rows.Where(r => !r.IsNewLink))
-            vanillaChance.Add(new TreeChanceMath.Row(r.Explicit, r.Original));
-        float newWeight = TreeChanceMath.NewRowAutoWeight(vanillaChance);
-
-        var chance = new List<TreeChanceMath.Row>(_rows.Count);
-        foreach (var r in _rows)
-            chance.Add(r.IsNewLink
-                ? new TreeChanceMath.Row(r.Explicit, newWeight)
-                : new TreeChanceMath.Row(r.Explicit, r.Original));
-        var vals = TreeChanceMath.Compute(chance, normalize: true);
-        for (int i = 0; i < _rows.Count; i++) _rows[i].Effective = vals[i];
+        var effective = BranchChanceGate.ComputeEffective(rows, UsesPerInputSums);
+        for (int i = 0; i < _rows.Count; i++) _rows[i].Effective = effective[i];
     }
+
+    /// <summary>Player trees roll one chance set per input (vanilla ships Light 100 +
+    /// Heavy 100 on the same node, and node 1 splits three Light rows 33/34/33), so
+    /// sums, warnings and rebalancing follow inputs there. Enemy nodes keep one
+    /// node-wide set, matching their exported shape.</summary>
+    private bool UsesPerInputSums => _isMainChar;
+
+    /// <summary>Grouping key for one row: its input on a player tree, one bucket for
+    /// the whole node on enemy trees. Rows carry display labels ("LMB"), while the
+    /// catalog accepts labels, bare enums and FNames alike.</summary>
+    private string RowGroupKey(ChanceRow r)
+        => UsesPerInputSums ? InputCatalog.GroupKey(r.InputName) : "";
+
+    /// <summary>Displayed rows grouped into their probability pools, first-seen order
+    /// so header chips stay in row order.</summary>
+    private List<(string Key, List<ChanceRow> Rows)> InputGroups()
+        => _rows
+            .GroupBy(RowGroupKey, StringComparer.OrdinalIgnoreCase)
+            .Select(g => (g.Key, g.ToList()))
+            .ToList();
+
+    /// <summary>The independent sets a new link / Σ→100% / Even split rebalances:
+    /// one per input on a player tree, the whole node on an enemy tree.</summary>
+    private List<List<ChanceRow>> SumGroups()
+        => UsesPerInputSums
+            ? InputGroups().Select(g => g.Rows).ToList()
+            : new List<List<ChanceRow>> { _rows };
 
     private void Rebuild()
     {
@@ -2186,7 +2207,7 @@ public partial class BranchChancesDialog : Window
             Margin = new Thickness(10, 0, 0, 0),
             ToolTip = viewOnly
                 ? "Read-only in this phase - editing lands later."
-                : "Edits are stored with the project and written on export (MainChar stays view-only)."
+                : "Edits are stored with the project and written on export."
         };
         DockPanel.SetDock(badge, Dock.Right);
         headerDock.Children.Add(badge);
@@ -2346,7 +2367,7 @@ public partial class BranchChancesDialog : Window
             Text = FormatProb(r.Effective),
             IsEnabled = _canEditChances,
             ToolTip = !_canEditChances
-                ? "Branch chance editing is available for enemy combo trees - this row is view-only."
+                ? "Branch chance editing is disabled for this tree - this row is view-only."
                 : r.IsNewLink
                     ? (r.Explicit.HasValue
                         ? $"Typed value - export writes exactly {FormatProb(r.Explicit.Value)}%."
@@ -2510,10 +2531,52 @@ public partial class BranchChancesDialog : Window
 
     private void RefreshHeader(TextBlock sumText, Button normBtn, Button evenBtn)
     {
+        sumText.Inlines.Clear();
+        if (UsesPerInputSums && _rows.Count > 0)
+        {
+            var groups = InputGroups();
+            var tips = new List<string>();
+            bool allOk = true;
+            int edited = _rows.Count(r => r.Explicit.HasValue);
+            for (int i = 0; i < groups.Count; i++)
+            {
+                var (key, rows) = groups[i];
+                float groupSum = rows.Sum(r => r.Effective);
+                bool groupOk = Math.Abs(groupSum - 100f) <= 0.5f;
+                // An untouched pool that doesn't total 100 is vanilla data, not a
+                // mistake - show it gray so it is never mistaken for an edit.
+                bool groupTouched = rows.Any(r => r.IsNewLink || r.Explicit.HasValue);
+                if (!groupOk) allOk = false;
+                string label = InputCatalog.GroupLabel(key);
+                sumText.Inlines.Add(new Run($"{label} {groupSum:0.###}%{(groupOk ? "" : " ⚠")}")
+                {
+                    Foreground = groupOk ? GreenBrush : groupTouched ? RedBrush : GrayBrush,
+                    FontWeight = FontWeights.SemiBold
+                });
+                if (i < groups.Count - 1)
+                    sumText.Inlines.Add(new Run("  ·  ") { Foreground = DimBrush });
+                string values = string.Join(" + ", rows.Select(r => $"{r.Effective:0.###}"));
+                tips.Add($"{label} ({rows.Count} row{(rows.Count == 1 ? "" : "s")}): "
+                    + $"{values} = {groupSum:0.###}%{(groupOk ? " ✓" : " ✗")}");
+            }
+            sumText.Inlines.Add(new Run($"   ·   {_rows.Count} row{(_rows.Count == 1 ? "" : "s")}  ·  {edited} typed")
+            {
+                Foreground = DimBrush
+            });
+            float total = _rows.Sum(r => r.Effective);
+            sumText.ToolTip = string.Join("\n", tips)
+                + $"\nGrand total {total:0.###}% across {groups.Count} input pool(s)."
+                + (allOk
+                    ? "\nEvery input totals 100% - exactly what export writes."
+                    : "\nEach input pool must total 100% at export; untouched vanilla pools are never rescaled.");
+            normBtn.IsEnabled = _canEditChances && !allOk;
+            evenBtn.IsEnabled = _canEditChances && _rows.Count > 0;
+            return;
+        }
         float sum = _rows.Sum(r => r.Effective);
         bool ok = Math.Abs(sum - 100f) <= 0.5f;
-        int edited = _rows.Count(r => r.Explicit.HasValue);
-        sumText.Text = $"Σ {sum:0.###}%  ·  {_rows.Count} row{(_rows.Count == 1 ? "" : "s")}  ·  {edited} typed";
+        int typed = _rows.Count(r => r.Explicit.HasValue);
+        sumText.Text = $"Σ {sum:0.###}%  ·  {_rows.Count} row{(_rows.Count == 1 ? "" : "s")}  ·  {typed} typed";
         sumText.Foreground = ok ? GreenBrush : RedBrush;
         sumText.ToolTip = ok
             ? "Displayed values sum to 100% - exactly what export writes."
@@ -2527,34 +2590,40 @@ public partial class BranchChancesDialog : Window
     {
         if (!_canEditChances || _rows.Count == 0) return;
         Recompute();
-        float sum = _rows.Sum(r => r.Effective);
-        if (sum <= 0f) { EvenSplit(); return; }
-        float factor = 100f / sum;
-        foreach (var r in _rows) r.Effective *= factor;
-        var largest = _rows.OrderByDescending(r => r.Effective).First();
-        largest.Effective += 100f - _rows.Sum(r => r.Effective);
-        foreach (var r in _rows) r.Explicit = r.Effective;
+        foreach (var group in SumGroups())
+        {
+            float sum = group.Sum(r => r.Effective);
+            if (sum <= 0f) { EvenSplitGroup(group); continue; }
+            float factor = 100f / sum;
+            foreach (var r in group) r.Effective *= factor;
+            var largest = group.OrderByDescending(r => r.Effective).First();
+            largest.Effective += 100f - group.Sum(r => r.Effective);
+            foreach (var r in group) r.Explicit = r.Effective;
+        }
     }
 
     private void EvenSplit()
     {
         if (!_canEditChances || _rows.Count == 0) return;
-        float each = 100f / _rows.Count;
-        foreach (var r in _rows) { r.Explicit = each; r.Effective = each; }
+        foreach (var group in SumGroups()) EvenSplitGroup(group);
+    }
+
+    private static void EvenSplitGroup(List<ChanceRow> group)
+    {
+        float each = 100f / group.Count;
+        foreach (var r in group) { r.Explicit = each; r.Effective = each; }
     }
 
     private void RefreshGlobalStatus()
     {
         if (!_canEditChances)
         {
-            txtStatus.Text = "View-only: chances and condition edits are available for enemy combo trees.";
+            txtStatus.Text = "View-only: chance and condition editing is disabled for this tree.";
             txtStatus.Foreground = GrayBrush;
             return;
         }
         int edited = _rows.Count(r => r.Explicit.HasValue);
         int condEdits = ConditionEditCount();
-        float typedSum = _rows.Where(r => r.Explicit.HasValue).Sum(r => r.Explicit!.Value);
-        float sum = _rows.Sum(r => r.Effective);
         string condSuffix = condEdits > 0 ? $"  ·  {condEdits} condition edit(s)" : "";
 
         if (_rows.Count == 0)
@@ -2563,8 +2632,47 @@ public partial class BranchChancesDialog : Window
                 ? "Vanilla rows aren't in this save - existing overrides (if any) are kept untouched."
                 : "Nothing to edit yet - add a new link from this node first.";
             txtStatus.Foreground = GrayBrush;
+            return;
         }
-        else if (typedSum > 100f + 0.5f)
+
+        if (UsesPerInputSums)
+        {
+            var over = new List<string>();
+            var bad = new List<string>();
+            foreach (var (key, rows) in InputGroups())
+            {
+                string label = InputCatalog.GroupLabel(key);
+                float typed = rows.Where(r => r.Explicit.HasValue).Sum(r => r.Explicit!.Value);
+                float eff = rows.Sum(r => r.Effective);
+                if (typed > 100f + 0.5f) over.Add($"{label} {typed:0.###}%");
+                if (Math.Abs(eff - 100f) > 0.5f) bad.Add($"{label} {eff:0.###}%");
+            }
+            if (over.Count > 0)
+            {
+                txtStatus.Text = $"⚠ Typed rows total over 100% for {string.Join(", ", over)} - "
+                    + "automatic rows get 0% at export for those inputs. "
+                    + "Click Σ→100% or lower a value." + condSuffix;
+                txtStatus.Foreground = RedBrush;
+            }
+            else if (bad.Count > 0)
+            {
+                txtStatus.Text = $"⚠ Per-input sum {string.Join(", ", bad)} "
+                    + $"(vanilla totals 100 per input). {edited} row(s) typed." + condSuffix;
+                txtStatus.Foreground = WarnBrush;
+            }
+            else
+            {
+                txtStatus.Text = (edited > 0
+                    ? $"{edited} row(s) typed · automatic rows rebalance per input on export."
+                    : "No changes yet · new links join their input's split automatically on export.") + condSuffix;
+                txtStatus.Foreground = GrayBrush;
+            }
+            return;
+        }
+
+        float typedSum = _rows.Where(r => r.Explicit.HasValue).Sum(r => r.Explicit!.Value);
+        float sum = _rows.Sum(r => r.Effective);
+        if (typedSum > 100f + 0.5f)
         {
             txtStatus.Text = $"⚠ Typed rows total {typedSum:0.###}% - automatic rows get 0% at export. "
                 + "Click Σ→100% or lower a value." + condSuffix;
@@ -2767,25 +2875,45 @@ public partial class BranchChancesDialog : Window
     {
         // Sum gate (mirrors Start Entries): a touched set that no longer totals 100
         // - typically a link deleted after probabilities were typed - would ship a
-        // dead roll zone. Vanilla-untouched rows never block (vanilla sums to 100).
+        // dead roll zone. Player nodes are checked per input (the engine rolls one
+        // winner per input; vanilla ships Light 100 + Heavy 100 on the same node),
+        // enemy nodes node-wide. Vanilla-untouched rows never block.
         if (_canEditChances && _rows.Count > 0)
         {
             Recompute();
             bool touched = _rows.Any(r => r.Explicit.HasValue
                 && (!r.IsNewLink && Math.Abs(r.Explicit.Value - r.Original) > 0.001f
                     || r.IsNewLink));
-            float sum = _rows.Sum(r => r.Effective);
-            if (touched && Math.Abs(sum - 100f) > 0.5f)
+            if (touched)
             {
-                MessageBox.Show(this,
-                    $"Branch chances for '{NodeDisplay(_node)}' sum to {sum:0.###}%. "
-                    + "Vanilla always sums to 100%.\n\nClick Σ→100% or adjust the values, "
-                    + "then save again.",
-                    "Probabilities don't sum to 100",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                txtStatus.Text = $"⚠ Sum {sum:0.###}% - fix to 100% before saving.";
-                txtStatus.Foreground = RedBrush;
-                return;
+                var offenders = new List<string>();
+                foreach (var group in SumGroups())
+                {
+                    float groupSum = group.Sum(r => r.Effective);
+                    if (Math.Abs(groupSum - 100f) <= 0.5f) continue;
+                    offenders.Add(UsesPerInputSums
+                        ? $"{InputCatalog.GroupLabel(InputCatalog.GroupKey(group[0].InputName))}: {groupSum:0.###}%"
+                        : $"{groupSum:0.###}%");
+                }
+                if (offenders.Count > 0)
+                {
+                    string heading = UsesPerInputSums
+                        ? $"Branch chances for '{NodeDisplay(_node)}' don't total 100% per input:"
+                        : $"Branch chances for '{NodeDisplay(_node)}' sum to {offenders[0]}.";
+                    string why = UsesPerInputSums
+                        ? "Player nodes roll one winner per input (LMB/RMB/…), so each input pool must total 100%."
+                        : "Vanilla always sums to 100%.";
+                    MessageBox.Show(this,
+                        heading + "\n\n  " + string.Join("\n  ", offenders)
+                        + "\n\n" + why + "\n\nClick Σ→100% or adjust the values, then save again.",
+                        UsesPerInputSums ? "Input pools don't total 100" : "Probabilities don't sum to 100",
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    txtStatus.Text = UsesPerInputSums
+                        ? $"⚠ {string.Join(", ", offenders)} - each input must total 100% before saving."
+                        : $"⚠ Sum {offenders[0]} - fix to 100% before saving.";
+                    txtStatus.Foreground = RedBrush;
+                    return;
+                }
             }
         }
         var overrides = BuildOverrides();

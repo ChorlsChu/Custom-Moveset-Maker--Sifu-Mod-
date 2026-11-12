@@ -424,6 +424,222 @@ so the data is vanilla). Raw: `--deep` dumps confirm the CUE4Parse-side payload 
 - Unresolved class refs: 0 — `ResolvedObject.Class` resolves cleanly for every instance
   (remember `ResolvedObject.Object` is `Lazy<UObject>` — must take `.Value`).
 
+## 12. MainChar start states (player tree)
+
+The player combo tree carries the same `m_ComboStartNodesContainer` as enemy
+archetypes — only the bound enum differs. `DB\_MainChar\Combos\MainChar_ComboTree`
+holds 7 entries; the weapon trees (`MainChar_Bats/Staff/Blades_ComboTree`) hold 6
+each (no `PushInstigator`). Every entry is `m_Enum -> BP_MainCharComboStartStates`,
+`m_PhaseName = None`, `m_uiMCDominationFlags = 15`.
+
+| Enum value | `m_ParentNodeName` | Rows (barehands) | Row probabilities |
+|---|---|---|---|
+| 0 | Idle | 2 | `Light` + `Heavy`, 100 each |
+| 4 | Dodge | 0 | — |
+| 5 | Grab | 0 | — |
+| 6 | Rush | 2 | `LightRushAttack` + `HeavyRushAttack`, 100 each |
+| 7 | KnockedDown | 2 | `Light` + `Heavy`, 100 each |
+| 10 | PushInstigator | 2 | 100 each |
+| 12 | Default | 3 | `Light` + `Heavy` + `HeavyHold`, 100 each |
+
+Key differences from the AI tickets:
+
+- **Rows are keyed by player input, not by an AI request.** `m_eInputTransition`
+  selects the row, so `m_fProbability` competes only against rows with the same
+  input: every input pool (LMB, RMB, …) totals 100 independently, regardless of
+  the rows' keys or `m_ConditionInstance`. Vanilla `Default` ships three `Light`
+  rows (33/34/33) whose keys/conditions differ, and most nodes ship
+  `Light` 100 + `Heavy` 100 (200 per node). Per-entry totals are therefore
+  0/100/200/300 in vanilla — never "always 100". Untouched totals must never be
+  flagged or rebalanced; only user edits are gated, and the gate is per input
+  (`StartEntriesDialog.EntrySumOk`). Enemy tickets keep the older rule: one
+  ticket, one 100% roll.
+- **Adding a row to a conditioned entry clones its template row verbatim.** Export
+  clones the live row with the lowest vanilla index and carries over the **same
+  `m_ConditionInstance` and the full `m_TargetNodes` key map**, patching only
+  probability and each key's target. The dialog seeds the new row at 0% with the
+  template's key set and targets so the author retargets outcomes one by one. This
+  covers `Default`'s `BP_TargetIsParryVictim` rows, `Idle`'s
+  `BP_IsInInvertAttack` rows, and multi-key condition maps such as the Servant's
+  `Indirect Opponent Interruption Attacks` (`{0→DownAttack, 1→BaseballHook}`).
+  Only a bare single-key row without a condition stays non-cloneable
+  (`StartEntry.CloneTemplateRow` / `CanCloneTemplate`). Key bytes come from the
+  condition **instance**, not from its class: the same class ships 1-5 key maps,
+  and key `0` means True while key `1` means False. Legacy multi-key rows with no
+  per-key model (old saves) still fall back to the proven unconditional `{255}`
+  recipe; unconditional `{255}` templates also keep that single-key shape.
+  Projects saved before conditions became per-row keep only the entry's
+  `ConditionClass`, so `ComboGraph.RehydrateStartEntryKeyModels` (called on project
+  load) backfills it onto rows that are conditioned by construction — multi-key
+  rows, and rows whose `KeyByte` is a real outcome (not `255`). Key-`255` rows stay
+  unconditional, since vanilla mixes them into conditioned entries. This is
+  display/edit metadata: existing rows never rewrite `m_ConditionInstance`.
+  Without the backfill, `+ Add Transition` on such a row would see no condition
+  and collapse it to one unconditional `key 255` row.
+- **The entries are hand-authored, not AI copies.** MC-only condition classes gate
+  them (`BP_TargetIsParryVictim` on all three `Default` rows,
+  `BP_IsInInvertAttack` on both `Idle` rows, `BP_TargetPlaysOrder` on
+  `PushInstigator`, `ComboTransitionConditionGeneric` on `Rush`'s heavy row).
+- **`m_ParentNodeName` is already the human label**, so the app needs no external
+  enum asset to display or match entries.
+- **The enum asset itself is not in the extracted paks** (no `*ComboStartStates*`
+  file under `Content`), so the picker catalog in `StartEntriesDialog` is
+  hardcoded from the 7 values above. Labels prefer each entry's own
+  `m_ParentNodeName`; the enum *name* is read from the tree's existing
+  `m_EnumState.m_Value` prefix, so cloned/mod-imported trees keep theirs.
+- **Cloning an MC entry keeps `m_Enum` = MC** because the new-entry export path
+  (`ExportDialog.PatchStartEntries`) clones an entry from the same container and
+  only rewrites the `m_Value` FName, `m_ParentNodeName`, `m_PhaseName` and
+  `m_uiMCDominationFlags`.
+- **Adding new states is near-pointless**: only those 7 player states exist, and
+  duplicates are blocked by the unique-`TicketEnumValue` check. The feature is
+  for retargeting/reweighting existing entries.
+
+Chances/conditions on MC nodes are ordinary data: `m_Transitions` rows with
+`m_ConditionInstance`, `m_ConditionalAttacks` tag-keyed maps, and `m_RequiredTags`.
+MC conduit rows already use real weights (33/34/33), so chance editing is
+data-valid on the player tree as well. The Conditions & Chances dialog, its
+save gate and export all normalize **per `m_eInputTransition`** on MC nodes — a
+Light edit never rescales the node's Heavy rows. Enemy nodes keep the single
+node-wide 100% roll.
+
+Reproduce with the forensics dumper:
+
+```powershell
+# from SifuMovesetEditor\
+$FC = "C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Sifu\Content"
+dotnet run --project tools\_combo_forensics -- --full "$FC\DB\_MainChar\Combos\MainChar_ComboTree.uasset"
+dotnet run --project tools\_combo_forensics -- --entries --all "$FC\DB\_MainChar\Combos"
+```
+
+## Open ticket: MainChar default-attack (technique) slots
+
+**Status:** not implemented — design only (2026-11-01).
+
+`m_DefaultAttacks` is a second, separate routing table next to
+`m_ComboStartNodesContainer`. It is the reason technique nodes such as
+`Jab(new)`, `Palm Strike`, `Thrust Kick` and `BellyPalm` look orphaned: nothing
+in the combo tree links to them, because they are looked up here instead.
+
+### What the data is
+
+- A real `TArray<int32>` on the combo export: each element is a node index or
+  `-1`. No input, condition, probability or weight field.
+- **21 elements in all four MC trees** (barehands, bats, blades, staff). The
+  array is sized to a native enum, so index = enum value; the enum itself lives
+  in `/Script/Sifu`, not in the pak.
+- Slot meanings line up across weapon types:
+
+| slot | Barehands | Bats | Blades | Staff |
+|---|---|---|---|---|
+| 0 | `Jab(new)` | `HeadStroke` | `ThroatPokeSlash_FR` | `KneeFlick_FL` |
+| 1 | `GuardBreak` | `PlexusEstoc` | `SpinnySpeedBoy` | `EngageDelay` |
+| 4 | `GroundPunch` | `Head Poke` | `SlashPommelStroke` | `Duck Push` |
+| 5 | `Palm Strike` | `Pushback` | `Pushback Palm` | `PushBack` |
+| 6 | `BellyPalm` | `RibsStroke` | `WideDownSlash_FR` | `HeadMill_FL` |
+| 7 | `Dizzy` | `BatSweep` | `Charged` | `Charged` |
+| 10 | `Thrust Kick` | `Reverse Slash` | `Thrust Kick Slash` | `Horizontal Mill` |
+| 11 | `LowKick` | `LowKick` | `LowKick` | `LowKick` |
+| 15 | — | `(L) Rush Reverse Slash` | `(L) Rush Slide Slash` | `(L) Rush Mill Estoc` |
+| 16 | `Invert` | — | — | — |
+| 18 | `ResilientAttack` | — | — | — |
+| 19 | `Disengage` | — | — | `DisengageDelay` |
+| 20 | — | `(H) Rush Reverse Slash` | `(H) Rush Slide Slash` | `(H) Rush Mill Estoc` |
+
+### Editable surface: retarget only
+
+- **Repoint `slot N → graph node`** and **clear to `-1`**. That is the whole
+  feature. Appending a 22nd element is serializable (the count is just an int in
+  the tag) but unreachable: the enum has 21 values and there is no input bound to
+  index 21, so it is storage we can write and never observe. Truncating is
+  crash-shaped because every higher index falls outside the array. Do not ship
+  add/remove/reweight.
+- A slot cannot carry a second candidate. A probability split has to live in the
+  graph: either a second same-input row in a start entry, or a router node (see
+  the step-0 experiment below).
+
+### Dialog design
+
+- New window `DefaultAttacksDialog` opened from the combo toolbar/menu (player
+  trees only; enemy trees have no such table).
+- 21 rows: `slot N` · current node name · populated/empty · retarget dropdown
+  over graph attack nodes · `Clear` button for `-1`.
+- **No input column and no probability column**, and never label a slot with a
+  button. "slot 0 = LMB" and "slot 11 = LowKick" are inferences from the node
+  names; the enum is native so no asset confirms them. Show `slot 11 — LowKick`.
+- Model: parse the 21 ints into `ComboGraph` (currently unmodeled there; they are
+  only remapped during node removal).
+
+### Export / import integration
+
+- Export: write changed slots only, and keep them inside the existing node-index
+  remap so appended/removed nodes stay consistent. The remap lives in
+  `ExportDialog.RemoveNodesFromComboAsset` (the `m_DefaultAttacks` cases in its
+  reindex switch) and is validated by `ComboWriteValidator.cs`; extend that pass
+  rather than writing raw indices.
+- Import: read `m_DefaultAttacks` from the modded file (mirroring
+  `ReadModdedStartEntries`) and diff slots so a re-import picks up retargets.
+- Change summary: one row per retargeted/cleared slot.
+
+### Step 0 experiment (decides how much this dialog owns)
+
+Two things claim the first LMB press:
+
+- `Idle` → `Light` → node 28 → redirect 14 (`Ext02`)
+- `m_DefaultAttacks[0]` → node 44 (`Jab(new)`, `Jab_FR` / `Hook_BL`)
+
+In game the visible opener is the Jab, which points at slot 0. Mod one at a time
+and press LMB from idle:
+
+1. Repoint slot 0 to a distinctive node; leave the `Idle` row vanilla.
+2. If the opener changes, the technique table owns the press → the dialog should
+   offer "point this slot at a router".
+3. If it does not change, repoint the `Idle` `Light` row instead. If that changes
+   the opener, start entries own the press and the technique table is a
+   fallback/secondary lookup.
+
+Only after that test can we state whether a random first LMB is reachable. Vanilla
+proves the router shape itself: node 1 is `m_bSkip = True`, `m_Attacks = None`,
+three `Light` rows at 33/34/33 → `3Hits_01`/`02`/`03`. What is unproven is
+whether a `m_DefaultAttacks` target that is a router resolves its rows on the
+*same* press or only on the next one. If it is next-press, the result is a dead
+first LMB, not a split.
+
+### Tests
+
+- Retarget one slot, export, assert the int changed and still points at the right
+  node after an append (remap).
+- Clear a slot the engine would otherwise use, export, assert `-1`.
+- Import: retarget a slot in a modded file, assert the diff reports it and the
+  graph shows the new node.
+- Round-trip an untouched tree and assert all 21 ints are byte-identical.
+
+## Open ticket: conduit (condensed passthrough) branch probabilities
+
+**Status:** not implemented — follow-up from the v1.4 conduit-target fix.
+
+Conduit nodes are stripped from the editable graph: they carry no attack card,
+only transition rows that fan out to the real nodes (for example Grunt
+Advanced's conduit `20` splits 70% `FalconPunch` / 30% `RushFrontKick`).
+The editor now resolves those targets correctly for display, but the split
+itself is still read-only — **Conditions & Chances** only lists rows owned by
+surviving nodes, so a conduit split can be seen (as `condensed → ...`) yet not
+reweighted.
+
+To make it editable:
+
+- Keep the conduit's struct index addressable after the parse strips it (the
+  raw `ConduitTargets` key already provides it) and surface its `m_Transitions`
+  rows in Conditions & Chances as a virtual owner.
+- Overrides must key on the raw struct index, matching the existing
+  `TreeRowProbabilityOverrides` shape, and export must write back through the
+  raw node struct rather than a renumbered node id.
+- Remove-nodes / append reindexing must shift conduit rows with everything
+  else; add an export smoke that edits a conduit probability and verifies the
+  raw asset value changes.
+- Until then, do not advertise conduit rows in save/export validation: an
+  untouched split is valid and must never be flagged as under/over 100%.
+
 ## Appendix: reproduction
 
 ```powershell

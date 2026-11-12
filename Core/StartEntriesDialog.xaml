@@ -139,7 +139,7 @@
 
             <TextBlock Grid.Row="0" x:Name="txtNote" FontSize="11" Foreground="#a6adc8"
                        TextWrapping="Wrap"
-                       Text="Each entry is one AI ticket: when the brain requests it, one of its transitions is picked by probability (vanilla always sums to 100%). Targets are limited to attack nodes already in this moveset - create new attack nodes on the canvas first. Tickets only fire when the AI brain requests them."/>
+                       Text="Each entry is one start state of this tree's m_ComboStartNodesContainer. Rows are keyed by input and keep their own probability; untouched entries are never rebalanced. Targets are limited to attack nodes already in this moveset - create new attack nodes on the canvas first."/>
 
             <Grid Grid.Row="1" Margin="0,8,0,0">
                 <Grid.ColumnDefinitions>
@@ -156,7 +156,7 @@
                            Foreground="#cdd6f4" FontSize="12" Margin="0,0,8,0"/>
                 <ComboBox Grid.Column="1" x:Name="cmbTicket" Style="{StaticResource DarkCombo}"
                           VerticalAlignment="Center"
-                          ToolTip="AI ticket the brain must request for this entry to fire. Written as BP_AIAttackTIcketNames::NewEnumeratorN."/>
+                          ToolTip="Start state this entry belongs to. Written as &lt;Enum&gt;::NewEnumeratorN."/>
                 <TextBox Grid.Column="3" x:Name="txtEntryLabel" Style="{StaticResource DarkTextBox}"
                          VerticalAlignment="Center"
                          ToolTip="Entry label (m_ParentNodeName). Defaults to the ticket label when left empty. Must be unique in this container."/>

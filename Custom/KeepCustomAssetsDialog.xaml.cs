@@ -3,17 +3,19 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Threading;
 
 namespace SifuMovesetEditor.Custom;
 
 /// <summary>
 /// Close-time prompt for the persistent CustomAssets library, in the app's dialog style.
-/// Yes keeps the new/modified files (caller updates the accepted manifest); No - via
-/// button, Esc, or window X - swaps the dialog into a "Deleting files…" state with
-/// real progress, removes the unaccepted files, then closes so the app can exit.
-/// The file list streams in on chunked background work so a large CustomAssets
-/// folder never stalls the popup.
+/// Yes keeps the new/modified files (caller updates the accepted manifest); No swaps the
+/// dialog into a "Deleting files…" state with real progress, removes the unaccepted files,
+/// then closes so the app can exit. Cancel - button, Esc, or window X - closes only the
+/// prompt and leaves the app running with every file untouched, so the caller can cancel
+/// the window close. The file list streams in on chunked background work so a large
+/// CustomAssets folder never stalls the popup.
 /// </summary>
 public partial class KeepCustomAssetsDialog : Window
 {
@@ -24,6 +26,12 @@ public partial class KeepCustomAssetsDialog : Window
 
     /// <summary>Files removed by the No flow (0 when nothing was deleted).</summary>
     public int RemovedCount { get; private set; }
+
+    /// <summary>
+    /// True when the prompt was dismissed with Cancel (button, Esc or window X). The
+    /// caller must keep the app open and leave the accepted manifest untouched.
+    /// </summary>
+    public bool Cancelled { get; private set; }
 
     public KeepCustomAssetsDialog(string question, IReadOnlyList<string> unaccepted)
     {
@@ -71,6 +79,29 @@ public partial class KeepCustomAssetsDialog : Window
         await RunDeletingAsync();
     }
 
+    private void Cancel_Click(object sender, RoutedEventArgs e) => CancelPrompt();
+
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape) return;
+        e.Handled = true;
+        CancelPrompt();
+    }
+
+    /// <summary>
+    /// Dismisses the prompt without deleting anything. DialogResult stays unset, so
+    /// ShowDialog reports null and the caller keeps the app open. Ignored while the No
+    /// deletion is already running - those files are gone either way.
+    /// </summary>
+    private void CancelPrompt()
+    {
+        if (_deleting) return;
+        Cancelled = true;
+        _listCts.Cancel();
+        _closingDone = true;
+        Close();
+    }
+
     private void Yes_Click(object sender, RoutedEventArgs e)
     {
         _listCts.Cancel();
@@ -115,13 +146,16 @@ public partial class KeepCustomAssetsDialog : Window
 
         if (_deleting)
         {
-            // Esc/IsCancel race or Alt+F4 mid-delete: stay open until files are gone.
+            // Alt+F4 race mid-delete: stay open until files are gone.
             e.Cancel = true;
             return;
         }
 
-        // X while still asking behaves as No (parity with the old MessageBox fallback).
-        e.Cancel = true;
-        _ = RunDeletingAsync();
+        // X / Alt+F4 while still asking behaves as Cancel: close only the prompt,
+        // delete nothing, and let the caller keep the app open.
+        Cancelled = true;
+        _listCts.Cancel();
+        _closingDone = true;
+        base.OnClosing(e);
     }
 }

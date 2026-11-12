@@ -10,6 +10,8 @@
         Closing="MainWindow_Closing"
         PreviewKeyDown="MainWindow_PreviewKeyDown"
         PreviewKeyUp="MainWindow_PreviewKeyUp"
+        PreviewTextInput="MainWindow_PreviewTextInput"
+        PreviewMouseWheel="MainWindow_PreviewMouseWheel"
         PreviewMouseDown="Window_PreviewMouseDown">
 
     <Window.Resources>
@@ -219,8 +221,25 @@
             <Border Style="{StaticResource MoveCard}"
                     MouseLeftButtonDown="MoveCard_Click"
                     MouseMove="MoveCard_MouseMove"
+                    ContextMenuOpening="MoveCard_ContextMenuOpening"
                     Tag="{Binding}"
                     Margin="32,1,4,1">
+                <Border.ContextMenu>
+                    <!-- MoveCard_ContextMenuOpening shows the action that fits the card:
+                         Clone on vanilla attack cards, Create/Open on animations. -->
+                    <ContextMenu>
+                        <MenuItem x:Name="miCloneAttackCard" Header="Clone attack card…" Tag="{Binding}"
+                                  Click="CloneAttackCardMenuItem_Click"/>
+                        <MenuItem x:Name="miCreateAttackDb" Header="Create AttackDB…" Tag="{Binding}"
+                                  Click="CreateAttackDbMenuItem_Click"/>
+                        <MenuItem x:Name="miOpenExistingAttackDb" Header="Open existing AttackDB"
+                                  Tag="{Binding}" Click="OpenExistingAttackDbMenuItem_Click"/>
+                        <MenuItem x:Name="miRenameCustomAttackDb" Header="Rename AttackDB…"
+                                  Tag="{Binding}" Click="RenameCustomAttackDbMenuItem_Click"/>
+                        <MenuItem x:Name="miDeleteCustomAttackDb" Header="Delete AttackDB…"
+                                  Tag="{Binding}" Click="DeleteCustomAttackDbMenuItem_Click"/>
+                    </ContextMenu>
+                </Border.ContextMenu>
                 <DockPanel>
                     <Border Width="3" CornerRadius="2" DockPanel.Dock="Left" Margin="0,0,10,0"
                             Background="#a6e3a1">
@@ -328,6 +347,8 @@
                     <Button Content="Import Mod" Style="{StaticResource DarkButton}" Click="ImportMod_Click"/>
                     <Button Content="Save" Style="{StaticResource DarkButton}" Click="SaveProject_Click"/>
                     <Button Content="Load" Style="{StaticResource DarkButton}" Click="LoadProject_Click"/>
+                    <Button Content="Help" Style="{StaticResource DarkButton}" Click="Help_Click"
+                            ToolTip="Open the feature guide (F1)"/>
                     <Button Content="Settings" Style="{StaticResource DarkButton}" Click="Settings_Click"/>
                     <Button Content="Export Pak" Style="{StaticResource DarkButton}"
                             Click="ExportPak_Click" IsEnabled="False" Name="btnExport"/>
@@ -423,7 +444,7 @@
                                 <Button Name="btnStartEntries" Content="Start Entries" Style="{StaticResource DarkButton}"
                                         Click="BtnStartEntries_Click" FontSize="11" Padding="8,3" Margin="8,0,0,0"
                                         Visibility="Collapsed"
-                                        ToolTip="Edit AI combo start tickets: which move begins each ticket, with probabilities"/>
+                                        ToolTip="Edit combo start entries (m_ComboStartNodesContainer): which move begins each start state, with probabilities"/>
                                 <Button Name="btnResetMode" Content="Reset Node Mode" Style="{StaticResource DarkButton}"
                                         Click="ToggleResetMode_Click" FontSize="11" Padding="8,3" Margin="8,0,0,0"
                                         Visibility="Collapsed"/>
@@ -611,7 +632,7 @@
                           VerticalAlignment="Stretch" HorizontalAlignment="Stretch"/>
 
             <!-- Right panel: Move Library -->
-            <Border Grid.Column="2" Background="#181825" Padding="0">
+            <Border x:Name="libraryPanel" Grid.Column="2" Background="#181825" Padding="0">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Background="#11111b" Padding="8,6">
                         <DockPanel>
@@ -638,6 +659,11 @@
                                         Background="#181825" Foreground="#6c7086" BorderThickness="0" Cursor="Hand"/>
                             </StackPanel>
                         </StackPanel>
+                    </Border>
+                    <Border x:Name="bannerTemplatePick" DockPanel.Dock="Top" Background="#f9e2af"
+                            Padding="8,6" Visibility="Collapsed">
+                        <TextBlock Foreground="#1e1e2e" FontSize="11" TextWrapping="Wrap"
+                                   Text="Choosing an AttackDB template — click an AttackDB card in the library. Click anywhere else to cancel."/>
                     </Border>
                     <Grid>
                     <TabControl Name="tabMoves" Background="Transparent" BorderThickness="0"
@@ -676,7 +702,7 @@
                         <!-- Visual order: Other | Custom / Vanilla | Stances -->
                         <TabItem x:Name="tabOther">
                             <TabItem.Header>
-                                <TextBlock Name="tabHeaderUnused" Text="Other Attacks"/>
+                                <TextBlock Name="tabHeaderUnused" Text="Animations"/>
                             </TabItem.Header>
                             <ScrollViewer VerticalScrollBarVisibility="Auto" Background="Transparent">
                                 <ItemsControl Name="listUnused" Padding="4"
@@ -1031,5 +1057,8 @@
     <wv2:WebView2 x:Name="thumbWebView" Width="128" Height="128"
                   HorizontalAlignment="Left" VerticalAlignment="Top" Margin="-3000,0,0,0"
                   Panel.ZIndex="-100"/>
+
+    <!-- Interactive walkthrough spotlight (sits above every other overlay). -->
+    <local:TutorialOverlay x:Name="tutorialOverlay" Visibility="Collapsed" Panel.ZIndex="300"/>
     </Grid>
 </Window>

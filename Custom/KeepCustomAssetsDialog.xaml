@@ -5,6 +5,7 @@
         Width="460" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
+        PreviewKeyDown="Window_PreviewKeyDown"
         Background="#1e1e2e"
         Foreground="#cdd6f4">
 
@@ -49,9 +50,10 @@
 
         <StackPanel x:Name="footerPanel" DockPanel.Dock="Bottom" Orientation="Horizontal"
                     HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="btnCancel" Content="Cancel" Style="{StaticResource DarkButton}"
+                    Click="Cancel_Click" Padding="16,8" MinHeight="30" MinWidth="90"/>
             <Button x:Name="btnNo" Content="No" Style="{StaticResource DarkButton}"
-                    Click="No_Click" Padding="16,8" MinHeight="30" MinWidth="90"
-                    IsCancel="True"/>
+                    Click="No_Click" Padding="16,8" MinHeight="30" MinWidth="90"/>
             <Button x:Name="btnYes" Content="Yes" Style="{StaticResource AccentButton}"
                     Click="Yes_Click" Padding="16,8" MinHeight="30" MinWidth="90"
                     IsDefault="True"/>

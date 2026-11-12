@@ -62,6 +62,13 @@ public class MoveInfo
     {
         get
         {
+            // Custom asset names are chosen by the user (clone, create, rename) and must
+            // round-trip unchanged: the vanilla heuristics below strip tokens such as
+            // "Parried_" from "Parried_FastJab", and that stripped name is also used to
+            // pre-fill the clone dialog, delete prompts and the template picker.
+            if (string.Equals(Category, "Custom", StringComparison.OrdinalIgnoreCase))
+                return DisplayName;
+
             var result = DisplayName;
 
             if (!string.IsNullOrEmpty(Character) && !string.IsNullOrEmpty(WeaponType))
@@ -341,6 +348,17 @@ public class TreeRowInfo
 }
 
 /// <summary>
+/// One m_Transitions row whose m_TargetNodes entries pointed at a slot left behind by a
+/// deleted custom AttackDB. CustomAttackDbDelete records these; export prunes the listed
+/// target values and drops the row (renormalizing chances) when none remain.
+/// </summary>
+public class RemovedRouteRow
+{
+    public int RowIndex { get; set; }
+    public List<int> TargetTreeIndices { get; set; } = new();
+}
+
+/// <summary>
 /// Node-level condition data from the m_Nodes struct: required gameplay tags
 /// (m_RequiredTags) and conditional attack sets (m_ConditionalAttacks - gameplay
 /// tag -> alternate m_Attacks), snapshotted at parse time and persisted per unit.
@@ -584,12 +602,20 @@ public class ComboGraph
     // parse time (empty on old saves - the dialog then falls back to new-link rows and
     // export still works, since it reads probabilities from the asset itself).
     public Dictionary<int, List<TreeRowInfo>> TreeRows { get; set; } = new();
+    // Transition-row targets pruned when a custom AttackDB was deleted: struct tree
+    // index -> rows whose m_TargetNodes no longer route to the deleted card's slots.
+    // Export applies these against the asset (and drops rows left with no target).
+    // Empty on old saves.
+    public Dictionary<int, List<RemovedRouteRow>> RemovedRouteRows { get; set; } = new();
     // Content-relative combo path the graph was parsed from; lets old saves (whose
     // TreeRows snapshot is empty) re-parse the vanilla rows on demand.
     public string SourceGamePath { get; set; } = "";
     // Session flag: a TreeRows merge from SourceGamePath was already attempted, so a
     // struct still missing from TreeRows is genuinely row-less (not an old save).
     public bool TreeRowsBackfillAttempted { get; set; }
+    // Session flag: the ConduitTargets snapshot was reconciled against a fresh parse.
+    // Older saves stored a mis-mapped table (targets resolved through renumbered ids).
+    public bool ConduitTargetsBackfillAttempted { get; set; }
     // User-edited branch chances: struct tree index -> (row index -> m_fProbability).
     // Presence marks the row modified; Reset All / node reset clear these.
     public Dictionary<int, Dictionary<int, float>> TreeRowProbabilityOverrides { get; set; } = new();
@@ -692,6 +718,15 @@ public class ComboGraph
     /// so untouched rows stay unmodified for the diff/write gate. Entries whose
     /// lists already line up with KeyCount (fresh parses, post-edit saves) are left
     /// alone; an empty or unparsable summary keeps the view-only fallback.
+    ///
+    /// Also backfills per-row conditions: saves made before conditions moved from the
+    /// entry to each row keep only <see cref="StartEntry.ConditionClass"/>, so a
+    /// conditioned row would report no condition and "+ Add Transition" would collapse
+    /// its full key map to one unconditional key 255. A row with a real outcome key
+    /// (or a multi-key map) is unambiguously conditioned; inherit the entry's class.
+    /// Key-255 rows stay unconditional (vanilla can mix them into a conditioned entry).
+    /// Existing-row export never rewrites m_ConditionInstance, so this is display/edit
+    /// metadata only.
     /// </summary>
     public void RehydrateStartEntryKeyModels()
     {
@@ -699,6 +734,18 @@ public class ComboGraph
         var byTreeIndex = Nodes.Where(n => n.TreeIndex >= 0).ToLookup(n => n.TreeIndex);
         foreach (var entry in StartEntries)
         {
+            if (!string.IsNullOrWhiteSpace(entry.ConditionClass))
+            {
+                foreach (var t in entry.Transitions)
+                {
+                    if (string.IsNullOrWhiteSpace(t.ConditionClass)
+                        && (t.KeyCount > 1 || t.KeyByte != 255))
+                    {
+                        t.ConditionClass = entry.ConditionClass;
+                    }
+                }
+            }
+
             foreach (var t in entry.Transitions)
             {
                 if (t.KeyCount <= 1 || t.Keys.Count == t.KeyCount) continue;
@@ -737,7 +784,8 @@ public class ComboGraph
 
 /// <summary>
 /// One ComboStartNode element of m_ComboStartNodesContainer: an AI ticket
-/// (BP_AIAttackTIcketNames) plus its possible first combo nodes with probabilities.
+/// (BP_AIAttackTIcketNames) or a player start state (BP_MainCharComboStartStates),
+/// plus its possible first combo nodes with probabilities.
 /// </summary>
 public class StartEntry
 {
@@ -767,6 +815,85 @@ public class StartEntry
     };
 
     public bool IsModified() => Removed || Transitions.Any(t => t.IsModified());
+
+    /// <summary>The live row a newly added transition inherits from: the row with the
+    /// lowest vanilla index (added rows sort last). Both the editor dialog and the
+    /// exporter use this, so the seeded input/key/condition always matches the asset
+    /// row that is actually cloned - even after the first vanilla row was deleted.</summary>
+    public StartTransition? CloneTemplateRow()
+        => Transitions
+            .Where(t => !t.Removed)
+            .OrderBy(t => t.OriginalIndex < 0 ? int.MaxValue : t.OriginalIndex)
+            .FirstOrDefault();
+
+    /// <summary>True when <see cref="CloneTemplateRow"/> can be cloned into a new
+    /// transition: unconditional (key 255), multi-key (a conditioned map is copied with
+    /// its full key set; a legacy row without per-key data is collapsed to key 255 by
+    /// export), or a conditioned single-key row (cloned as-is, so the new row lands in
+    /// the same input probability pool). A bare single-key row with no condition stays
+    /// blocked - cloning it would duplicate an unconditional key route instead of
+    /// splitting a probability.</summary>
+    public static bool CanCloneTemplate(StartTransition t)
+        => t.KeyCount > 1
+           || t.KeyByte == 255
+           || !string.IsNullOrEmpty((t.ConditionClass ?? "").Trim());
+
+    /// <summary>Entry-aware variant for saves made before conditions became per-row: a
+    /// single-key row with a real outcome key (not 255) is conditioned by construction,
+    /// so the entry's class makes it cloneable even when the row lost its own.</summary>
+    public static bool CanCloneTemplate(StartTransition t, string entryConditionClass)
+        => CanCloneTemplate(t)
+           || (t.KeyByte != 255
+               && !string.IsNullOrWhiteSpace(entryConditionClass));
+
+    /// <summary>
+    /// Builds the model row behind the dialog's "+ Add Transition" from the entry's
+    /// clone template. A conditioned template is duplicated verbatim: same condition,
+    /// input and full key map at 0% probability, so the author only retargets the
+    /// outcomes. Unconditional (key 255) templates keep the old single-key recipe.
+    ///
+    /// <paramref name="entryConditionClass"/> is the fallback for saves made before
+    /// conditions became per-row (they keep the class on the entry only): a template
+    /// with a real outcome key or a multi-key map is unconditionally conditioned, and
+    /// without the fallback the copy would silently collapse to one key 255. A legacy
+    /// multi-key row with no per-key model is still collapsed - export cannot write a
+    /// map it has no keys for, so the badge must not promise one.
+    /// </summary>
+    public static StartTransition CreateAddedTransition(StartTransition template, string entryConditionClass)
+    {
+        bool structurallyConditioned = template.KeyCount > 1 || template.KeyByte != 255;
+        string conditionClass = !string.IsNullOrWhiteSpace(template.ConditionClass)
+            ? template.ConditionClass
+            : structurallyConditioned ? entryConditionClass : "";
+        bool conditioned = !string.IsNullOrWhiteSpace(conditionClass);
+        bool copyVerbatim = conditioned && (template.KeyCount <= 1 || template.HasKeyModel);
+
+        var added = new StartTransition
+        {
+            OriginalIndex = -1,
+            Probability = 0,
+            // Same input as the template row: this is what makes a duplicate-input
+            // probability split compete the way vanilla node 1's three Light rows do.
+            // Empty (legacy row) is copied as-is: export then keeps the cloned
+            // template's m_eInputTransition instead of forcing None.
+            InputEnum = template.InputEnum,
+            ConditionClass = copyVerbatim ? conditionClass : "",
+            KeyByte = copyVerbatim ? template.KeyByte : (byte)255,
+            KeyCount = copyVerbatim ? template.KeyCount : 1,
+            TargetNodeId = copyVerbatim ? template.TargetNodeId : -1,
+            TargetTreeIndex = copyVerbatim ? template.TargetTreeIndex : -1,
+            TargetName = copyVerbatim ? template.TargetName : ""
+        };
+        if (copyVerbatim)
+        {
+            added.Keys = new List<byte>(template.Keys);
+            added.KeyTargetTreeIndices = new List<int>(template.KeyTargetTreeIndices);
+            added.KeyTargetNodeIds = new List<int>(template.KeyTargetNodeIds);
+            added.KeyTargetNames = new List<string>(template.KeyTargetNames);
+            added.TargetSummary = template.TargetSummary;
+        }
+        return added;
+    }
 }
 
 /// <summary>
@@ -781,6 +908,12 @@ public class StartTransition
     // Current target's tree index when known (-1 = user-created node, assigned on export).
     public int TargetTreeIndex { get; set; } = -1;
     public string TargetName { get; set; } = "";
+    // m_eInputTransition: bare enum name ("Light", "HeavyHold", "None"). "" = leave the
+    // vanilla row's input untouched (old saves deserialize to ""). Never a display label.
+    public string InputEnum { get; set; } = "";
+    // This row's m_ConditionInstance class ("" = unconditional). Per-row, because an
+    // entry can mix conditioned and unconditional rows.
+    public string ConditionClass { get; set; } = "";
     // m_TargetNodes map: key bytes (255 = unconditional; 0/1 = condition outcome routing).
     public byte KeyByte { get; set; } = 255;
     public int KeyCount { get; set; } = 1;
@@ -795,12 +928,21 @@ public class StartTransition
     // "0→18, 1→19"-style summary (kept fresh by the dialog as keys are re-routed).
     public string TargetSummary { get; set; } = "";
 
+    /// <summary>True when the per-key parallel lists line up with KeyCount (they are
+    /// empty on saves made before per-key editing existed).</summary>
+    public bool HasKeyModel
+        => Keys.Count == KeyCount
+            && KeyTargetTreeIndices.Count == KeyCount
+            && KeyTargetNodeIds.Count == KeyCount
+            && KeyTargetNames.Count == KeyCount;
+
     // Vanilla baseline (parse-time snapshot).
     public int OriginalIndex { get; set; } = -1;
     public float OriginalProbability { get; set; } = 100;
     public int OriginalTargetNodeId { get; set; } = -1;
     public int OriginalTargetTreeIndex { get; set; } = -1;
     public string OriginalTargetName { get; set; } = "";
+    public string OriginalInputEnum { get; set; } = "";
     public List<int> OriginalKeyTargetTreeIndices { get; set; } = [];
     // Row deleted in the editor (kept in the model so export knows what to drop).
     public bool Removed { get; set; }
@@ -810,8 +952,18 @@ public class StartTransition
         || OriginalIndex < 0
         || Math.Abs(Probability - OriginalProbability) > 0.001f
         || TargetNodeId != OriginalTargetNodeId
+        || !string.Equals(InputCatalog.Normalize(InputEnum),
+            InputCatalog.Normalize(OriginalInputEnum), StringComparison.Ordinal)
         || (KeyTargetTreeIndices.Count > 0
             && !KeyTargetTreeIndices.SequenceEqual(OriginalKeyTargetTreeIndices));
+
+    /// <summary>Probability-selection group: one of these rows is picked when the same
+    /// input fires. On a player tree the engine rolls per input - vanilla node 1 ships
+    /// three Light rows at 33/34/33 even though their keys differ, and most nodes ship
+    /// Light 100 + Heavy 100 (200% per node) - so every row for one input shares a
+    /// single 100% pool. Enemy tickets are one pool per entry, which the dialog handles
+    /// without this key. Shared by the dialog's headers/rebalancing/gates and export.</summary>
+    public string ProbabilityGroupKey => InputCatalog.GroupKey(InputEnum);
 
     public StartTransition Clone()
     {
@@ -884,6 +1036,8 @@ public class ModdedStartEntryInfo
 public class ModdedStartTransitionInfo
 {
     public float Probability { get; set; } = 100f;
+    // Bare EComboTransition name ("Light", "HeavyHold"), "" when the row omits it.
+    public string InputEnum { get; set; } = "";
     public string ConditionClass { get; set; } = "";
     public List<byte> Keys { get; set; } = [];
     public List<int> KeyTargetTreeIndices { get; set; } = [];
@@ -1862,6 +2016,11 @@ public class AnimationParser : IDisposable
 
     private void ScanAttackMoves(string dir, string character, string weaponType, string category, List<MoveInfo> moves)
     {
+        // _old is a legacy bucket, not a real category. The DB scanner already
+        // includes it (so old AttackDB cards reach the library); include the
+        // matching animations too, otherwise those cards have no animation card
+        // to recreate/extend from. Everything else in SkipDirectories stays out.
+        bool legacy = IsLegacyDir(dir);
         foreach (var file in Directory.GetFiles(dir, "*.uasset"))
         {
             var name = Path.GetFileNameWithoutExtension(file);
@@ -1874,17 +2033,25 @@ public class AnimationParser : IDisposable
                 FullPath = gamePath,
                 Character = character,
                 WeaponType = weaponType,
-                Category = category
+                Category = legacy ? "Old" : category
             });
         }
 
         foreach (var subDir in Directory.GetDirectories(dir))
         {
             var subCat = Path.GetFileName(subDir);
-            if (SkipDirectories.Contains(subCat)) continue;
-            ScanAttackMoves(subDir, character, weaponType, subCat, moves);
+            bool isOldDir = subCat.Equals("_old", StringComparison.OrdinalIgnoreCase);
+            if (SkipDirectories.Contains(subCat) && !isOldDir) continue;
+            if (isOldDir) LogDebug($"[LIBRARY] scanning _old anim dir: {subDir}");
+            ScanAttackMoves(subDir, character, weaponType, isOldDir ? "Old" : subCat, moves);
         }
     }
+
+    /// <summary>True when any folder segment is the legacy "_old" bucket.</summary>
+    private static bool IsLegacyDir(string dir) =>
+        dir.Replace('\\', '/')
+           .Split('/', StringSplitOptions.RemoveEmptyEntries)
+           .Any(s => s.Equals("_old", StringComparison.OrdinalIgnoreCase));
 
     public List<string> GetAvailableCharacters()
     {
@@ -2341,6 +2508,15 @@ public class AnimationParser : IDisposable
                 }
             }
 
+            // Capture parse-id -> struct index BEFORE the kept-node renumbering below.
+            // conduitEdges keys/targets are in parse-id space; renumbering mutates the
+            // kept node ids in place, so building this map afterwards makes old conduit
+            // ids collide with the new ids of kept nodes and resolves every conduit
+            // target to the wrong tree.
+            var idToTree = rawNodes
+                .GroupBy(n => n.Id)
+                .ToDictionary(g => g.Key, g => g.First().TreeIndex);
+
             var keptNodes = rawNodes.Where(n => !conduitIds.Contains(n.Id)).ToList();
             var oldToNew = new Dictionary<int, int>();
             for (int i = 0; i < keptNodes.Count; i++)
@@ -2362,9 +2538,6 @@ public class AnimationParser : IDisposable
             // TreeIndex both speak struct indices.
             if (rawNodes.Count > 0)
             {
-                var idToTree = rawNodes
-                    .GroupBy(n => n.Id)
-                    .ToDictionary(g => g.Key, g => g.First().TreeIndex);
                 foreach (var kv in conduitEdges)
                 {
                     if (!idToTree.TryGetValue(kv.Key, out int conduitTree)) continue;
@@ -2559,13 +2732,20 @@ public class AnimationParser : IDisposable
 
                             var st = new StartTransition { OriginalIndex = ti };
 
-                            if (tData.Properties.FirstOrDefault(p => p.Name.Text == "m_ConditionInstance")?.Tag is ObjectProperty cond &&
-                                cond.Value != null)
-                            {
-                                var resolved = cond.Value.ResolvedObject;
-                                if (resolved != null)
-                                    entry.ConditionClass = resolved.Class?.Name.Text ?? resolved.Name.Text ?? "";
-                            }
+                            st.ConditionClass = ResolveConditionClass(tData);
+                            // Header summary is first-row-wins: a row list can mix
+                            // conditioned and unconditional rows, and the last row must not
+                            // overwrite what the entry actually starts with.
+                            if (string.IsNullOrEmpty(entry.ConditionClass)
+                                && !string.IsNullOrEmpty(st.ConditionClass))
+                                entry.ConditionClass = st.ConditionClass;
+
+                            // m_eInputTransition: the input that makes this row fire
+                            // (LMB/RMB/Rush/...). Missing property = "" (leave vanilla).
+                            st.InputEnum = BareInputEnum(
+                                (tData.Properties.FirstOrDefault(p => p.Name.Text == "m_eInputTransition")?.Tag
+                                    as EnumProperty)?.Value.Text);
+                            st.OriginalInputEnum = st.InputEnum;
 
                             if (tData.Properties.FirstOrDefault(p => p.Name.Text == "m_fProbability")?.Tag is FloatProperty fp)
                             {
@@ -3146,6 +3326,10 @@ public class AnimationParser : IDisposable
                         var fp = rSp.Value.OfType<FloatPropertyData>()
                             .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_fProbability");
                         row.Probability = fp?.Value ?? 100f;
+
+                        row.InputEnum = BareInputEnum(rSp.Value.OfType<EnumPropertyData>()
+                            .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_eInputTransition")
+                            ?.Value?.Value?.ToString());
 
                         var cond = rSp.Value.OfType<ObjectPropertyData>()
                             .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_ConditionInstance");
@@ -3732,7 +3916,9 @@ public class AnimationParser : IDisposable
 
         var modToVanilla = BuildModToVanillaMap(vanillaGraph, groupToModded, moddedNodes);
         ApplyModdedRowOverrides(vanillaGraph, moddedNodes, groupToModded, modToVanilla, result);
-        if (!isMainChar && moddedStartEntries is { Count: > 0 })
+        // Start entries exist on player trees too (BP_MainCharComboStartStates), and the
+        // diff only matches by ticket/label, so it is enum-agnostic.
+        if (moddedStartEntries is { Count: > 0 })
             ApplyModdedStartEntries(vanillaGraph, moddedStartEntries, modToVanilla, result);
 
         LogDebug($"[IMPORT] ApplyModdedComboToVanilla: {moveChanges} moves, {retargetChanges} retargets, {unmatched} unmatched, {surfaced} surfaced, {result.AiChanges} AI payload(s), {result.ChanceOverrides} chance override(s), {result.CondClears + result.CondInstances} cond rewire(s), {result.CondRetargets} retarget swap(s), {result.CondParamWrites} cond param(s), {result.StartTransitionsChanged} start row(s) ({weaponName})");
@@ -4123,6 +4309,16 @@ public class AnimationParser : IDisposable
                     Math.Abs(mt.Probability - st.Probability) > 0.001f)
                 {
                     st.Probability = mt.Probability;
+                    changed = true;
+                }
+
+                // Input-only edits: without this a mod that just swaps which button
+                // opens a start state would import as "no changes".
+                if (!string.Equals(InputCatalog.Normalize(mt.InputEnum),
+                        InputCatalog.Normalize(st.InputEnum), StringComparison.Ordinal))
+                {
+                    LogDebug($"[IMPORT] START INPUT: '{v.Label}' row {i + 1} '{(string.IsNullOrEmpty(st.InputEnum) ? "None" : st.InputEnum)}' -> '{(string.IsNullOrEmpty(mt.InputEnum) ? "None" : mt.InputEnum)}'");
+                    st.InputEnum = mt.InputEnum;
                     changed = true;
                 }
 
@@ -4572,22 +4768,18 @@ public class AnimationParser : IDisposable
         }
     }
 
+    /// <summary>Display label for an m_eInputTransition FName ("EComboTransition::Light"
+    /// or a bare "Light"). Unknown values pass through verbatim.</summary>
     internal static string InputNameFromEnumRaw(string? raw)
+        => InputCatalog.LabelFor(raw);
+
+    /// <summary>Bare enum name from an m_eInputTransition FName; "" when the property is
+    /// missing. "None" is kept distinct from "" so the picker can tell "explicitly no
+    /// input" from "field absent, leave vanilla".</summary>
+    internal static string BareInputEnum(string? raw)
     {
         if (string.IsNullOrEmpty(raw)) return "";
-        var name = raw.Contains("::") ? raw.Split("::")[^1] : raw;
-        return name switch
-        {
-            "Light" => "LMB",
-            "Heavy" => "RMB",
-            "HeavyHold" => "RMB Hold",
-            "HeavyAlt" => "RMB",
-            "Special" => "S",
-            "Dodge" => "Shift",
-            "Throw" => "Q",
-            "None" or "" => "",
-            _ => name
-        };
+        return raw.Contains("::") ? raw.Split("::")[^1] : raw;
     }
 
 
@@ -4647,6 +4839,48 @@ public class AnimationParser : IDisposable
             return skeleton != null;
         }
         catch { return false; }
+    }
+
+    /// <summary>
+    /// Lightweight length read used by the Create AttackDB wizard (it only needs a
+    /// duration, not the full track conversion LoadAnimation performs). AttackDB paths
+    /// resolve through m_Animation first, exactly like LoadAnimation.
+    /// </summary>
+    public (float Duration, int NumFrames)? GetAnimationInfo(string gamePath)
+    {
+        if (_provider == null || string.IsNullOrEmpty(gamePath)) return null;
+
+        if (MoveInfo.IsAttackDbGamePath(gamePath))
+        {
+            var resolved = ResolveAnimationFromDB(gamePath);
+            if (string.IsNullOrEmpty(resolved)) return null;
+            gamePath = resolved;
+        }
+
+        try
+        {
+            var obj = LoadAnimSequence(gamePath);
+            if (obj == null && AnimFallbacks.TryGetValue(gamePath, out var fallback))
+                obj = LoadAnimSequence(fallback);
+            if (obj == null) return null;
+
+            var skeletonObj = obj.Skeleton?.Load<USkeleton>();
+            if (skeletonObj == null) return null;
+            var animSet = skeletonObj.ConvertAnims(obj);
+            if (animSet.Sequences.Count == 0) return null;
+
+            var seq = animSet.Sequences[0];
+            int numFrames = seq.NumFrames;
+            float fps = seq.FramesPerSecond > 0 ? seq.FramesPerSecond : 30f;
+            float duration = seq.AnimEndTime > 0
+                ? seq.AnimEndTime
+                : (numFrames > 1 ? (numFrames - 1) / fps : 1f / fps);
+            return (duration, numFrames);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public AnimationJsonData? LoadAnimation(string gamePath)

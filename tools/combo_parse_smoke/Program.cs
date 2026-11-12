@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using SifuMovesetEditor;
@@ -14,6 +15,21 @@ internal static class Program
         ("Game/DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo", "BareHands"),
         ("Game/DB/AI/Archetypes/FireDisciple/Variations/Combo/FireDisciple_Base_Combo", "BareHands"),
         ("Game/DB/_MainChar/Combos/MainChar_ComboTree", "BareHands"),
+        ("Game/DB/AI/Archetypes/Grunt/_Advanced/Grunt_Advanced_Combo", "Grunt"),
+    };
+
+    // Conduit routing must stay in raw struct-index space. Regression for the
+    // renumbering bug: idToTree used to be built after kept nodes were renumbered,
+    // so these resolved to (2,9), (19,21), (15,24) and 28 vanished entirely.
+    private static readonly Dictionary<string, (int conduit, int[] targets)[]> ExpectedConduits = new()
+    {
+        ["Game/DB/AI/Archetypes/Grunt/_Advanced/Grunt_Advanced_Combo"] = new[]
+        {
+            (7, new[] { 2, 8 }),
+            (16, new[] { 17, 18 }),
+            (20, new[] { 14, 21 }),
+            (28, new[] { 29 }),
+        },
     };
 
     private static int Main(string[] args)
@@ -78,6 +94,24 @@ internal static class Program
                     }
                 }
                 Console.WriteLine($"    conduit[{kv.Key}] -> [{string.Join(", ", kv.Value)}]");
+            }
+
+            if (ExpectedConduits.TryGetValue(path, out var expectedConduits))
+            {
+                foreach (var (conduit, want) in expectedConduits)
+                {
+                    if (!graph.ConduitTargets.TryGetValue(conduit, out var got))
+                    {
+                        Console.WriteLine($"  FAIL: conduit[{conduit}] missing, expected [{string.Join(", ", want)}]");
+                        fail = 1;
+                    }
+                    else if (!want.SequenceEqual(got))
+                    {
+                        Console.WriteLine($"  FAIL: conduit[{conduit}] -> [{string.Join(", ", got)}], "
+                            + $"expected [{string.Join(", ", want)}]");
+                        fail = 1;
+                    }
+                }
             }
 
             var allRows = graph.TreeRows.Values.SelectMany(r => r).ToList();

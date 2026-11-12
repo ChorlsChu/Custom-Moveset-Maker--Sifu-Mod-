@@ -4,15 +4,17 @@ using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Media;
 
 namespace SifuMovesetEditor;
 
 /// <summary>
-/// Editor for m_ComboStartNodesContainer: view tickets, edit transition probability /
-/// target, add transitions (vanilla Option C pattern), remove transitions.
-/// MVP: no entry creation, no condition/label/ticket editing; multi-key conditional
-/// rows are view-only. Edits apply to a deep copy - OK commits, Cancel discards.
+/// Editor for m_ComboStartNodesContainer: view start states / tickets, edit transition
+/// probability / target, add transitions (vanilla Option C pattern), remove transitions.
+/// Works for both enemy trees (BP_AIAttackTIcketNames) and the player tree
+/// (BP_MainCharComboStartStates) - the container layout is identical. Edits apply to a
+/// deep copy - OK commits, Cancel discards.
 /// </summary>
 public partial class StartEntriesDialog : Window
 {
@@ -21,6 +23,9 @@ public partial class StartEntriesDialog : Window
     // Beginner view setting: when false, transitions targeting AI action/event nodes
     // are hidden from this dialog (footnote keeps their probability share visible).
     private readonly bool _showAiNodes;
+    // Player tree (DB/_MainChar) vs enemy archetype tree. Only changes wording and which
+    // start-state enum the picker writes - the container structure is identical.
+    private readonly bool _isMainCharGraph;
 
     /// <summary>Edited entries (deep copy). Set only when OK confirms actual changes.</summary>
     public List<StartEntry>? Result { get; private set; }
@@ -92,13 +97,32 @@ public partial class StartEntriesDialog : Window
 
     private sealed class TicketOption
     {
+        public string EnumName { get; init; } = AiTicketEnum;
         public int EnumValue { get; init; }
         public string Label { get; init; } = "";
-        public string Value => $"BP_AIAttackTIcketNames::NewEnumerator{EnumValue}";
+        public string Value => $"{EnumName}::NewEnumerator{EnumValue}";
         public override string ToString() => $"{EnumValue} · {Label}";
     }
 
-    // The 51 BP_AIAttackTIcketNames values observed in combo start entries
+    private const string AiTicketEnum = "BP_AIAttackTIcketNames";
+    private const string MainCharStartStateEnum = "BP_MainCharComboStartStates";
+
+    // Player start states (BP_MainCharComboStartStates). The enum asset itself is not in
+    // the extracted paks, so these are the seven values vanilla player trees reference:
+    // GetAllEntries over DB/_MainChar/Combos. Labels are overridden by each entry's own
+    // m_ParentNodeName when the tree carries one.
+    private static readonly (int Enum, string Label)[] MainCharStartStateCatalog =
+    {
+        (0, "Idle"),
+        (4, "Dodge"),
+        (5, "Grab"),
+        (6, "Rush"),
+        (7, "KnockedDown"),
+        (10, "PushInstigator"),
+        (12, "Default"),
+    };
+
+    // The 51 BP_AIAttackTIcketNames values observed in enemy combo start entries
     // (docs/TICKETS.md). Other enum numbers are never routed to a combo.
     private static readonly (int Enum, string Label)[] TicketCatalog =
     {
@@ -155,6 +179,70 @@ public partial class StartEntriesDialog : Window
         (84, "Indirect Opponent Boss Version"),
     };
 
+    /// <summary>True for a player combo tree. Shared GraphIdentity helper: the tree's
+    /// own SourceGamePath first, the player weapon/stance tags as the old-save fallback
+    /// (a graph restored from an old save may not carry a SourceGamePath yet).</summary>
+    private static bool IsMainCharGraph(ComboGraph graph) => GraphIdentity.IsMainChar(graph);
+
+    /// <summary>Enum the container's m_EnumState.m_Value names are written against.
+    /// Read from the tree's own entries first so a cloned or mod-imported tree keeps its
+    /// enum; otherwise fall back to the AI ticket enum or the player start-state enum.</summary>
+    private static string ResolveTicketEnumName(ComboGraph graph)
+    {
+        var existing = graph.StartEntries?
+            .Select(e => e.TicketEnumValue)
+            .FirstOrDefault(v => !string.IsNullOrEmpty(v) && v.Contains("::"));
+        if (existing != null) return existing.Split("::")[0];
+        return IsMainCharGraph(graph) ? MainCharStartStateEnum : AiTicketEnum;
+    }
+
+    /// <summary>Parses "Enum::NewEnumeratorN" into N.</summary>
+    private static bool TryParseEnumValue(string ticketEnumValue, out int value)
+    {
+        value = -1;
+        if (string.IsNullOrEmpty(ticketEnumValue)) return false;
+        var parts = ticketEnumValue.Split("::");
+        if (parts.Length < 2) return false;
+        const string prefix = "NewEnumerator";
+        string tail = parts[^1];
+        if (!tail.StartsWith(prefix, StringComparison.Ordinal)) return false;
+        return int.TryParse(tail[prefix.Length..], NumberStyles.Integer,
+            CultureInfo.InvariantCulture, out value);
+    }
+
+    /// <summary>Picker options for this graph's enum. Enemy trees use the researched AI
+    /// ticket list; player trees list the known start states. On player trees a label the
+    /// container itself carries (m_ParentNodeName) wins over the built-in guess - enemy
+    /// entry labels may carry designer suffixes, so those keep the catalog text. Values a
+    /// tree already uses that the catalog does not list stay selectable.</summary>
+    private static List<TicketOption> BuildTicketOptions(ComboGraph graph, string enumName)
+    {
+        var labelByValue = new Dictionary<int, string>();
+        foreach (var entry in graph.StartEntries ?? Enumerable.Empty<StartEntry>())
+        {
+            if (TryParseEnumValue(entry.TicketEnumValue, out int value) && !string.IsNullOrEmpty(entry.Label))
+                labelByValue[value] = entry.Label;
+        }
+
+        bool isMainChar = IsMainCharGraph(graph);
+        var catalog = isMainChar ? MainCharStartStateCatalog : TicketCatalog;
+        var options = new List<TicketOption>();
+        var seen = new HashSet<int>();
+        foreach (var (num, label) in catalog)
+        {
+            options.Add(new TicketOption
+            {
+                EnumName = enumName,
+                EnumValue = num,
+                Label = isMainChar && labelByValue.TryGetValue(num, out var own) ? own : label
+            });
+            seen.Add(num);
+        }
+        foreach (var kv in labelByValue.Where(kv => !seen.Contains(kv.Key)).OrderBy(kv => kv.Key))
+            options.Add(new TicketOption { EnumName = enumName, EnumValue = kv.Key, Label = kv.Value });
+        return options;
+    }
+
     public StartEntriesDialog(ComboGraph graph, bool showAiNodes, Action<int>? revealNode = null,
         List<StartEntry>? resumeEntries = null)
     {
@@ -165,11 +253,51 @@ public partial class StartEntriesDialog : Window
         // Resume path: the caller passes the live deep copy from a suspended dialog
         // (pick-on-graph flow) so every edit survives; otherwise clone from the graph.
         _entries = resumeEntries ?? graph.StartEntries.Select(e => e.Clone()).ToList();
-        txtSubtitle.Text = $"{_entries.Count} tickets · {graph.WeaponName} · {graph.Nodes.Count} nodes{AiHiddenSuffix()}";
-        foreach (var (num, label) in TicketCatalog)
-            cmbTicket.Items.Add(new TicketOption { EnumValue = num, Label = label });
+        _isMainCharGraph = IsMainCharGraph(graph);
+        string noun = _isMainCharGraph ? "start states" : "tickets";
+        txtSubtitle.Text = $"{_entries.Count} {noun} · {graph.WeaponName} · {graph.Nodes.Count} nodes{AiHiddenSuffix()}";
+        foreach (var opt in BuildTicketOptions(graph, ResolveTicketEnumName(graph)))
+            cmbTicket.Items.Add(opt);
+        ApplyGraphWording();
         Rebuild();
         RefreshGlobalStatus();
+    }
+
+    /// <summary>Player trees are keyed by the state the player is in, enemy trees by the
+    /// ticket the AI brain requests - same container, different runtime source.</summary>
+    private void ApplyGraphWording()
+    {
+        if (_isMainCharGraph)
+        {
+            txtNote.Text = "Each entry is one player start state "
+                + "(BP_MainCharComboStartStates::NewEnumeratorN): the state the player is in when "
+                + "this combo can begin. Each row carries the input that fires it (LMB/RMB/Rush/…) "
+                + "and rows for the same input share one 100% selection pool - "
+                + "untouched entries are never rebalanced. Targets are limited to attack nodes "
+                + "already in this moveset.";
+            txtEntryLabel.ToolTip = "Entry label (m_ParentNodeName). Defaults to the start-state "
+                + "label when left empty. Must be unique in this container.";
+            cmbTicket.ToolTip = "Player start state this entry belongs to. Written as "
+                + MainCharStartStateEnum + "::NewEnumeratorN.";
+            // New entries clone the container's first single-key row, then export rewrites
+            // the state enum, label and every row's input from the model.
+            btnAddEntry.ToolTip = "Adds an entry cloned from the container's template row. "
+                + "Its state, label and row inputs are then written from what you pick here. "
+                + "Retarget an existing start state first - the player only has these 7 states.";
+            if (string.IsNullOrEmpty(txtAuthorHint.Text))
+                txtAuthorHint.Text = "Tip: retarget an existing state - the player has 7 start states.";
+        }
+        else
+        {
+            txtNote.Text = "Each entry is one AI ticket: when the brain requests it, one of its "
+                + "transitions is picked by probability (vanilla always sums to 100%). Targets are "
+                + "limited to attack nodes already in this moveset - create new attack nodes on the "
+                + "canvas first. Tickets only fire when the AI brain requests them.";
+            txtEntryLabel.ToolTip = "Entry label (m_ParentNodeName). Defaults to the ticket label "
+                + "when left empty. Must be unique in this container.";
+            cmbTicket.ToolTip = "AI ticket the brain must request for this entry to fire. Written as "
+                + AiTicketEnum + "::NewEnumeratorN.";
+        }
     }
 
     private void Rebuild()
@@ -232,7 +360,9 @@ public partial class StartEntriesDialog : Window
                 FontSize = 11,
                 Margin = new Thickness(8, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center,
-                ToolTip = entry.TicketEnumValue + "\nThe AI brain must request this ticket for it to fire."
+                ToolTip = entry.TicketEnumValue + (_isMainCharGraph
+                    ? "\nThe player must be in this state for these starters to fire."
+                    : "\nThe AI brain must request this ticket for it to fire.")
             };
             left.Children.Add(ticketTb);
         }
@@ -246,7 +376,9 @@ public partial class StartEntriesDialog : Window
             Margin = new Thickness(8, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
             ToolTip = string.IsNullOrEmpty(entry.ConditionClass)
-                ? "No condition: this ticket can fire whenever the brain requests it."
+                ? (_isMainCharGraph
+                    ? "No condition: any row of this state can fire."
+                    : "No condition: this ticket can fire whenever the brain requests it.")
                 : $"Condition class: {entry.ConditionClass}\n(Instanced condition, not editable in this version.)"
                 + (string.IsNullOrEmpty(entry.PhaseName) || entry.PhaseName == "None" ? "" : $"\nPhase: {entry.PhaseName}")
         };
@@ -260,13 +392,45 @@ public partial class StartEntriesDialog : Window
         // --- transition rows ---
         var rowsPanel = new StackPanel { Margin = new Thickness(10, 6, 10, 0) };
         var liveRows = entry.Transitions.Where(t => !t.Removed).ToList();
-        // Add-row is allowed when every live row is either unconditional (single key
-        // 255 - the ParryProto clone recipe) or multi-key (export collapses the
-        // cloned template to a single unconditional key-255 target). Single-key
-        // conditional rows stay blocked: the export clone would inherit their
-        // condition instance and the new row would not be unconditional.
-        bool canAdd = liveRows.Count > 0 && liveRows.All(t => t.KeyByte == 255 || t.KeyCount > 1);
+        // Add-row is allowed when the row the exporter would clone can carry a new
+        // transition: unconditional (key 255), multi-key (a conditioned map is copied
+        // with its full key set; a legacy row with no per-key data is collapsed by
+        // export), or a conditioned single-key row (cloned as-is - the new row joins
+        // the same input pool and competes by probability, e.g. MainChar Idle's
+        // Light->28 / Heavy->29 rows). A bare single-key row with no condition stays
+        // blocked: cloning it would duplicate that key route instead of splitting a
+        // probability.
+        var templateRow = entry.CloneTemplateRow();
+        bool canAdd = templateRow != null && StartEntry.CanCloneTemplate(templateRow, entry.ConditionClass);
         bool canDelete = liveRows.Count > 1;
+
+        // Rows sharing input + key + condition are a legitimate vanilla pattern: node 1
+        // ships three Light rows at 33/34/33 so one press can open three different
+        // combos. Surface it (informational, never blocking) so an accidental duplicate
+        // does not silently bias the starter.
+        var dupGroups = liveRows
+            .GroupBy(t => (Input: InputCatalog.Normalize(t.InputEnum), t.KeyByte,
+                Cond: (t.ConditionClass ?? "").Trim()))
+            .Where(g => g.Count() > 1)
+            .ToList();
+        if (dupGroups.Count > 0)
+        {
+            int dupRows = dupGroups.Sum(g => g.Count());
+            string inputs = string.Join(", ", dupGroups
+                .Select(g => string.IsNullOrEmpty(InputCatalog.LabelFor(g.Key.Input))
+                    ? "(no input)" : InputCatalog.LabelFor(g.Key.Input))
+                .Distinct());
+            rowsPanel.Children.Add(new TextBlock
+            {
+                Text = $"ⓘ {dupRows} rows share the same input + key ({inputs}) - they "
+                    + "compete by probability. This is how vanilla splits a starter "
+                    + "(node 1: three Light rows at 33/34/33); check the split is what you want.",
+                Foreground = DimBrush,
+                FontSize = 10,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 2)
+            });
+        }
 
         var normBtn = new Button
         {
@@ -275,8 +439,9 @@ public partial class StartEntriesDialog : Window
             FontSize = 11,
             Padding = new Thickness(8, 3, 8, 3),
             Margin = new Thickness(6, 0, 0, 0),
-            ToolTip = "Scale all rows proportionally so they sum to exactly 100% - "
-                + "keeps your relative values. Only active when the sum is off."
+            ToolTip = "Scale the rows proportionally so the entry (enemy) or each "
+                + "input pool (player) totals exactly 100% - keeps your "
+                + "relative values. Only active when a total is off."
         };
         var evenBtn = new Button
         {
@@ -285,17 +450,17 @@ public partial class StartEntriesDialog : Window
             FontSize = 11,
             Padding = new Thickness(8, 3, 8, 3),
             Margin = new Thickness(6, 0, 0, 0),
-            ToolTip = "Divide 100% evenly across all rows. Overwrites manually typed values - "
-                + "use Σ→100% to keep ratios instead."
+            ToolTip = "Divide 100% evenly across all rows (or across each player trigger "
+                + "group). Overwrites manually typed values - use Σ→100% to keep ratios instead."
         };
         normBtn.Click += (_, _) =>
         {
-            NormalizeTo100(entry);
+            NormalizeTo100(entry, _isMainCharGraph);
             Rebuild();
         };
         evenBtn.Click += (_, _) =>
         {
-            EvenSplit(entry);
+            EvenSplit(entry, _isMainCharGraph);
             Rebuild();
         };
         var resetBtn = new Button
@@ -361,19 +526,20 @@ public partial class StartEntriesDialog : Window
         };
         if (!canAdd)
         {
-            addBtn.ToolTip = liveRows.Count == 0
+            addBtn.ToolTip = templateRow == null
                 ? "Vanilla-empty ticket (no transitions to clone). Export builds new rows by cloning "
-                  + "the first vanilla transition as a template, so there is nothing to add here."
-                : "Entries containing a condition-routed single-key row (a key other than 255 "
-                  + "on a one-target row) can't take a new row - the export clone would inherit that "
-                  + "condition and the new row would not be unconditional.";
+                  + "the entry's template row, so there is nothing to add here."
+                : $"Row {templateRow.OriginalIndex + 1} is this entry's template (first live row) and is a "
+                  + "single-key route without a condition - cloning it would duplicate that key instead of "
+                  + "splitting a probability. Give it a condition or key 255 first.";
         }
         else
         {
-            addBtn.ToolTip = "Give this ticket another candidate. The new row starts at 0% - give it a "
-                + "probability yourself, or click Σ→100% / Even split to rebalance. The new row starts "
-                + "unconditional (key 255); on multi-key entries the export collapses the cloned "
-                + "template row to a single key-255 target.";
+            addBtn.ToolTip = $"Give this ticket another candidate. The new row starts at 0% and copies "
+                + $"row {templateRow!.OriginalIndex + 1}'s input, condition and full key map (every condition "
+                + "outcome and its target). Retarget the outcomes you want, then give it a probability "
+                + "(or click Σ→100% / Even split). Rows sharing the same input, key and condition compete "
+                + "by probability, which is how vanilla splits a starter.";
             addBtn.Click += (_, _) => AddTransition(entry);
         }
         var delEntryBtn = new Button
@@ -416,6 +582,8 @@ public partial class StartEntriesDialog : Window
         // 84 (was 72): the 62px probability box + % label need ~75px - at 72 the %
         // bled into the target column. Width comes from the flexible chain column.
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(84) });
+        // m_eInputTransition: the button that fires this row (LMB/RMB/Rush/...).
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(132) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(260) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(70) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -440,7 +608,10 @@ public partial class StartEntriesDialog : Window
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center,
             Text = FormatProb(t.Probability),
-            ToolTip = "Probability this target is picked when the ticket fires. Vanilla entries always sum to 100% per entry."
+            ToolTip = _isMainCharGraph
+                ? "Probability this target is picked when the player's input fires. Rows sharing "
+                  + "the same input form one selection pool that totals 100%."
+                : "Probability this target is picked when the ticket fires. Vanilla entries always sum to 100% per entry."
         };
         var normalBorder = BorderBrushInput;
         InputFilter.ApplyFloat(probBox);
@@ -472,6 +643,110 @@ public partial class StartEntriesDialog : Window
         Grid.SetColumn(probCell, 1);
         grid.Children.Add(probCell);
 
+        // input (m_eInputTransition). Stored as the bare enum name; "" and "None" are
+        // the same choice. Unknown names load as a "(custom)" item instead of being
+        // rounded down to None.
+        var inputCombo = new ComboBox
+        {
+            Style = (Style)FindResource("DarkCombo"),
+            Width = 118,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        inputCombo.PreviewMouseWheel += (_, e) => { if (!inputCombo.IsDropDownOpen) e.Handled = true; };
+        var inputWarning = new TextBlock
+        {
+            FontSize = 11,
+            Foreground = WarnBrush,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(3, 0, 0, 0)
+        };
+        bool suppressInput = false;
+        string CustomItemLabel() => $"{t.InputEnum} (custom)";
+
+        void ShowInputState()
+        {
+            var name = InputCatalog.Normalize(t.InputEnum);
+            if (!InputCatalog.IsKnown(name))
+            {
+                inputWarning.Text = "⚠";
+                inputWarning.ToolTip = $"'{t.InputEnum}' is not a known EComboTransition value. "
+                    + "It is written verbatim - the engine only reacts to names it declares.";
+            }
+            else if (!InputCatalog.IsVanillaUsed(name))
+            {
+                inputWarning.Text = "⚠";
+                inputWarning.ToolTip = $"{name} is declared by EComboTransition but no vanilla combo "
+                    + "asset uses it. It will be written, but the engine may ignore it.";
+            }
+            else
+            {
+                inputWarning.Text = "";
+                inputWarning.ToolTip = null;
+            }
+            inputCombo.ToolTip = string.IsNullOrEmpty(t.InputEnum) || InputCatalog.Normalize(t.InputEnum) == "None"
+                ? "No input: this row fires when its condition matches (or unconditionally when key 255)."
+                : $"Input that fires this row: {name}.";
+        }
+
+        void FillInputItems()
+        {
+            inputCombo.Items.Clear();
+            foreach (var c in InputCatalog.Choices) inputCombo.Items.Add(c.MenuLabel);
+            if (!InputCatalog.IsKnown(t.InputEnum) && !string.IsNullOrEmpty(t.InputEnum))
+                inputCombo.Items.Insert(0, CustomItemLabel());
+            inputCombo.Items.Add(InputCatalog.CustomMenuLabel);
+        }
+
+        FillInputItems();
+        suppressInput = true;
+        inputCombo.SelectedItem = InputCatalog.IsKnown(t.InputEnum)
+            ? InputCatalog.MenuLabelFor(t.InputEnum)
+            : CustomItemLabel();
+        suppressInput = false;
+        ShowInputState();
+
+        inputCombo.SelectionChanged += (_, _) =>
+        {
+            if (suppressInput || inputCombo.SelectedItem is not string sel) return;
+            if (sel == InputCatalog.CustomMenuLabel)
+            {
+                var raw = InputPrompt.Show(this, "Custom input value",
+                    "Raw EComboTransition name (for example Special or Dodge).\n"
+                        + "Only names EComboTransition declares do anything; anything else is written verbatim.",
+                    t.InputEnum);
+                if (raw == null)
+                {
+                    // Cancel: put the picker back on the row's current value.
+                    suppressInput = true;
+                    inputCombo.SelectedItem = InputCatalog.IsKnown(t.InputEnum)
+                        ? InputCatalog.MenuLabelFor(t.InputEnum)
+                        : CustomItemLabel();
+                    suppressInput = false;
+                    return;
+                }
+                t.InputEnum = raw.Length == 0 ? InputCatalog.None.EnumName : raw;
+                Rebuild();
+                return;
+            }
+            var choice = InputCatalog.Choices.FirstOrDefault(c => c.MenuLabel == sel);
+            if (choice == null) return;
+            t.InputEnum = choice.EnumName;
+            ShowInputState();
+            RefreshGlobalStatus();
+        };
+
+        var inputCell = new DockPanel
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Left
+        };
+        DockPanel.SetDock(inputCombo, Dock.Left);
+        inputCell.Children.Add(inputCombo);
+        inputCell.Children.Add(inputWarning);
+        Grid.SetColumn(inputCell, 2);
+        grid.Children.Add(inputCell);
+
         // key badge (built first so per-key combo edits can refresh its tooltip)
         var key = new TextBlock
         {
@@ -485,14 +760,14 @@ public partial class StartEntriesDialog : Window
             key.Text = t.KeyCount == 1 ? $"key {t.KeyByte}" : $"{t.KeyCount} keys";
             key.ToolTip = t.KeyCount > 1
                 ? $"Multi-key conditional map: {t.TargetSummary}\n"
-                    + "Use each key's dropdown to re-route a starter (your [new] nodes are listed), "
-                    + "or + to add a probability row that starts unconditionally."
+                    + "Use each key's dropdown to re-route a starter (your [new] nodes are listed). "
+                    + "+ duplicates this row's condition and every key at 0% so you can retarget them."
                 : t.KeyByte == 255
                     ? "Unconditional (key 255): chosen purely by probability."
                     : $"Condition outcome {t.KeyByte}: the engine routes to this target when the condition returns {t.KeyByte}.";
         }
         RefreshKeyBadge();
-        Grid.SetColumn(key, 3);
+        Grid.SetColumn(key, 4);
         grid.Children.Add(key);
 
         // target
@@ -560,7 +835,7 @@ public partial class StartEntriesDialog : Window
                 line.Children.Add(CreatePickButton(t, ki));
                 stack.Children.Add(line);
             }
-            Grid.SetColumn(stack, 2);
+            Grid.SetColumn(stack, 3);
             grid.Children.Add(stack);
         }
         else if (t.KeyCount > 1)
@@ -576,7 +851,7 @@ public partial class StartEntriesDialog : Window
                 ToolTip = "Conditional routing: one target per condition outcome (key → node). "
                     + "Loaded from a save made before per-key editing - re-parse the tree to edit.\n" + t.TargetSummary
             };
-            Grid.SetColumn(info, 2);
+            Grid.SetColumn(info, 3);
             grid.Children.Add(info);
         }
         else
@@ -584,14 +859,18 @@ public partial class StartEntriesDialog : Window
             var combo = new ComboBox
             {
                 Style = (Style)FindResource("DarkCombo"),
-                Width = 252,
+                // 190: the ◎ jump + ⌖ pick buttons now share the target column with the
+                // combo (the input column took the old button column's space).
+                Width = 190,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Center
             };
             combo.PreviewMouseWheel += (_, e) => { if (!combo.IsDropDownOpen) e.Handled = true; };
             combo.ToolTip = t.OriginalIndex < 0
-                ? "New row: at export this clones the entry's first row; multi-key templates are collapsed "
-                    + "to a single unconditional key-255 target. Pick where this row's combo starts."
+                ? "New row: export clones the entry's first row, then applies this row's input, key "
+                    + "and target. A conditioned template keeps its condition; an old multi-key template "
+                    + "without a per-key model is collapsed to one unconditional key-255 row. "
+                    + "Pick where this row's combo starts."
                 : _showAiNodes
                     ? "Target node (attack, action or event nodes; 'new' = created in this editor, assigned a tree index on export)."
                     : "Target node (attack nodes only; 'new' = created in this editor, assigned a tree index on export).";
@@ -611,7 +890,7 @@ public partial class StartEntriesDialog : Window
             void UpdateChain()
             {
                 string preview = ChainPreview(t.TargetNodeId, t.TargetTreeIndex, t.TargetName);
-                chain.Text = t.OriginalIndex < 0 && t.TargetNodeId >= 0
+                chain.Text = t.OriginalIndex < 0 && t.KeyByte == 255 && t.TargetNodeId >= 0
                     ? $"(unconditional) {preview}"
                     : preview;
             }
@@ -632,18 +911,17 @@ public partial class StartEntriesDialog : Window
             };
             UpdateChain();
 
-            Grid.SetColumn(combo, 2);
-            grid.Children.Add(combo);
             var btnCell = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
                 VerticalAlignment = VerticalAlignment.Center
             };
+            btnCell.Children.Add(combo);
             btnCell.Children.Add(jumpBtn);
             btnCell.Children.Add(CreatePickButton(t, -1));
             Grid.SetColumn(btnCell, 3);
             grid.Children.Add(btnCell);
-            Grid.SetColumn(chain, 4);
+            Grid.SetColumn(chain, 5);
             grid.Children.Add(chain);
 
             if (_focusNewIn == entry && t.OriginalIndex < 0)
@@ -675,7 +953,7 @@ public partial class StartEntriesDialog : Window
         };
         if (canDelete)
             del.Click += (_, _) => RemoveTransition(entry, t);
-        Grid.SetColumn(del, 5);
+        Grid.SetColumn(del, 6);
         grid.Children.Add(del);
 
         return grid;
@@ -683,11 +961,7 @@ public partial class StartEntriesDialog : Window
 
     /// <summary>True when the per-key parallel lists line up with KeyCount (they are
     /// empty on saves made before per-key editing existed).</summary>
-    private static bool HasKeyModel(StartTransition t)
-        => t.Keys.Count == t.KeyCount
-            && t.KeyTargetTreeIndices.Count == t.KeyCount
-            && t.KeyTargetNodeIds.Count == t.KeyCount
-            && t.KeyTargetNames.Count == t.KeyCount;
+    private static bool HasKeyModel(StartTransition t) => t.HasKeyModel;
 
     private static bool IsAiNode(ComboNode n) => n.IsActionNode || n.IsEventNode;
 
@@ -934,22 +1208,36 @@ public partial class StartEntriesDialog : Window
         var rawOuts = _graph.Edges.Where(e => e.FromNodeId == nodeId).ToList();
         // Beginner view: distinguish "links exist but all go to hidden AI nodes" from
         // a genuinely terminal node.
+        string preview;
         if (!_showAiNodes && rawOuts.Count > 0
             && rawOuts.All(e => IsHiddenAiNodeId(e.ToNodeId)))
-            return "→ (AI targets hidden)";
-        var outs = rawOuts.Where(e => !IsHiddenAiNodeId(e.ToNodeId)).ToList();
-        if (outs.Count == 0) return "→ (no outgoing links - ends the combo)";
-        var names = outs.Take(3).Select(e =>
-            NodeName(_graph.Nodes.FirstOrDefault(x => x.Id == e.ToNodeId))
-            + (string.IsNullOrEmpty(e.InputName) ? "" : $" [{e.InputName}]"));
-        return "→ " + string.Join(", ", names) + (outs.Count > 3 ? " …" : "");
+        {
+            preview = "→ (AI targets hidden)";
+        }
+        else
+        {
+            var outs = rawOuts.Where(e => !IsHiddenAiNodeId(e.ToNodeId)).ToList();
+            if (outs.Count == 0) preview = "→ (no outgoing links - ends the combo)";
+            else
+            {
+                var names = outs.Take(3).Select(e =>
+                    NodeName(_graph.Nodes.FirstOrDefault(x => x.Id == e.ToNodeId))
+                    + (string.IsNullOrEmpty(e.InputName) ? "" : $" [{e.InputName}]"));
+                preview = "→ " + string.Join(", ", names) + (outs.Count > 3 ? " …" : "");
+            }
+        }
+        // A target nothing links to can only be entered from this container. Say so
+        // instead of leaving the row looking unfinished - the row's own input column
+        // says which button fires it.
+        bool hasIncoming = _graph.Edges.Any(e => e.ToNodeId == nodeId);
+        return hasIncoming ? preview : "start entry only · " + preview;
     }
 
     private void AddEntry_Click(object sender, RoutedEventArgs e)
     {
         if (cmbTicket.SelectedItem is not TicketOption opt)
         {
-            txtAuthorHint.Text = "Pick a ticket first.";
+            txtAuthorHint.Text = _isMainCharGraph ? "Pick a start state first." : "Pick a ticket first.";
             txtAuthorHint.Foreground = RedBrush;
             return;
         }
@@ -984,6 +1272,9 @@ public partial class StartEntriesDialog : Window
                 {
                     OriginalIndex = -1,
                     Probability = 100,
+                    // Explicit None: the exported entry clones a template row that may
+                    // carry an input (e.g. Light), and "" would keep that clone's value.
+                    InputEnum = InputCatalog.None.EnumName,
                     KeyByte = 255,
                     KeyCount = 1,
                     TargetNodeId = -1,
@@ -1016,6 +1307,7 @@ public partial class StartEntriesDialog : Window
         foreach (var t in entry.Transitions)
         {
             t.Probability = t.OriginalProbability;
+            t.InputEnum = t.OriginalInputEnum;
             t.TargetNodeId = t.OriginalTargetNodeId;
             t.TargetTreeIndex = t.OriginalTargetTreeIndex;
             t.TargetName = t.OriginalTargetName;
@@ -1045,22 +1337,55 @@ public partial class StartEntriesDialog : Window
 
     private void AddTransition(StartEntry entry)
     {
-        var first = entry.Transitions.FirstOrDefault(t => !t.Removed);
-        if (first == null) return;
-        entry.Transitions.Add(new StartTransition
-        {
-            OriginalIndex = -1,
-            Probability = 0,
-            // New rows export unconditionally (multi-key templates are collapsed to a
-            // single key-255 entry; single-key templates are already the 255 rows) -
-            // the badge should say so instead of cloning the first row's key.
-            KeyByte = 255,
-            KeyCount = 1,
-            TargetNodeId = -1,
-            TargetTreeIndex = -1
-        });
+        // Export clones this entry's template row (lowest live vanilla index) for added
+        // rows, so inherit that row's profile - the badge and the written row agree even
+        // when vanilla row 1 was deleted. A previous added row may come first in the
+        // list, so CloneTemplateRow sorts by OriginalIndex (added rows last).
+        var template = entry.CloneTemplateRow();
+        if (template == null) return;
+        // A group already at 100% leaves a 0% row valid but dead, so point the author at
+        // Even split / Σ→100% (both are group-aware on player trees).
+        float groupSum = UsesGroupSums
+            ? entry.Transitions.Where(t => !t.Removed
+                && t.ProbabilityGroupKey == template.ProbabilityGroupKey).Sum(t => t.Probability)
+            : LiveSum(entry);
+        bool alreadyFull = Math.Abs(groupSum - 100f) <= 0.5f;
+        // A conditioned template is duplicated verbatim: same condition instance, same
+        // full key map and the same per-key targets at 0%. The author then retargets the
+        // outcomes they care about and splits the probability. Copying the real key set
+        // matters because condition keys are not boolean - vanilla ships maps of 1-5
+        // keys, and the key bytes come from the instance, never from its class.
+        // Unconditional (key 255) templates keep the old single-key shape, and a legacy
+        // multi-key row with no per-key model is collapsed by export to {255} - inheriting
+        // a key set the export cannot write would only mislead. Saves made before
+        // conditions became per-row keep the class on the entry, so the entry's class is
+        // the fallback that keeps a legacy conditioned row from collapsing.
+        var added = StartEntry.CreateAddedTransition(template, entry.ConditionClass);
+        entry.Transitions.Add(added);
         _focusNewIn = entry;
         Rebuild();
+        string copied = added.ConditionClass.Length > 0
+            ? added.KeyCount > 1
+                ? $"New row copies {added.ConditionClass}'s {added.KeyCount} condition outcome(s) "
+                    + "at 0% - retarget each key, then "
+                : $"New row copies {added.ConditionClass}'s condition and key {added.KeyByte} "
+                    + "at 0% - pick a new target, then "
+            : "";
+        if (alreadyFull)
+        {
+            string where = UsesGroupSums ? "its input pool" : $"'{entry.Label}'";
+            txtAuthorHint.Text = copied.Length > 0
+                ? copied + $"the {where} already totals 100% - "
+                    + "click Even split or Σ→100% or it will never be picked."
+                : $"New row added at 0% and {where} already totals 100% - "
+                    + "click Even split or Σ→100% or it will never be picked.";
+            txtAuthorHint.Foreground = WarnBrush;
+        }
+        else if (copied.Length > 0)
+        {
+            txtAuthorHint.Text = copied + "click Even split (or Σ→100%) to give it probability.";
+            txtAuthorHint.Foreground = GreenBrush;
+        }
     }
 
     private void RemoveTransition(StartEntry entry, StartTransition t)
@@ -1071,14 +1396,53 @@ public partial class StartEntriesDialog : Window
         Rebuild();
     }
 
-    private static void NormalizeTo100(StartEntry entry)
+    /// <summary>Rows for one input are one selection group: the engine picks one of
+    /// them when that input fires. Player entries key probability per input (vanilla
+    /// Idle ships 100% on its Light row and 100% on its Heavy row, and node 1 splits
+    /// three Light rows 33/34/33), so sums, warnings and rebalancing follow inputs
+    /// there; enemy tickets are one group per entry. First-seen order keeps the header
+    /// chips in row order.</summary>
+    private static List<(string Key, List<StartTransition> Rows)> LiveInputGroups(StartEntry entry)
+        => entry.Transitions
+            .Where(t => !t.Removed)
+            .GroupBy(t => t.ProbabilityGroupKey, StringComparer.OrdinalIgnoreCase)
+            .Select(g => (g.Key, g.ToList()))
+            .ToList();
+
+    private static List<List<StartTransition>> LiveGroups(StartEntry entry)
+        => LiveInputGroups(entry).Select(g => g.Rows).ToList();
+
+    /// <summary>Player trees sum/rebalance per input, enemy trees per entry.</summary>
+    private bool UsesGroupSums => _isMainCharGraph;
+
+    /// <summary>True when the entry's probability makeup is valid: every player input
+    /// pool totals 100% (or the whole entry, for enemy tickets).</summary>
+    private bool EntrySumOk(StartEntry entry)
     {
         var live = entry.Transitions.Where(t => !t.Removed).ToList();
+        if (live.Count == 0) return true;
+        if (!UsesGroupSums) return Math.Abs(live.Sum(t => t.Probability) - 100f) <= 0.5f;
+        return LiveGroups(entry).All(g => Math.Abs(g.Sum(t => t.Probability) - 100f) <= 0.5f);
+    }
+
+    private static List<List<StartTransition>> SelectionGroups(StartEntry entry, bool perGroup)
+        => perGroup
+            ? LiveGroups(entry)
+            : new List<List<StartTransition>> { entry.Transitions.Where(t => !t.Removed).ToList() };
+
+    private static void NormalizeTo100(StartEntry entry, bool perGroup)
+    {
+        foreach (var group in SelectionGroups(entry, perGroup))
+            NormalizeGroup(group);
+    }
+
+    private static void NormalizeGroup(List<StartTransition> live)
+    {
         if (live.Count == 0) return;
         float sum = live.Sum(t => t.Probability);
         if (sum <= 0f)
         {
-            EvenSplit(entry);
+            EvenSplitGroup(live);
             return;
         }
         float factor = 100f / sum;
@@ -1088,9 +1452,14 @@ public partial class StartEntriesDialog : Window
         largest.Probability += 100f - end;
     }
 
-    private static void EvenSplit(StartEntry entry)
+    private static void EvenSplit(StartEntry entry, bool perGroup)
     {
-        var live = entry.Transitions.Where(t => !t.Removed).ToList();
+        foreach (var group in SelectionGroups(entry, perGroup))
+            EvenSplitGroup(group);
+    }
+
+    private static void EvenSplitGroup(List<StartTransition> live)
+    {
         if (live.Count == 0) return;
         float each = 100f / live.Count;
         foreach (var t in live) t.Probability = each;
@@ -1110,6 +1479,7 @@ public partial class StartEntriesDialog : Window
     {
         float sum = LiveSum(entry);
         int live = entry.Transitions.Count(t => !t.Removed);
+        sumText.Inlines.Clear();
         if (live == 0)
         {
             // Vanilla-empty entry (some units ship tickets with an empty
@@ -1122,13 +1492,56 @@ public partial class StartEntriesDialog : Window
             evenBtn.IsEnabled = false;
             return;
         }
-        bool ok = Math.Abs(sum - 100f) <= 0.5f;
+        bool ok = EntrySumOk(entry);
+        // Only flag a non-100 total once this entry's probabilities were actually edited.
+        // Player entries are keyed per input (vanilla sits at 100 on every input, e.g.
+        // 300% across three inputs), so untouched totals are correct data, not a mistake.
+        bool touched = ProbabilitiesTouched(entry);
+        if (UsesGroupSums)
+        {
+            var groups = LiveInputGroups(entry);
+            var tips = new List<string>();
+            for (int i = 0; i < groups.Count; i++)
+            {
+                var (key, rows) = groups[i];
+                float groupSum = rows.Sum(t => t.Probability);
+                bool groupOk = Math.Abs(groupSum - 100f) <= 0.5f;
+                string label = InputCatalog.GroupLabel(key);
+                sumText.Inlines.Add(new Run($"{label} {groupSum:0.###}%{(groupOk ? "" : " ⚠")}")
+                {
+                    Foreground = groupOk ? GreenBrush : touched ? RedBrush : GrayBrush,
+                    FontWeight = FontWeights.SemiBold
+                });
+                if (i < groups.Count - 1)
+                    sumText.Inlines.Add(new Run("  ·  ") { Foreground = DimBrush });
+                string values = string.Join(" + ", rows.Select(t =>
+                    t.OriginalIndex >= 0 ? $"{t.Probability:0.###}" : $"{t.Probability:0.###} (new)"));
+                tips.Add($"{label} ({rows.Count} row{(rows.Count == 1 ? "" : "s")}): "
+                    + $"{values} = {groupSum:0.###}%{(groupOk ? " ✓" : " ✗")}");
+            }
+            sumText.Inlines.Add(new Run($"   ·   {live} row{(live == 1 ? "" : "s")}")
+            {
+                Foreground = DimBrush
+            });
+            sumText.ToolTip = string.Join("\n", tips)
+                + (ok
+                    ? "\nEvery input totals 100% - export writes exactly these values."
+                    : touched
+                        ? "\nEdited inputs must total 100% before OK."
+                        : $"\nUnchanged vanilla total of {sum:0.###}% across {groups.Count} "
+                          + "input pool(s) - untouched entries are never rebalanced or blocked.");
+            normBtn.IsEnabled = !ok;
+            evenBtn.IsEnabled = true;
+            return;
+        }
         sumText.Text = $"Σ {sum:0.###}%  ·  {live} row{(live == 1 ? "" : "s")}";
-        sumText.Foreground = ok ? GreenBrush : RedBrush;
+        sumText.Foreground = ok ? GreenBrush : touched ? RedBrush : GrayBrush;
         sumText.ToolTip = ok
             ? "Probabilities sum to 100% (vanilla pattern)."
-            : $"Probabilities sum to {sum:0.###}% - vanilla always sums to 100%, "
-              + "and the engine's behavior for other totals is untested.";
+            : touched
+                ? $"Probabilities sum to {sum:0.###}% - edited entries must total 100% before OK."
+                : $"Unchanged vanilla total of {sum:0.###}% across {live} rows - "
+                  + "untouched entries are never rebalanced or blocked.";
         normBtn.IsEnabled = !ok;
         evenBtn.IsEnabled = live > 0;
     }
@@ -1139,15 +1552,29 @@ public partial class StartEntriesDialog : Window
         int noTarget = liveEntries.Sum(e => e.Transitions.Count(t =>
             !t.Removed && t.TargetNodeId < 0 && t.TargetTreeIndex < 0));
         // Vanilla-empty entries (0 transitions, kept as-is on export) are excluded
-        // from the sum warning - their Σ is legitimately 0, not a user edit.
+        // from the sum warning - their Σ is legitimately 0, not a user edit. Entries the
+        // user did not touch keep their vanilla total too (player trees key rows per input
+        // and sit at 100 each), so only edited entries can trip the warning.
         int badSum = liveEntries.Count(e =>
             e.Transitions.Count(t => !t.Removed) > 0
-            && Math.Abs(LiveSum(e) - 100f) > 0.5f);
+            && ProbabilitiesTouched(e)
+            && !EntrySumOk(e));
+        int untouchedOdd = liveEntries.Count(e =>
+            e.Transitions.Count(t => !t.Removed) > 0
+            && !ProbabilitiesTouched(e)
+            && !EntrySumOk(e));
         int edited = _entries.Sum(e => e.Removed ? 1 : e.Transitions.Count(t => t.IsModified()));
+        // Rows the user just added start at 0%; on an input pool that already totals 100
+        // that keeps the total valid, so only this counter surfaces the dead row.
+        int deadNew = liveEntries.Sum(e => e.Transitions.Count(t =>
+            !t.Removed && t.OriginalIndex < 0 && t.Probability <= 0.001f));
         int added = liveEntries.Count(e => e.VanillaIndex < 0);
         int deleted = _entries.Count(e => e.Removed);
         string delta = added + deleted > 0
             ? $" · {added} new entr{(added == 1 ? "y" : "ies")}, {deleted} deleted"
+            : "";
+        string oddSuffix = untouchedOdd > 0
+            ? $" · {untouchedOdd} vanilla entr{(untouchedOdd == 1 ? "y keeps" : "ies keep")} its own total"
             : "";
 
         if (noTarget > 0)
@@ -1157,14 +1584,22 @@ public partial class StartEntriesDialog : Window
         }
         else if (badSum > 0)
         {
-            txtStatus.Text = $"⚠ {badSum} entr{(badSum == 1 ? "y" : "ies")} don't sum to 100% - warning only (vanilla always sums to 100). {edited} row(s) edited.{delta}";
+            string scope = UsesGroupSums ? " per input" : "";
+            txtStatus.Text = $"⚠ {badSum} edited entr{(badSum == 1 ? "y does" : "ies do")} not total 100%{scope} - "
+                + $"fix before OK. {edited} row(s) edited.{delta}{oddSuffix}";
+            txtStatus.Foreground = WarnBrush;
+        }
+        else if (deadNew > 0)
+        {
+            txtStatus.Text = $"⚠ {deadNew} new transition{(deadNew == 1 ? " is" : "s are")} at 0% and "
+                + $"will never fire - click Even split or Σ→100%. {edited} row(s) edited.{delta}{oddSuffix}";
             txtStatus.Foreground = WarnBrush;
         }
         else
         {
-            txtStatus.Text = edited > 0
+            txtStatus.Text = (edited > 0
                 ? $"{edited} row(s) edited · targets are limited to attack nodes already in this moveset.{delta}"
-                : "No changes yet. Targets are limited to attack nodes already in this moveset.";
+                : "No changes yet. Targets are limited to attack nodes already in this moveset.") + oddSuffix;
             txtStatus.Foreground = GrayBrush;
         }
     }
@@ -1190,6 +1625,8 @@ public partial class StartEntriesDialog : Window
             {
                 if (ta[j].Removed != tb[j].Removed || ta[j].OriginalIndex != tb[j].OriginalIndex) return false;
                 if (Math.Abs(ta[j].Probability - tb[j].Probability) > 0.0001f) return false;
+                if (!string.Equals(InputCatalog.Normalize(ta[j].InputEnum),
+                        InputCatalog.Normalize(tb[j].InputEnum), StringComparison.Ordinal)) return false;
                 if (ta[j].TargetNodeId != tb[j].TargetNodeId) return false;
                 if (ta[j].TargetTreeIndex != tb[j].TargetTreeIndex) return false;
                 if (!ta[j].Keys.SequenceEqual(tb[j].Keys)) return false;
@@ -1206,14 +1643,10 @@ public partial class StartEntriesDialog : Window
         {
             foreach (var t in entry.Transitions.Where(t => !t.Removed))
             {
-                if (t.TargetNodeId < 0 && t.TargetTreeIndex < 0)
-                {
-                    txtStatus.Text = $"'{entry.Label}': pick a target for the new transition first.";
-                    txtStatus.Foreground = RedBrush;
-                    return;
-                }
                 if (t.KeyCount > 1 && HasKeyModel(t))
                 {
+                    // Multi-key rows route per condition outcome; the single-target
+                    // fields are unused (and stay -1 on a verbatim clone).
                     for (int ki = 0; ki < t.KeyCount; ki++)
                     {
                         if (t.KeyTargetNodeIds[ki] < 0 && t.KeyTargetTreeIndices[ki] < 0)
@@ -1224,28 +1657,54 @@ public partial class StartEntriesDialog : Window
                         }
                     }
                 }
+                else if (t.TargetNodeId < 0 && t.TargetTreeIndex < 0)
+                {
+                    txtStatus.Text = $"'{entry.Label}': pick a target for the new transition first.";
+                    txtStatus.Foreground = RedBrush;
+                    return;
+                }
             }
         }
 
-        // OK gate: touched entries must sum to 100%. Only probability-edited or new
-        // rows count as touched, so untouched vanilla entries never block - even
-        // ones with unusual vanilla totals. One MessageBox lists every offender.
-        var touchedBad = new List<(string Name, float Sum)>();
+        // OK gate: touched entries must total 100% - per entry for enemy tickets, per
+        // input for player trees (vanilla Idle is 100% on its Light row and 100% on its
+        // Heavy row, so a per-entry 200% total is correct). Only probability-edited or
+        // new rows count as touched, so untouched vanilla entries never block. One
+        // MessageBox lists every offender.
+        var touchedBad = new List<string>();
         foreach (var entry in _entries.Where(en => !en.Removed))
         {
             if (!ProbabilitiesTouched(entry)) continue;
-            float sum = LiveSum(entry);
-            if (Math.Abs(sum - 100f) <= 0.5f) continue;
-            touchedBad.Add((string.IsNullOrEmpty(entry.Label) ? $"Entry {entry.VanillaIndex + 1}" : entry.Label, sum));
+            string name = string.IsNullOrEmpty(entry.Label) ? $"Entry {entry.VanillaIndex + 1}" : entry.Label;
+            if (!UsesGroupSums)
+            {
+                float sum = LiveSum(entry);
+                if (Math.Abs(sum - 100f) <= 0.5f) continue;
+                touchedBad.Add($"  {name}: {sum:0.###}%");
+                continue;
+            }
+            foreach (var (key, group) in LiveInputGroups(entry))
+            {
+                float groupSum = group.Sum(t => t.Probability);
+                if (Math.Abs(groupSum - 100f) <= 0.5f) continue;
+                touchedBad.Add($"  {name} · {InputCatalog.GroupLabel(key)}: {groupSum:0.###}%");
+            }
         }
         if (touchedBad.Count > 0)
         {
-            txtStatus.Text = "Fix start-entry probabilities (must sum to 100%) before saving.";
+            txtStatus.Text = UsesGroupSums
+                ? "Fix start-entry probabilities (each input must total 100%) before saving."
+                : "Fix start-entry probabilities (must sum to 100%) before saving.";
             txtStatus.Foreground = RedBrush;
             MessageBox.Show(this,
-                "These start entries were edited but their probabilities don't sum to 100%:\n\n"
-                + string.Join("\n", touchedBad.Select(b => $"  {b.Name}: {b.Sum:0.###}%"))
-                + "\n\nUse Σ→100% or Even split on each, then press OK again. "
+                (UsesGroupSums
+                    ? "These start entries were edited but some input pools don't total 100%:\n\n"
+                    : "These start entries were edited but their probabilities don't sum to 100%:\n\n")
+                + string.Join("\n", touchedBad)
+                + (UsesGroupSums
+                    ? "\n\nPlayer entries roll one starter per input (LMB/RMB/…), so all rows with the same "
+                      + "input must total 100%. Use Σ→100% or Even split on the entry, then press OK again. "
+                    : "\n\nUse Σ→100% or Even split on each, then press OK again. ")
                 + "Untouched entries are never blocked.",
                 "Start entry probabilities", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;

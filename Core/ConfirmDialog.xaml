@@ -62,8 +62,11 @@
                        FontSize="12" LineHeight="18"/>
             <Border x:Name="detailBox" Background="#181825" CornerRadius="4"
                     Padding="10,8" Margin="0,12,0,0" Visibility="Collapsed">
-                <TextBlock x:Name="txtDetail" TextWrapping="Wrap" Foreground="#a6adc8"
-                           FontSize="11" LineHeight="16"/>
+                <ScrollViewer MaxHeight="260" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <TextBlock x:Name="txtDetail" TextWrapping="Wrap" Foreground="#a6adc8"
+                               FontSize="11" LineHeight="16"/>
+                </ScrollViewer>
             </Border>
         </StackPanel>
     </DockPanel>

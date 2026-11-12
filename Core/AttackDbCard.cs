@@ -271,16 +271,7 @@ public static class AttackDbCard
 
     private static AttackDbCardValues? ReadCore(string uassetPath)
     {
-        var head = File.ReadAllBytes(uassetPath);
-        if (head.Length < 73 || head[0] != 0xC1 || head[1] != 0x83 || head[2] != 0x2A || head[3] != 0x9E)
-            return null;
-
-        int nameCount = BitConverter.ToInt32(head, 41);
-        int nameOffset = BitConverter.ToInt32(head, 45);
-        if (nameCount <= 0 || nameCount > 2_000_000 || nameOffset <= 0 || nameOffset >= head.Length)
-            return null;
-
-        var names = ReadNames(head, nameCount, nameOffset);
+        var names = ReadNameTable(uassetPath);
         if (names == null) return null;
 
         int intType = names.IndexOf("IntProperty");
@@ -353,6 +344,74 @@ public static class AttackDbCard
             return p + 25 + (hasGuid == 1 ? 16 : 0);
         }
         return -1;
+    }
+
+    /// <summary>
+    /// Cheap byte-level "does this file look like an attack card?" probe: valid header
+    /// magic plus a name-table hit on the properties only cards carry (the tuning fields
+    /// or the hit-window array). Reads bytes and never builds a UAsset, so
+    /// ProjectManager's payload sweep can walk a whole CustomAssets DB tree without paying
+    /// an object-model parse per file. Cached per path + mtime like Read.
+    /// </summary>
+    public static bool LooksLikeCard(string uassetPath)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(uassetPath) || !File.Exists(uassetPath)) return false;
+            long ticks = File.GetLastWriteTimeUtc(uassetPath).Ticks;
+            if (ProbeCache.TryGetValue(uassetPath, out var hit) && hit.Ticks == ticks)
+                return hit.Value;
+            var names = ReadNameTable(uassetPath);
+            bool value = names != null
+                && (names.IndexOf("m_HitBoxes") >= 0
+                    || names.IndexOf("m_iWantedBuildupFrames") >= 0
+                    || names.IndexOf("m_fGameplayRange") >= 0);
+            ProbeCache[uassetPath] = (ticks, value);
+            return value;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static readonly Dictionary<string, (long Ticks, bool Value)> ProbeCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Cheap "does this package reference that object name?" probe used by the custom-card
+    /// delete path to decide whether a private &lt;Card&gt;_HitBoxData table is still shared
+    /// with another card. Import/object names live in the .uasset name table, so this only
+    /// reads the header and never builds a UAsset.
+    /// </summary>
+    public static bool ReferencesName(string uassetPath, string name)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+        try
+        {
+            var names = ReadNameTable(uassetPath);
+            return names != null
+                && names.Exists(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Header magic check + name table of a .uasset, null when malformed.</summary>
+    private static List<string>? ReadNameTable(string uassetPath)
+    {
+        var head = File.ReadAllBytes(uassetPath);
+        if (head.Length < 73 || head[0] != 0xC1 || head[1] != 0x83 || head[2] != 0x2A || head[3] != 0x9E)
+            return null;
+
+        int nameCount = BitConverter.ToInt32(head, 41);
+        int nameOffset = BitConverter.ToInt32(head, 45);
+        if (nameCount <= 0 || nameCount > 2_000_000 || nameOffset <= 0 || nameOffset >= head.Length)
+            return null;
+
+        return ReadNames(head, nameCount, nameOffset);
     }
 
     private static List<string>? ReadNames(byte[] bb, int nameCount, int nameOffset)

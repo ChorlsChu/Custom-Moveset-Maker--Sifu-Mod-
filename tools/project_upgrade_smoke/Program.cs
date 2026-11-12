@@ -39,18 +39,94 @@ internal static class Program
         public HashSet<int> PositionKeys = new();
     }
 
+    /// <summary>
+    /// Bug 2 regression: the unit cache must key off the graph's own identity
+    /// (SourceGamePath / weapon tag), never the cards on the canvas. Adding an AI-library
+    /// attack sets node.DefaultDBPath, which used to make a MainChar graph read as an
+    /// enemy tree and skip the cache - every MC edit then vanished on the next unit
+    /// switch (and stayed out of the project file).
+    /// </summary>
+    private static void CheckCachePolicy(Action<bool, string> check)
+    {
+        var mc = new ComboGraph
+        {
+            SourceGamePath = "Game/DB/_MainChar/Combos/MainChar_ComboTree",
+            WeaponName = "BareHands"
+        };
+        mc.Nodes.Add(new ComboNode
+        {
+            Name = "Flashkick_attack_barehands_back_fist",
+            DefaultDBPath = "Game/DB/AI/Archetypes/FlashKick/Attacks/Barehands/Light/Flashkick_attack_barehands_back_fist"
+        });
+        check(UnitCachePolicy.ShouldCache("MainChar", mc, out var mcReason),
+            $"MC graph carrying an AI attack card must still cache: {mcReason}");
+        check(!UnitCachePolicy.ShouldCache("Yang", mc, out _),
+            "MC graph under an enemy key must not cache");
+
+        var enemy = new ComboGraph
+        {
+            SourceGamePath = "Game/DB/AI/Archetypes/Yang/_DB/Phase1/Yang_P1_Combo",
+            WeaponName = "BareHands"
+        };
+        enemy.Nodes.Add(new ComboNode { Name = "MainChar_Stance" });
+        check(!UnitCachePolicy.ShouldCache("MainChar", enemy, out _),
+            "enemy graph under a MainChar key must not cache");
+        check(UnitCachePolicy.ShouldCache("Yang", enemy, out var enemyReason),
+            $"enemy graph must cache under its own key: {enemyReason}");
+        check(GraphIdentity.Classify(enemy) == GraphSide.Enemy,
+            "an AI SourceGamePath must win over the BareHands weapon tag");
+
+        var restoredOldSave = new ComboGraph { SourceGamePath = "", WeaponName = "MainChar_Barehands" };
+        check(UnitCachePolicy.ShouldCache("MainChar", restoredOldSave, out _),
+            "old save without a SourceGamePath must cache via the player weapon tag");
+        check(GraphIdentity.IsMainChar(restoredOldSave), "player weapon tag must identify as MainChar");
+
+        var unknown = new ComboGraph { SourceGamePath = "", WeaponName = "" };
+        check(UnitCachePolicy.ShouldCache("MainChar", unknown, out _),
+            "unknown identity must cache under the active key instead of skipping");
+
+        // Legacy enemy save with a player-sounding tag but no source path: ambiguous, so
+        // it must still cache under its own key rather than be dropped as a conflict.
+        var legacyEnemy = new ComboGraph { SourceGamePath = "", WeaponName = "BareHands" };
+        check(UnitCachePolicy.ShouldCache("Yang", legacyEnemy, out var legacyReason),
+            $"pathless legacy enemy save must cache under its own key: {legacyReason}");
+    }
+
+    /// <summary>Player probability sums key on the input only. Vanilla node 1 ships three
+    /// Light rows at 33/34/33 with different keys/conditions, so a per-key grouping split
+    /// one engine roll into three unrelated pools; most nodes ship Light 100 + Heavy 100.
+    /// </summary>
+    private static void CheckProbabilityGroups(Action<bool, string> check)
+    {
+        string Key(string input, byte key = 0, string cond = "")
+            => new StartTransition { InputEnum = input, KeyByte = key, ConditionClass = cond }
+                .ProbabilityGroupKey;
+
+        check(Key("Light", 0, "BP_TargetIsParryVictim_C") == Key("Light", 3, "BP_IsInInvertAttack_C"),
+            "same input must share one pool regardless of key/condition");
+        check(Key("Light") != Key("Heavy"), "Light and Heavy must stay separate pools");
+        check(Key("") == Key("None"), "\"\" and \"None\" are both the no-input pool");
+        check(Key("LMB") == Key("Light"), "display label must group with its bare enum");
+        check(Key("HeavyHold") != Key("Heavy"), "HeavyHold keeps its own pool");
+    }
+
     private static int Main(string[] args)
     {
         string projectPath = args.Length > 0 ? args[0] : DefaultProject;
         string gameRoot = args.Length > 1 ? args[1] : DefaultGameRoot;
-        if (!File.Exists(projectPath)) { Console.WriteLine($"FAIL: project not found: {projectPath}"); return 1; }
-        if (!Directory.Exists(gameRoot)) { Console.WriteLine($"FAIL: game content not found: {gameRoot}"); return 1; }
 
         int fail = 0;
         void Check(bool ok, string what)
         {
             if (!ok) { Console.WriteLine($"  FAIL: {what}"); fail++; }
         }
+
+        // Headless guard tests first: they need no fixture files.
+        CheckCachePolicy(Check);
+        CheckProbabilityGroups(Check);
+
+        if (!File.Exists(projectPath)) { Console.WriteLine($"FAIL: project not found: {projectPath}"); return 1; }
+        if (!Directory.Exists(gameRoot)) { Console.WriteLine($"FAIL: game content not found: {gameRoot}"); return 1; }
 
         var (project, _, _, _, _, _) = ProjectManager.Load(projectPath);
         var caches = ProjectManager.LoadUnitCaches(project);

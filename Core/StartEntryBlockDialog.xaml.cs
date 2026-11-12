@@ -14,9 +14,9 @@ public enum StartEntryBlockChoice
 /// <summary>
 /// Shown when deleting a graph node that one or more start entries still target.
 /// Cancel aborts; Open Start Entries aborts and opens the Start Entries dialog;
-/// Delete Anyway clears the offending entries first (same semantics as the dialog:
-/// vanilla entries marked Removed, new entries hard-removed) and lets the delete
-/// proceed.
+/// Delete Anyway cleans the offending entries with <see cref="NodeDeleteStartEntries"/>
+/// (authored rows removed, retargeted vanilla rows reset to their original target when
+/// it still exists) and lets the delete proceed.
 /// </summary>
 public partial class StartEntryBlockDialog : Window
 {
@@ -28,15 +28,16 @@ public partial class StartEntryBlockDialog : Window
         txtHeader.Text = "Node is used by Start Entries";
         txtMessage.Text = $"'{nodeName}' is targeted by {blockers.Count} start "
             + $"entr{(blockers.Count == 1 ? "y" : "ies")}:\n\n"
-            + "Deleting the node removes these targets: single-key rows drop whole, "
-            + "multi-key rows keep their other keys and only lose the ones pointing here.";
+            + "Deleting the node removes these targets. Rows you retargeted here snap back "
+            + "to their original target when it still exists; if it is gone, that target is "
+            + "dropped. Multi-key rows keep their other keys.";
 
         var lines = new List<string>();
         foreach (var en in blockers)
         {
             int live = en.Transitions.Count(t => !t.Removed);
             string kind = en.VanillaIndex >= 0
-                ? "vanilla - offending targets cleared (rows keep surviving keys)"
+                ? "vanilla - retargeted rows reset to vanilla (or drop if the original is gone)"
                 : "new entry - offending targets cleared";
             lines.Add($"• {en.Label} ({live} transition{(live == 1 ? "" : "s")}) - {kind}");
         }

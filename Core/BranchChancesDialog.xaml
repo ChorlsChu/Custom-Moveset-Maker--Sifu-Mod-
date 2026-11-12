@@ -105,7 +105,7 @@
 
             <TextBlock Grid.Row="0" x:Name="txtNote" FontSize="11" Foreground="#a6adc8"
                        TextWrapping="Wrap"
-                       Text="Each row is one transition of this node's combo struct: when the move plays, the engine picks a row by cumulative probability (vanilla rows always sum to 100%). New links join the split automatically - export rebalances the set so the appended rows stay reachable. Typed values are kept exactly; automatic rows share the remainder. Condition parameters and outcome routing are editable below (enemy trees); required tags and conditional attacks stay view-only for now."/>
+                       Text="Each row is one transition of this node's combo struct: when the move plays, the engine picks a row by cumulative probability (vanilla rows always sum to 100%). New links join the split automatically - export rebalances the set so the appended rows stay reachable. Typed values are kept exactly; automatic rows share the remainder. Condition parameters and outcome routing are editable below; required tags and conditional attacks stay view-only for now."/>
 
             <Border Grid.Row="2" Background="#181825" CornerRadius="4"
                     BorderBrush="#313244" BorderThickness="1">

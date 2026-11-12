@@ -63,6 +63,15 @@ public sealed class AttackHitWindowInfo
     public int? PropertyLevel;
     /// <summary>Row name shares no token with the card file name - likely reused by other attacks.</summary>
     public bool SharedRow;
+    /// <summary>
+    /// The window's row lives in a table that is not this card's private
+    /// &lt;Card&gt;_HitBoxData copy, so "Make private" can give the card its own table.
+    /// False when the table could not be resolved (nothing to copy) or is already private.
+    /// Unlike <see cref="SharedRow"/> this is a fact from the resolved table path, not a
+    /// row-name heuristic: a clone named after its source still points at a shared vanilla
+    /// table and must offer the escape hatch.
+    /// </summary>
+    public bool CanPrivatize;
 }
 
 public sealed class AttackHitCardData
@@ -89,6 +98,8 @@ public static class AttackHitCard
     {
         public long Ticks;
         public AttackHitCardData? Values;
+        /// <summary>Vanilla root the rows were resolved against (null = none available).</summary>
+        public string? TableFallbackRoot;
     }
 
     private static readonly Dictionary<string, CacheEntry> Cache = new(StringComparer.OrdinalIgnoreCase);
@@ -98,22 +109,36 @@ public static class AttackHitCard
         try { Cache.Remove(uassetPath); } catch { }
     }
 
-    public static AttackHitCardData? ReadDbPath(string contentRoot, string dbGamePath)
+    /// <param name="tableFallbackRoot">
+    /// Content root used to resolve a HitBoxData table the card's own root does not
+    /// contain: a custom card (CustomAssets root) that still points at a SHARED vanilla
+    /// row needs the vanilla tree, which lives nowhere near the card. Callers that know
+    /// it (the hit-windows dialog, export) pass AttackDbContentDir()/gameRoot.
+    /// </param>
+    public static AttackHitCardData? ReadDbPath(string contentRoot, string dbGamePath, string? tableFallbackRoot = null)
     {
         var path = AttackDbCard.ResolveUassetPath(contentRoot, dbGamePath);
-        return path == null ? null : Read(path);
+        return path == null ? null : Read(path, tableFallbackRoot);
     }
 
-    public static AttackHitCardData? Read(string uassetPath)
+    public static AttackHitCardData? Read(string uassetPath, string? tableFallbackRoot = null)
     {
         try
         {
             if (string.IsNullOrEmpty(uassetPath) || !File.Exists(uassetPath)) return null;
             long ticks = File.GetLastWriteTimeUtc(uassetPath).Ticks;
-            if (Cache.TryGetValue(uassetPath, out var hit) && hit.Ticks == ticks)
+            if (Cache.TryGetValue(uassetPath, out var hit) && hit.Ticks == ticks
+                // A cached read made without the vanilla root cannot serve a caller that
+                // has it (its rows would read as TableNotFound) - recompute once.
+                && (hit.TableFallbackRoot != null || string.IsNullOrEmpty(tableFallbackRoot)))
                 return hit.Values;
-            var values = ReadCore(uassetPath);
-            Cache[uassetPath] = new CacheEntry { Ticks = ticks, Values = values };
+            var values = ReadCore(uassetPath, tableFallbackRoot);
+            Cache[uassetPath] = new CacheEntry
+            {
+                Ticks = ticks,
+                Values = values,
+                TableFallbackRoot = tableFallbackRoot
+            };
             return values;
         }
         catch
@@ -324,6 +349,87 @@ public static class AttackHitCard
                 if (edit.FrameHi.HasValue && (int)b.Value.Hi != edit.FrameHi.Value)
                 {
                     error = $"verification failed: window {edit.Index} hi re-read as {b.Value.Hi}";
+                    return false;
+                }
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Scales every window's frame bounds in place by <paramref name="ratio"/> (new
+    /// animation length / template animation length) and re-reads to verify. Used by the
+    /// Create AttackDB wizard when the selected animation is a different length from the
+    /// template's animation; the result is still only a starting point for Hit Windows.
+    /// </summary>
+    public static bool ScaleCardFrames(string uassetPath, float ratio, out string error)
+    {
+        error = "";
+        if (ratio <= 0f || float.IsNaN(ratio) || float.IsInfinity(ratio))
+        {
+            error = "invalid frame scale";
+            return false;
+        }
+        try
+        {
+            if (string.IsNullOrEmpty(uassetPath) || !File.Exists(uassetPath))
+            {
+                error = $"card missing: {uassetPath}";
+                return false;
+            }
+
+            var asset = new UAsset(uassetPath, EngineVersion.VER_UE4_26, null, CustomSerializationFlags.None);
+            var windows = FindHitWindows(asset);
+            if (windows == null || windows.Count == 0)
+            {
+                error = "card has no m_HitBoxes windows";
+                return false;
+            }
+
+            var expected = new List<(float lo, float hi)>();
+            foreach (var w in windows)
+            {
+                var bounds = DelayWindowCard.GetWindowBounds(w);
+                if (bounds == null)
+                {
+                    expected.Add((-1f, -1f));
+                    continue;
+                }
+                float lo = MathF.Round(bounds.Value.Lo * ratio, MidpointRounding.AwayFromZero);
+                float hi = MathF.Round(bounds.Value.Hi * ratio, MidpointRounding.AwayFromZero);
+                if (hi < lo) hi = lo;
+                if (!DelayWindowCard.TrySetWindowBounds(w, lo, hi))
+                {
+                    error = "failed to set scaled frame bounds";
+                    return false;
+                }
+                expected.Add((lo, hi));
+            }
+
+            asset.Write(uassetPath);
+            Invalidate(uassetPath);
+
+            var post = new UAsset(uassetPath, EngineVersion.VER_UE4_26, null, CustomSerializationFlags.None);
+            var postWindows = FindHitWindows(post);
+            if (postWindows == null || postWindows.Count != windows.Count)
+            {
+                error = "verification failed: window count changed after scaling";
+                return false;
+            }
+            for (int i = 0; i < postWindows.Count; i++)
+            {
+                if (expected[i].lo < 0f) continue;
+                var b = DelayWindowCard.GetWindowBounds(postWindows[i]);
+                if (b == null
+                    || MathF.Abs(b.Value.Lo - expected[i].lo) > 0.01f
+                    || MathF.Abs(b.Value.Hi - expected[i].hi) > 0.01f)
+                {
+                    error = $"verification failed: window {i} did not scale";
                     return false;
                 }
             }
@@ -595,7 +701,7 @@ public static class AttackHitCard
         return true;
     }
 
-    private static AttackHitCardData? ReadCore(string uassetPath)
+    private static AttackHitCardData? ReadCore(string uassetPath, string? tableFallbackRoot)
     {
         var asset = new UAsset(uassetPath, EngineVersion.VER_UE4_26, null, CustomSerializationFlags.None);
         var windows = FindHitWindows(asset);
@@ -646,13 +752,18 @@ public static class AttackHitCard
             if (!tableCache.TryGetValue(info.TableRel, out var entry))
             {
                 entry = null;
-                var dtPath = AttackDbCard.ResolveUassetPath(contentRoot, info.TableRel)
-                    ?? AttackDbCard.ResolveUassetPath(CustomAssets.Root, info.TableRel);
-                if (dtPath != null && File.Exists(dtPath))
+                // Roots in play: the card's own root (vanilla card -> vanilla tree,
+                // custom card -> CustomAssets), the custom library, then the caller's
+                // vanilla root - a custom card cloned WITHOUT a private row still points
+                // at a shared vanilla table that lives only in the game tree.
+                foreach (var root in TableRoots(contentRoot, tableFallbackRoot))
                 {
+                    var dtPath = AttackDbCard.ResolveUassetPath(root, info.TableRel);
+                    if (dtPath == null || !File.Exists(dtPath)) continue;
                     try
                     {
                         entry = (new UAsset(dtPath, EngineVersion.VER_UE4_26, null, CustomSerializationFlags.None), dtPath);
+                        break;
                     }
                     catch { entry = null; }
                 }
@@ -675,7 +786,15 @@ public static class AttackHitCard
                 info.LookupStatus = VanillaLookupStatus.TableNotFound;
             }
 
-            info.SharedRow = LooksSharedRow(cardFileName, info.RowName);
+            // A privatized table (<CardName>_HitBoxData under CustomAssets) is this
+            // card's own row copy: never shared, whatever the row is named. Only a
+            // card-named table that actually lives in the custom library counts, so a
+            // vanilla table that happens to share the prefix stays flagged.
+            bool ownTable = entry.HasValue
+                && entry.Value.path.StartsWith(CustomAssetsRootPrefix(), StringComparison.OrdinalIgnoreCase)
+                && HitRowPrivatizer.IsPrivateTable(info.TableRel, cardFileName);
+            info.SharedRow = !ownTable && LooksSharedRow(cardFileName, info.RowName);
+            info.CanPrivatize = entry.HasValue && !ownTable;
             result.Windows.Add(info);
         }
         return result.Windows.Count > 0 ? result : null;
@@ -734,6 +853,24 @@ public static class AttackHitCard
         int db = full.IndexOf($"{Path.DirectorySeparatorChar}DB{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase);
         return db > 0 ? full.Substring(0, db) : "";
     }
+
+    /// <summary>
+    /// Candidate content roots for a card's HitBoxData table, in priority order and
+    /// de-duplicated: the card's own root, the custom library, the caller's vanilla root.
+    /// </summary>
+    private static IEnumerable<string> TableRoots(string contentRoot, string? tableFallbackRoot)    {
+        if (!string.IsNullOrEmpty(contentRoot)) yield return contentRoot;
+        yield return CustomAssets.Root;
+        if (!string.IsNullOrEmpty(tableFallbackRoot)
+            && !string.Equals(tableFallbackRoot, contentRoot, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(tableFallbackRoot, CustomAssets.Root, StringComparison.OrdinalIgnoreCase))
+            yield return tableFallbackRoot;
+    }
+
+    /// <summary>CustomAssets.Root with a trailing separator (so CustomAssets2 can't match).</summary>
+    private static string CustomAssetsRootPrefix()
+        => CustomAssets.Root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+           + Path.DirectorySeparatorChar;
 
     private static string TableRelFromObjectProperty(UAsset asset, ObjectPropertyData? dt)
     {

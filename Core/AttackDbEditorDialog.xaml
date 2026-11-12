@@ -150,8 +150,21 @@
                 </ScrollViewer>
             </Border>
 
-            <TextBlock Grid.Row="3" x:Name="txtSharedWarning" FontSize="11" Foreground="#f9e2af"
-                       TextWrapping="Wrap" Margin="0,6,0,0" Visibility="Collapsed"/>
+            <!-- Shared-row banner: warning text + the escape hatch that gives this card
+                 its own HitBoxData table (button/wiring only when the caller offers it). -->
+            <DockPanel Grid.Row="3" x:Name="panelShared" Visibility="Collapsed" Margin="0,6,0,0">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button x:Name="btnMakePrivate" Content="Make private"
+                            Style="{StaticResource DarkButton}" Click="MakePrivate_Click"
+                            Padding="10,3" FontSize="11" Margin="2,0,0,0"/>
+                    <Button x:Name="btnSharedHelp" Content="?" Tag="SharedRow"
+                            Style="{StaticResource DarkButton}" Click="Help_Click"
+                            Padding="6,3" FontSize="11" Margin="4,0,0,0"
+                            Cursor="Help"/>
+                </StackPanel>
+                <TextBlock x:Name="txtSharedWarning" FontSize="11" Foreground="#f9e2af"
+                           TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            </DockPanel>
         </Grid>
     </DockPanel>
 

@@ -15,6 +15,7 @@
     <Compile Include="..\..\Core\AnimationParser.cs" Link="AnimationParser.cs" />
     <Compile Include="..\..\Core\ActionNodeCatalog.cs" Link="ActionNodeCatalog.cs" />
     <Compile Include="..\..\Core\ConditionCatalog.cs" Link="ConditionCatalog.cs" />
+    <Compile Include="..\..\Core\InputCatalog.cs" Link="InputCatalog.cs" />
     <Compile Include="..\..\Core\MeshTextureResolver.cs" Link="MeshTextureResolver.cs" />
     <Compile Include="..\..\Core\EnemyAttackScanner.cs" Link="EnemyAttackScanner.cs" />
   </ItemGroup>
