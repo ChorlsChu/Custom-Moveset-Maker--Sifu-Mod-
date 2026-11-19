@@ -351,6 +351,22 @@ public static class CustomAttackDbRenamer
         bool changed = false;
         foreach (var n in graph.Nodes)
         {
+            bool isOldCard = CustomAttackDbDelete.SameCard(AttackDbCard.EffectiveCardPath(n), oldCardRel);
+            if (isOldCard && n.HitEdits != null)
+            {
+                // Appended hits point at the card's private table before the window
+                // exists in the card, so a rename must follow that table too.
+                foreach (var e in n.HitEdits)
+                {
+                    if (e?.Append != true || string.IsNullOrEmpty(e.TableRel)) continue;
+                    string renamed = RenamedTableRel(e.TableRel!, oldName, newName);
+                    if (!string.Equals(renamed, e.TableRel, StringComparison.Ordinal))
+                    {
+                        e.TableRel = renamed;
+                        changed = true;
+                    }
+                }
+            }
             if (CustomAttackDbDelete.SameCard(n.DefaultDBPath, oldCardRel))
             { n.DefaultDBPath = newCardGamePath; changed = true; }
             if (CustomAttackDbDelete.SameCard(n.SourceDBPath, oldCardRel))

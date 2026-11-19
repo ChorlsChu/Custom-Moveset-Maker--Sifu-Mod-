@@ -27,147 +27,6 @@ using System.Windows.Threading;
 
 namespace SifuMovesetEditor;
 
-public static class ErrorLog
-{
-    /// <summary>Per-file cap: on hitting it the file rolls over to error-&lt;date&gt;.1.log
-    /// (replacing yesterday's part), so a late-day crash in a noisy session is never lost.</summary>
-    private const int MaxLogBytes = 10 * 1024 * 1024;
-
-    /// <summary>Only the last week of logs is kept: pruned at launch, and writes re-check
-    /// hourly so a long-running session also drops expired files without a restart.</summary>
-    private const int KeepDays = 7;
-
-    private static readonly string LogDir = Path.Combine(
-        Directory.GetCurrentDirectory(), "logs");
-
-    private static readonly object WriteLock = new();
-    private static string _logPath = "";
-    private static string _logDate = "";
-    private static DateTime _lastPruneUtc = DateTime.MinValue;
-
-    /// <summary>Total writes this session - callers snapshot it to surface new
-    /// errors (an export must not fail silently in the UI while only the log knows).</summary>
-    public static int Writes;
-
-    /// <summary>
-    /// Writes whose payload looks like a real problem (thrown exception, or a
-    /// WARNING/FAIL/Error marker). The export routine logs its progress through
-    /// this same log, so Writes alone overstates failures - the completion panel
-    /// snapshots this counter instead.
-    /// </summary>
-    public static int Warnings;
-
-    public static void Init()
-    {
-        try
-        {
-            Directory.CreateDirectory(LogDir);
-            PruneOldLogs();
-            lock (WriteLock)
-            {
-                RollIfNecessary();
-                File.AppendAllText(_logPath,
-                    $"===== session start {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====\n");
-            }
-        }
-        catch { }
-        Writes = 0;
-        Warnings = 0;
-    }
-
-    public static void Write(string tag, Exception ex)
-    {
-        Interlocked.Increment(ref Writes);
-        if (LooksLikeWarning(ex)) Interlocked.Increment(ref Warnings);
-        Append($"[{DateTime.Now:HH:mm:ss}] [{tag}] {ex}\n");
-    }
-
-    public static void Write(string tag, string message)
-    {
-        Interlocked.Increment(ref Writes);
-        if (MessageLooksLikeWarning(message)) Interlocked.Increment(ref Warnings);
-        Append($"[{DateTime.Now:HH:mm:ss}] [{tag}] {message}\n");
-    }
-
-    /// <summary>Debug/progress line (AnimationParser.LogDebug): lands in the same file,
-    /// but deliberately does not move the Writes/Warnings counters - those drive the
-    /// export warning panel and historical debug lines never counted toward them.</summary>
-    public static void WriteRaw(string line)
-        => Append($"[{DateTime.Now:HH:mm:ss}] {line}\n");
-
-    private static void Append(string msg)
-    {
-        lock (WriteLock)
-        {
-            try
-            {
-                RollIfNecessary();
-                File.AppendAllText(_logPath, msg);
-            }
-            catch { }
-        }
-    }
-
-    /// <summary>Resolves today's dated file (date rollover or first write), enforces the
-    /// size cap, and triggers the periodic prune. Always called under WriteLock.</summary>
-    private static void RollIfNecessary()
-    {
-        string today = DateTime.Now.ToString("yyyy-MM-dd");
-        if (_logDate != today || _logPath.Length == 0)
-        {
-            Directory.CreateDirectory(LogDir);
-            _logDate = today;
-            _logPath = Path.Combine(LogDir, $"error-{today}.log");
-        }
-        else if (new FileInfo(_logPath).Length >= MaxLogBytes)
-        {
-            var backup = Path.Combine(LogDir, $"error-{today}.1.log");
-            try { File.Delete(backup); } catch { }
-            try { File.Move(_logPath, backup); } catch { }
-            try
-            {
-                File.AppendAllText(_logPath,
-                    $"[{DateTime.Now:HH:mm:ss}] [LOG] Hit the {MaxLogBytes / (1024 * 1024)} MB cap - "
-                    + $"the earlier part of this session is kept as {Path.GetFileName(backup)}\n");
-            }
-            catch { }
-        }
-
-        if ((DateTime.UtcNow - _lastPruneUtc).TotalMinutes >= 60)
-        {
-            _lastPruneUtc = DateTime.UtcNow;
-            PruneOldLogs();
-        }
-    }
-
-    private static void PruneOldLogs()
-    {
-        try
-        {
-            var cutoff = DateTime.Now.AddDays(-KeepDays);
-            foreach (var file in Directory.GetFiles(LogDir, "error-*.log"))
-            {
-                try { if (File.GetLastWriteTime(file) < cutoff) File.Delete(file); } catch { }
-            }
-        }
-        catch { }
-    }
-
-    /// <summary>Thrown exceptions carry a stack trace; progress lines are fresh
-    /// Exception objects built for the log and never thrown.</summary>
-    private static bool LooksLikeWarning(Exception ex)
-        => ex.StackTrace != null || MessageLooksLikeWarning(ex.Message);
-
-    private static readonly System.Text.RegularExpressions.Regex _warningMarker =
-        new(@"\bWARNING\b|\bFAIL\b|\bError\b",
-            System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-    /// <summary>Word-boundary match: "FLOW WARNING:" counts, but progress lines that
-    /// merely mention a count ("... 0 flow warnings ...") do not.</summary>
-    private static bool MessageLooksLikeWarning(string? message)
-        => message != null && _warningMarker.IsMatch(message);
-}
-
 public partial class MainWindow : Window
 {
     private AnimationParser _parser = new();
@@ -396,15 +255,10 @@ public partial class MainWindow : Window
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         ErrorLog.Init();
+        ShowCrashBannerIfNeeded();
+        ErrorLog.BeginSession(UpdateChecker.CurrentVersion().ToString());
         WireTutorialOverlay();
-        await webView.EnsureCoreWebView2Async(null);
-        webView.CoreWebView2.WebMessageReceived += OnWebViewMessage;
-        webView.NavigationCompleted += WebView_NavigationCompleted;
-        MapTextureHost(webView.CoreWebView2);
-
-        var viewerPath = Path.Combine(
-            AppDomain.CurrentDomain.BaseDirectory, "viewer", "index.html");
-        webView.CoreWebView2.Navigate(new Uri(viewerPath).AbsoluteUri);
+        await InitMainViewerAsync();
 
         cmbSpeed.SelectedIndex = 2;
 
@@ -428,6 +282,151 @@ public partial class MainWindow : Window
         UpdateChecker.CleanupSwapLeftovers();
         UpdateChecker.CleanupStaleTempDirs();
         _ = MaybeCheckForUpdatesAsync();
+    }
+
+    /// <summary>
+    /// Wires the 3D viewer. Called once at startup and again after a WebView2 process
+    /// failure, so every handler and the navigation live in one place.
+    /// </summary>
+    private async Task InitMainViewerAsync()
+    {
+        await webView.EnsureCoreWebView2Async(null);
+        var core = webView.CoreWebView2;
+        core.WebMessageReceived += OnWebViewMessage;
+        core.ProcessFailed += OnViewerProcessFailed;
+        webView.NavigationCompleted += WebView_NavigationCompleted;
+        MapTextureHost(core);
+
+        var viewerPath = Path.Combine(
+            AppDomain.CurrentDomain.BaseDirectory, "viewer", "index.html");
+        core.Navigate(new Uri(viewerPath).AbsoluteUri);
+    }
+
+    // One browser process backs every WebView2 control in the app (viewer + thumbnail
+    // renderer). When it dies, CoreWebView2 throws "The WebView control is no longer
+    // valid because the browser process crashed" on every access for the rest of the
+    // session - New Project does not help, only an app restart does. Recreating the
+    // control is the only in-session recovery; the last mesh/animation payload is cached
+    // and replayed after the new page loads so the user keeps their preview.
+    private bool _viewerRecovering;
+    private int _viewerRecoveries;
+    private bool _viewerReplayPending;
+    private string? _viewerMeshJson;
+    private string? _viewerMeshCharacter;
+    private string? _viewerAnimJson;
+    private string? _viewerAnimLabel;
+
+    private void OnViewerProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
+    {
+        try
+        {
+            ErrorLog.WriteRaw($"[VIEWER] ProcessFailed kind={e.ProcessFailedKind} reason={e.Reason} " +
+                $"exitCode={e.ExitCode} desc='{e.ProcessDescription}'");
+        }
+        catch { }
+        _ = RecoverViewerAsync();
+    }
+
+    private async Task RecoverViewerAsync()
+    {
+        if (_viewerRecovering) return;
+        _viewerRecovering = true;
+        try
+        {
+            _viewerRecoveries++;
+            ErrorLog.WriteRaw($"[VIEWER] restarting viewer (attempt {_viewerRecoveries})");
+            _previewAnimPath = null;
+            _previewMeshCharacter = null;
+            txtStatus.Text = "Preview viewer crashed - restarting...";
+
+            // Thumbnails share the dead browser process. Leave that control alone (its
+            // CoreWebView2 getter throws); thumbnails fall back to the static icon until
+            // the next app start.
+            _thumbUnavailable = true;
+
+            var parent = webView.Parent as Panel;
+            if (parent == null)
+            {
+                ErrorLog.WriteRaw("[VIEWER] recovery failed: viewer has no parent panel");
+                return;
+            }
+
+            int childIndex = parent.Children.IndexOf(webView);
+            int row = Grid.GetRow(webView);
+            var alignmentH = webView.HorizontalAlignment;
+            var alignmentV = webView.VerticalAlignment;
+            var old = webView;
+            try { old.NavigationCompleted -= WebView_NavigationCompleted; } catch { }
+            try { old.CoreWebView2.WebMessageReceived -= OnWebViewMessage; } catch { }
+            try { old.CoreWebView2.ProcessFailed -= OnViewerProcessFailed; } catch { }
+            try { parent.Children.Remove(old); } catch { }
+            try { old.Dispose(); } catch { }
+
+            var fresh = new Microsoft.Web.WebView2.Wpf.WebView2
+            {
+                HorizontalAlignment = alignmentH,
+                VerticalAlignment = alignmentV
+            };
+            Grid.SetRow(fresh, row);
+            if (childIndex >= 0 && childIndex <= parent.Children.Count)
+                parent.Children.Insert(childIndex, fresh);
+            else
+                parent.Children.Add(fresh);
+            webView = fresh;
+
+            _viewerReplayPending = _viewerAnimJson != null || _viewerMeshJson != null;
+            await InitMainViewerAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("VIEWER_RECOVERY", ex);
+            txtStatus.Text = "Preview viewer crashed - restart the app to restore previews.";
+        }
+        finally
+        {
+            _viewerRecovering = false;
+        }
+    }
+
+    /// <summary>CoreWebView2 getter that never throws after a browser-process crash.</summary>
+    private CoreWebView2? ViewerCore
+    {
+        get
+        {
+            try { return webView?.CoreWebView2; }
+            catch { return null; }
+        }
+    }
+
+    /// <summary>CoreWebView2 getter for the thumbnail renderer; null after a crash.</summary>
+    private CoreWebView2? ThumbCore
+    {
+        get
+        {
+            try { return thumbWebView?.CoreWebView2; }
+            catch { return null; }
+        }
+    }
+
+    /// <summary>Runs viewer script, returning false when the browser process is gone.</summary>
+    private async Task<bool> TryExecuteViewerAsync(string script)
+    {
+        var core = ViewerCore;
+        if (core == null) return false;
+        try
+        {
+            await core.ExecuteScriptAsync(script);
+            return true;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
+        {
+            return false;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("VIEWER", ex);
+            return false;
+        }
     }
 
     /// <summary>Launch-time update check - the tool's only internet use. Silent on
@@ -463,19 +462,78 @@ public partial class MainWindow : Window
     {
         if (!e.IsSuccess) return;
         ApplySavedSettingsToViewer();
+        if (_viewerReplayPending)
+        {
+            _viewerReplayPending = false;
+            _ = ReplayViewerAsync();
+        }
+    }
+
+    /// <summary>Re-delivers the cached mesh/animation after the viewer page reloads.</summary>
+    private async Task ReplayViewerAsync()
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(_viewerMeshJson) && !string.IsNullOrEmpty(_viewerMeshCharacter))
+                await SendViewerPayloadAsync("mesh", _viewerMeshJson, _viewerMeshCharacter);
+            if (!string.IsNullOrEmpty(_viewerAnimJson))
+                await SendViewerPayloadAsync("anim", _viewerAnimJson, null);
+            if (!string.IsNullOrEmpty(_viewerAnimLabel))
+                txtStatus.Text = $"Preview restored: {_viewerAnimLabel}";
+            ErrorLog.WriteRaw("[VIEWER] replayed last mesh/animation after restart");
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("VIEWER_REPLAY", ex);
+        }
+    }
+
+    /// <summary>
+    /// Delivers a viewer payload. Small JSON goes straight into ExecuteScript; large
+    /// mesh/animation JSON (multi-MB on long clips) is fed in chunks through
+    /// viewer.js's payload buffer, because one enormous script string is a common
+    /// WebView2 renderer-kill / crash source.
+    /// </summary>
+    private async Task SendViewerPayloadAsync(string kind, string json, string? character)
+    {
+        const int DirectLimit = 1_500_000;
+        const int ChunkSize = 512 * 1024;
+
+        if (json.Length <= DirectLimit)
+        {
+            var script = kind == "mesh"
+                ? $"window.loadMesh({json}, {JsonConvert.SerializeObject(character ?? "")})"
+                : $"window.loadAnimation({json})";
+            if (!await TryExecuteViewerAsync(script))
+                throw new InvalidOperationException("viewer unavailable");
+            return;
+        }
+
+        if (!await TryExecuteViewerAsync("window.beginPayload()"))
+            throw new InvalidOperationException("viewer unavailable");
+        for (int i = 0; i < json.Length; i += ChunkSize)
+        {
+            var part = json.Substring(i, Math.Min(ChunkSize, json.Length - i));
+            if (!await TryExecuteViewerAsync($"window.appendPayload({JsonConvert.SerializeObject(part)})"))
+                throw new InvalidOperationException("viewer unavailable");
+        }
+        var charArg = character == null ? "null" : JsonConvert.SerializeObject(character);
+        if (!await TryExecuteViewerAsync($"window.endPayload('{kind}', {charArg})"))
+            throw new InvalidOperationException("viewer unavailable");
     }
 
     private void ApplySavedSettingsToViewer()
     {
-        if (webView?.CoreWebView2 == null) return;
+        var core = ViewerCore;
+        if (core == null) return;
 
-        webView.CoreWebView2.ExecuteScriptAsync(
+        core.ExecuteScriptAsync(
             $"window.setSkeletonVisible({(chkShowLines.IsChecked == true ? "true" : "false")})");
 
         if (_savedCameraPos != null && _savedCameraPos.Length == 3 &&
             _savedCameraTarget != null && _savedCameraTarget.Length == 3)
         {
-            webView.CoreWebView2.ExecuteScriptAsync(
+            core.ExecuteScriptAsync(
                 $"window.setCameraState({_savedCameraPos[0]},{_savedCameraPos[1]},{_savedCameraPos[2]},{_savedCameraTarget[0]},{_savedCameraTarget[1]},{_savedCameraTarget[2]})");
         }
     }
@@ -781,6 +839,95 @@ public partial class MainWindow : Window
     }
 
     private async void Help_Click(object sender, RoutedEventArgs e) => await OpenHelpAsync(null);
+
+    /// <summary>Context line for the crash banner's report ("previous version: 1.4+abc; ...").</summary>
+    private string? _crashBannerContext;
+
+    /// <summary>
+    /// A session.running marker left behind means the previous process never reached
+    /// <see cref="MainWindow_Closed"/>. Offer a report once - the log from that session is
+    /// still on disk, and a user who just relaunches would otherwise never mention it.
+    /// </summary>
+    private void ShowCrashBannerIfNeeded()
+    {
+        try
+        {
+            var stale = ErrorLog.TakeStaleSessionMarker();
+            if (stale == null) return;
+
+            DateTime? when = DateTime.TryParse(stale.Started, out var parsed) ? parsed : null;
+            txtCrashBanner.Text = when.HasValue
+                ? $"The editor closed unexpectedly last session ({when.Value:MMM d, HH:mm}). Send a report?"
+                : "The editor closed unexpectedly last session. Send a report?";
+
+            var parts = new List<string> { "the app did not shut down cleanly" };
+            if (when.HasValue) parts.Add($"session started {when.Value:yyyy-MM-dd HH:mm:ss}");
+            if (!string.IsNullOrEmpty(stale.Version)) parts.Add($"previous version {stale.Version}");
+            _crashBannerContext = string.Join("; ", parts);
+            crashBanner.Visibility = Visibility.Visible;
+        }
+        catch { }
+    }
+
+    private void DismissCrashBanner_Click(object sender, RoutedEventArgs e)
+        => crashBanner.Visibility = Visibility.Collapsed;
+
+    private void ReportCrashBanner_Click(object sender, RoutedEventArgs e)
+    {
+        crashBanner.Visibility = Visibility.Collapsed;
+        OpenBugReport(
+            reportType: "crash",
+            title: "The editor closed unexpectedly",
+            // Passed as uncleanExit, not context: Build() sets the payload flag from it, so
+            // the report header and the body agree instead of saying "Unclean: no" next to
+            // a context line about the app not shutting down.
+            uncleanExit: _crashBannerContext);
+    }
+
+    private void ReportBug_Click(object sender, RoutedEventArgs e) => OpenBugReport();
+
+    private void OpenLogFolder_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Directory.CreateDirectory(ErrorLog.LogDirectory);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = ErrorLog.LogDirectory,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            txtStatus.Text = "Could not open the log folder: " + ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Opens the report form. Content/output paths are passed for redaction only; every
+    /// caller is safe to omit them.
+    /// </summary>
+    private void OpenBugReport(
+        string reportType = "bug",
+        string? title = null,
+        string? body = null,
+        string? context = null,
+        string? uncleanExit = null)
+    {
+        try
+        {
+            var dlg = new BugReportDialog(reportType, title, body, context, uncleanExit,
+                _contentPath, _outputPath) { Owner = this };
+            dlg.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("BUGREPORT", ex);
+            txtStatus.Text = "Could not open the report dialog: " + ex.Message;
+        }
+    }
+
+    private void MainWindow_Closed(object? sender, EventArgs e) => ErrorLog.EndSession();
 
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
@@ -1701,6 +1848,9 @@ public partial class MainWindow : Window
         ["RMB Hold"] = Color.FromRgb(0xf5, 0xc2, 0xe7),
         // HeavyAlt must not share Heavy's pink: a rewritten alt edge that looks
         // identical to RMB hides the input change (and exports as a different enum).
+        // The bare "RMB Alt" key keeps older projects, which stored that label, in
+        // the same colour as the renamed "RMB Alt Delay".
+        ["RMB Alt Delay"] = Color.FromRgb(0xeb, 0xa0, 0xac),
         ["RMB Alt"] = Color.FromRgb(0xeb, 0xa0, 0xac),
         ["LMB Rush"] = Color.FromRgb(0xfa, 0xb3, 0x87),
         ["RMB Rush"] = Color.FromRgb(0xfa, 0xb3, 0x87),
@@ -1931,6 +2081,16 @@ public partial class MainWindow : Window
                     _lastCustomFileWriteUtc = DateTime.UtcNow;
                 }
             };
+
+            // Re-read the (now privatized) card so the dialog can append new hits to the
+            // private table instead of the stale shared one.
+            dialog.ReloadCard = () =>
+            {
+                var fresh = AttackHitCard.ReadDbPath(CustomAssets.Root, cardPath, AttackDbContentDir());
+                if (fresh == null || fresh.Windows.Count == 0)
+                    fresh = AttackHitCard.ReadDbPath(AttackDbContentDir(), cardPath);
+                return fresh;
+            };
         }
 
         bool? ok = dialog.ShowDialog();
@@ -1960,6 +2120,13 @@ public partial class MainWindow : Window
             var x = a[i];
             var y = b[i];
             if (x.Index != y.Index
+                || x.Append != y.Append
+                || !string.Equals(x.RowName, y.RowName, StringComparison.Ordinal)
+                || !string.Equals(x.TableRel, y.TableRel, StringComparison.OrdinalIgnoreCase)
+                || x.TemplateIndex != y.TemplateIndex
+                || !string.Equals(x.TemplateRow, y.TemplateRow, StringComparison.Ordinal)
+                || !string.Equals(x.AttackHeight, y.AttackHeight, StringComparison.OrdinalIgnoreCase)
+                || x.AvoidMatrix != y.AvoidMatrix
                 || x.FrameLo != y.FrameLo || x.FrameHi != y.FrameHi
                 || x.Damage != y.Damage || x.StructureDamage != y.StructureDamage
                 || x.DamageOnHit != y.DamageOnHit || x.DamageOnGuard != y.DamageOnGuard
@@ -3290,7 +3457,7 @@ public partial class MainWindow : Window
 
         string animPath = anim.FullPath;
         _parser.AnimToDbPath.TryGetValue(animPath, out var mappedDb);
-        var templates = AttackDbTemplateRanker.Rank(anim, mappedDb, _allMoves);
+        var templates = AttackDbTemplateRanker.Rank(anim, mappedDb, _allMoves, AttackDbContentDir());
         if (templates.Count == 0)
         {
             MessageBox.Show(this,
@@ -3338,7 +3505,8 @@ public partial class MainWindow : Window
                     DisplayNameClean = picked.DisplayNameClean,
                     Character = picked.Character,
                     WeaponType = picked.WeaponType,
-                    Category = picked.Category
+                    Category = picked.Category,
+                    HasHitWindows = CardHitProbe.HasHitWindows(picked.FullPath, AttackDbContentDir())
                 };
         }
 
@@ -3726,6 +3894,27 @@ public partial class MainWindow : Window
     private int _previewGen;
 
     /// <summary>
+    /// Fallback for a dead viewer when ProcessFailed never fired (or already fired and
+    /// recovery failed): schedule a restart and replay the cached payload.
+    /// </summary>
+    private void NoteViewerUnavailable()
+    {
+        _viewerReplayPending = _viewerAnimJson != null || _viewerMeshJson != null;
+        _ = RecoverViewerAsync();
+    }
+
+    // Frame-accurate timeline state mirrored from viewer.js. frame indices are
+    // 0-based to match the animation data; _previewNumFrames is the frame count.
+    private int _previewNumFrames;
+    private float _previewFps = 30f;
+    private float _previewDuration;
+    private bool _previewIsPlaying;
+    private bool _isScrubbing;
+    private bool _suppressTimelineSeek;
+    private float? _previewHitFrame;
+    private int? _previewBuildupFrame;
+
+    /// <summary>
     /// Central preview entry used by every move/node click. When the requested animation
     /// AND character are already loaded the clip is replayed from frame 0 - no overlay,
     /// no package parse, no WebView traffic. Otherwise the mesh and the animation parse
@@ -3747,8 +3936,8 @@ public partial class MainWindow : Window
         if (sameAnim && sameMesh)
         {
             txtStatus.Text = $"Playing (already loaded): {animPath}";
-            if (webView?.CoreWebView2 != null)
-                await webView.CoreWebView2.ExecuteScriptAsync("window.seekTo(0); window.play();");
+            if (!await TryExecuteViewerAsync("window.seekTo(0); window.play();"))
+                NoteViewerUnavailable();
             return;
         }
 
@@ -3795,7 +3984,7 @@ public partial class MainWindow : Window
                 _previewAnimPath = null; // failed - allow a re-click to retry
                 HidePreviewOverlay();
                 var escapedNull = nullMsg.Replace("'", "\\'");
-                await webView.CoreWebView2.ExecuteScriptAsync($"window.showError('{escapedNull}')");
+                await TryExecuteViewerAsync($"window.showError('{escapedNull}')");
                 return;
             }
 
@@ -3812,12 +4001,52 @@ public partial class MainWindow : Window
             txtAnimFPS.Text = $"FPS: {data.animation.fps}";
             txtBoneCount.Text = $"Bones: {data.skeleton.bones.Length}";
             txtFilePath.Text = $"Path: {gamePath}";
-            txtFrameInfo.Text = $"Frame: 0 / {data.animation.numFrames}";
-            txtTimeInfo.Text = $"0.00s / {data.animation.duration:F2}s";
 
-            // Send to WebView
-            await webView.CoreWebView2.ExecuteScriptAsync(
-                $"window.loadAnimation({json})");
+            // Timeline metadata. NumFrames can be missing for odd clips; fall back to
+            // duration * fps + 1 so the slider still has a usable range.
+            _previewFps = data.animation.fps > 0 ? data.animation.fps : 30f;
+            _previewDuration = data.animation.duration;
+            _previewNumFrames = data.animation.numFrames > 0
+                ? data.animation.numFrames
+                : Math.Max(1, (int)Math.Round(_previewDuration * _previewFps) + 1);
+
+            _previewHitFrame = null;
+            _previewBuildupFrame = null;
+            try
+            {
+                if (_parser.AnimToTiming.TryGetValue(
+                        AnimationParser.NormalizeAnimPath(gamePath), out var timing))
+                {
+                    _previewHitFrame = timing.hitFrame;
+                    _previewBuildupFrame = timing.buildupFrame;
+                }
+            }
+            catch { }
+
+            txtAnimTiming.Text = _previewHitFrame is float hitFrame
+                ? $"Hit: {hitFrame:0.##}f · Buildup: {_previewBuildupFrame ?? 0}f"
+                : "Hit/Buildup: -";
+
+            _suppressTimelineSeek = true;
+            sliderTimeline.Maximum = Math.Max(0, _previewNumFrames - 1);
+            sliderTimeline.Value = 0;
+            _suppressTimelineSeek = false;
+            UpdatePreviewReadout(0, 0f, _previewDuration);
+            RenderTimelineMarkers();
+
+            // Send to WebView (cached first so a crash mid-delivery can replay it)
+            _viewerAnimJson = json;
+            _viewerAnimLabel = $"{data.animation.name} ({gamePath})";
+            ErrorLog.WriteRaw($"[PREVIEW] anim bytes={json.Length} frames={data.animation.numFrames} tracks={data.animation.tracks.Length} path={gamePath}");
+            try
+            {
+                await SendViewerPayloadAsync("anim", json, null);
+            }
+            catch (InvalidOperationException)
+            {
+                NoteViewerUnavailable();
+                return;
+            }
 
             if (gen != _previewGen) return; // superseded mid-delivery; the newer request owns the overlay
             _previewAnimPath = gamePath; // re-clicks now replay instead of re-parsing
@@ -3827,46 +4056,276 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             if (gen != _previewGen) return;
+            if (IsViewerGone(ex))
+            {
+                NoteViewerUnavailable();
+                return;
+            }
             Console.Error.WriteLine($"[ANIMATION ERROR] {ex}");
             ErrorLog.Write("ANIMATION", ex);
             _previewAnimPath = null; // failed - allow a re-click to retry
             HidePreviewOverlay();
             txtStatus.Text = $"Error: {ex.Message}";
             var escaped = ex.Message.Replace("'", "\\'").Replace("\\", "\\\\").Replace("\n", " ").Replace("\r", "");
-            await webView.CoreWebView2.ExecuteScriptAsync($"window.showError('{escaped}')");
+            await TryExecuteViewerAsync($"window.showError('{escaped}')");
         }
     }
 
-    private void Play_Click(object sender, RoutedEventArgs e)
+    private void SendPreviewCommand(string script)
     {
-        webView.CoreWebView2?.ExecuteScriptAsync("window.play()");
+        _ = TryExecuteViewerAsync(script);
+    }
+
+    private void PlayPause_Click(object sender, RoutedEventArgs e)
+    {
+        if (_previewNumFrames <= 0) return;
+        SendPreviewCommand(_previewIsPlaying ? "window.pause()" : "window.play()");
     }
 
     private void Stop_Click(object sender, RoutedEventArgs e)
     {
-        webView.CoreWebView2?.ExecuteScriptAsync("window.stop()");
+        SendPreviewCommand("window.stop()");
+    }
+
+    private void FirstFrame_Click(object sender, RoutedEventArgs e)
+    {
+        SendPreviewCommand("window.seekToStart()");
+    }
+
+    private void PrevFrame_Click(object sender, RoutedEventArgs e)
+    {
+        StepPreviewFrames(-1);
+    }
+
+    private void NextFrame_Click(object sender, RoutedEventArgs e)
+    {
+        StepPreviewFrames(1);
+    }
+
+    private void LastFrame_Click(object sender, RoutedEventArgs e)
+    {
+        SendPreviewCommand("window.seekToEnd()");
+    }
+
+    private void StepPreviewFrames(int delta)
+    {
+        if (_previewNumFrames <= 0) return;
+        if (_previewIsPlaying) SendPreviewCommand("window.pause()");
+        SendPreviewCommand($"window.stepFrames({delta})");
+    }
+
+    private void SeekPreviewFrame(int frame)
+    {
+        if (_previewNumFrames <= 0) return;
+        frame = Math.Clamp(frame, 0, _previewNumFrames - 1);
+        if (_previewIsPlaying) SendPreviewCommand("window.pause()");
+        SendPreviewCommand($"window.seekToFrame({frame})");
+
+        _suppressTimelineSeek = true;
+        sliderTimeline.Value = frame;
+        _suppressTimelineSeek = false;
+        UpdatePreviewReadout(frame, frame / Math.Max(0.01f, _previewFps), _previewDuration);
     }
 
     private void Speed_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (webView?.CoreWebView2 == null) return;
+        if (ViewerCore == null) return;
         if (cmbSpeed.SelectedItem is ComboBoxItem item && item.Tag is string speedStr)
         {
             if (float.TryParse(speedStr, out float speed))
             {
-                webView.CoreWebView2.ExecuteScriptAsync(
-                    $"window.setPlaybackSpeed({speed})");
+                _ = TryExecuteViewerAsync($"window.setPlaybackSpeed({speed})");
             }
         }
     }
 
+    private void Loop_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return; // XAML's initial IsChecked fires before the viewer exists
+        SendPreviewCommand($"window.setLoop({(chkLoop.IsChecked == true ? "true" : "false")})");
+    }
+
+    private void JumpFrame_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        e.Handled = true;
+        if (_previewNumFrames <= 0) return;
+
+        if (int.TryParse(txtJumpFrame.Text.Trim(), out int frame))
+        {
+            frame = Math.Clamp(frame, 0, _previewNumFrames - 1);
+            txtJumpFrame.Text = frame.ToString();
+            SeekPreviewFrame(frame);
+        }
+        else
+        {
+            txtJumpFrame.Text = string.Empty;
+        }
+    }
+
+    private void Timeline_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_previewNumFrames <= 0) return;
+        // Scrubbing inspects a pose; letting playback run would immediately move off
+        // the frame the user is aiming at.
+        _isScrubbing = true;
+        if (_previewIsPlaying) SendPreviewCommand("window.pause()");
+    }
+
+    private void Timeline_PreviewMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        _isScrubbing = false;
+    }
+
+    private void Timeline_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        _isScrubbing = false;
+    }
+
     private void Timeline_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (sliderTimeline.IsMouseCaptureWithin)
+        // Any value change that isn't our own programmatic sync comes from the user
+        // (click-to-point, thumb drag, or snapped tick), so seek there.
+        if (_suppressTimelineSeek || _previewNumFrames <= 0) return;
+
+        int frame = Math.Clamp((int)Math.Round(sliderTimeline.Value), 0, _previewNumFrames - 1);
+        SendPreviewCommand($"window.seekToFrame({frame})");
+        UpdatePreviewReadout(frame, frame / Math.Max(0.01f, _previewFps), _previewDuration);
+    }
+
+    private void Timeline_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (_previewNumFrames <= 0) return;
+
+        double width = sliderTimeline.ActualWidth;
+        if (width <= 0) return;
+
+        const double inset = 6; // default WPF slider thumb inset
+        double usable = Math.Max(1, width - inset * 2);
+        double fraction = Math.Clamp((e.GetPosition(sliderTimeline).X - inset) / usable, 0, 1);
+        int frame = (int)Math.Round(fraction * Math.Max(0, _previewNumFrames - 1));
+        double time = frame / Math.Max(0.01f, _previewFps);
+
+        string tip = $"Frame {frame} · {time:F2}s";
+        if (_previewHitFrame is float hit && Math.Abs(hit - frame) < 0.5f)
+            tip += " · hit frame";
+        if (_previewBuildupFrame is int buildup && buildup == frame)
+            tip += " · buildup frame";
+        sliderTimeline.ToolTip = tip;
+    }
+
+    private void Timeline_MouseLeave(object sender, MouseEventArgs e)
+    {
+        sliderTimeline.ToolTip =
+            "Click or drag to scrub. Red = hit frame, yellow = buildup frame.";
+    }
+
+    private void TimelineMarkers_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        RenderTimelineMarkers();
+    }
+
+    private void RenderTimelineMarkers()
+    {
+        timelineMarkers.Children.Clear();
+        if (_previewNumFrames <= 1) return;
+
+        double width = timelineMarkers.ActualWidth;
+        double height = timelineMarkers.ActualHeight;
+        if (width <= 0 || height <= 0) return;
+
+        const double inset = 6;
+        double usable = Math.Max(1, width - inset * 2);
+        int lastFrame = Math.Max(1, _previewNumFrames - 1);
+
+        void AddMarker(float frame, Color color, double thickness)
         {
-            var progress = sliderTimeline.Value / 100.0;
-            webView.CoreWebView2?.ExecuteScriptAsync(
-                $"window.seekTo({progress})");
+            double fraction = Math.Clamp(frame / lastFrame, 0, 1);
+            double x = inset + fraction * usable;
+            var tick = new System.Windows.Shapes.Rectangle
+            {
+                Width = thickness,
+                Height = height,
+                Fill = new SolidColorBrush(color),
+                Opacity = 0.9
+            };
+            Canvas.SetLeft(tick, Math.Clamp(x - thickness / 2, 0, Math.Max(0, width - thickness)));
+            Canvas.SetTop(tick, 0);
+            timelineMarkers.Children.Add(tick);
+        }
+
+        if (_previewHitFrame is float hitFrame)
+            AddMarker(hitFrame, Color.FromRgb(0xF3, 0x8B, 0xA8), 2.5);
+        if (_previewBuildupFrame is int buildupFrame)
+            AddMarker(buildupFrame, Color.FromRgb(0xF9, 0xE2, 0xAF), 2.5);
+    }
+
+    private void UpdatePreviewReadout(int frame, float time, float duration)
+    {
+        string last = _previewNumFrames > 0 ? (_previewNumFrames - 1).ToString() : "0";
+        txtFrameInfo.Text = $"Frame: {frame} / {last}";
+        txtTimeInfo.Text = $"{time:F2}s / {duration:F2}s";
+    }
+
+    private void UpdatePlayButton()
+    {
+        if (btnPlayPause == null) return;
+        btnPlayPause.Content = _previewIsPlaying ? "\u23F8" : "\u25B6";
+        btnPlayPause.ToolTip = _previewIsPlaying ? "Pause (Space)" : "Play (Space)";
+    }
+
+    private void ApplyPlaybackState(WebViewMessage data)
+    {
+        if (data.numFrames is int count && count > 0) _previewNumFrames = count;
+        if (data.fps is int fps && fps > 0) _previewFps = fps;
+        if (data.duration is float duration && duration > 0) _previewDuration = duration;
+        if (data.playing is bool playing) _previewIsPlaying = playing;
+
+        int lastFrame = Math.Max(0, _previewNumFrames - 1);
+        int frame = data.frame ?? (data.progress is float progress
+            ? (int)Math.Round(progress * lastFrame)
+            : 0);
+        frame = Math.Clamp(frame, 0, lastFrame);
+
+        if (sliderTimeline.Maximum != lastFrame)
+        {
+            _suppressTimelineSeek = true;
+            sliderTimeline.Maximum = lastFrame;
+            _suppressTimelineSeek = false;
+        }
+
+        if (!_isScrubbing)
+        {
+            _suppressTimelineSeek = true;
+            sliderTimeline.Value = frame;
+            _suppressTimelineSeek = false;
+        }
+
+        UpdatePreviewReadout(frame, data.time ?? frame / Math.Max(0.01f, _previewFps),
+            data.duration ?? _previewDuration);
+        UpdatePlayButton();
+    }
+
+    private void HandleViewportKey(string? key, bool shift)
+    {
+        if (_previewNumFrames <= 0) return;
+        switch (key)
+        {
+            case " ":
+                SendPreviewCommand(_previewIsPlaying ? "window.pause()" : "window.play()");
+                break;
+            case "ArrowLeft":
+                StepPreviewFrames(shift ? -10 : -1);
+                break;
+            case "ArrowRight":
+                StepPreviewFrames(shift ? 10 : 1);
+                break;
+            case "Home":
+                SendPreviewCommand("window.seekToStart()");
+                break;
+            case "End":
+                SendPreviewCommand("window.seekToEnd()");
+                break;
         }
     }
 
@@ -3885,21 +4344,38 @@ public partial class MainWindow : Window
                 {
                     case "animationLoaded":
                         txtStatus.Text = $"Playing: {data.name} ({data.trackCount} tracks)";
+                        ApplyPlaybackState(data);
                         break;
 
                     case "timeUpdate":
-                        if (data.duration > 0)
-                        {
-                            sliderTimeline.Value = (data.progress ?? 0) * 100;
-                            txtFrameInfo.Text = $"Frame: {(int)((data.progress ?? 0) * (data.numFrames ?? 0))} / {data.numFrames ?? 0}";
-                            txtTimeInfo.Text = $"{data.time:F2}s / {data.duration:F2}s";
-                        }
+                        ApplyPlaybackState(data);
+                        break;
+
+                    case "playbackEnded":
+                        _previewIsPlaying = false;
+                        UpdatePlayButton();
+                        break;
+
+                    case "viewportKey":
+                        HandleViewportKey(data.key, data.shift == true);
                         break;
 
                     case "animationError":
+                        _previewNumFrames = 0;
+                        _previewFps = 30f;
+                        _previewDuration = 0f;
+                        _previewIsPlaying = false;
+                        _previewHitFrame = null;
+                        _previewBuildupFrame = null;
+                        txtAnimTiming.Text = "Hit/Buildup: -";
                         txtFrameInfo.Text = "Frame: 0 / 0";
                         txtTimeInfo.Text = "0.00s / 0.00s";
+                        _suppressTimelineSeek = true;
+                        sliderTimeline.Maximum = 0;
                         sliderTimeline.Value = 0;
+                        _suppressTimelineSeek = false;
+                        RenderTimelineMarkers();
+                        UpdatePlayButton();
                         break;
                 }
             });
@@ -3909,18 +4385,17 @@ public partial class MainWindow : Window
 
     private void ChkShowLines_Changed(object sender, RoutedEventArgs e)
     {
-        if (webView?.CoreWebView2 != null)
-            webView.CoreWebView2.ExecuteScriptAsync(
-                $"window.setSkeletonVisible({(chkShowLines.IsChecked == true ? "true" : "false")})");
+        _ = TryExecuteViewerAsync(
+            $"window.setSkeletonVisible({(chkShowLines.IsChecked == true ? "true" : "false")})");
         if (_initialized)
             SaveSettings();
     }
 
     private void ResetCamera_Click(object sender, RoutedEventArgs e)
     {
-        if (webView?.CoreWebView2 != null)
+        if (ViewerCore != null)
         {
-            webView.CoreWebView2.ExecuteScriptAsync("window.resetCamera()");
+            _ = TryExecuteViewerAsync("window.resetCamera()");
             _savedCameraPos = null;
             _savedCameraTarget = null;
         }
@@ -3940,8 +4415,18 @@ public partial class MainWindow : Window
             }
 
             var json = _parser.ToJson(meshData);
-            var escapedChar = character.Replace("'", "\\'");
-            await webView.CoreWebView2.ExecuteScriptAsync($"window.loadMesh({json}, '{escapedChar}')");
+            _viewerMeshJson = json;
+            _viewerMeshCharacter = character;
+            ErrorLog.WriteRaw($"[PREVIEW] mesh bytes={json.Length} verts={meshData.positions.Length / 3} bones={meshData.boneNames.Length} char={character}");
+            try
+            {
+                await SendViewerPayloadAsync("mesh", json, character);
+            }
+            catch (InvalidOperationException)
+            {
+                NoteViewerUnavailable();
+                return;
+            }
             if (gen != _previewGen) return;
             _previewMeshCharacter = character; // unchanged character => no re-send on the next click
             txtStatus.Text = $"Loaded mesh for {character} ({meshData.positions.Length / 3} vertices)";
@@ -3949,12 +4434,24 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             if (gen != _previewGen) return;
+            if (IsViewerGone(ex))
+            {
+                NoteViewerUnavailable();
+                return;
+            }
             Console.Error.WriteLine($"[MESH ERROR] {ex}");
             ErrorLog.Write("MESH", ex);
             _previewMeshCharacter = null;
             txtStatus.Text = $"Error loading mesh: {ex.Message}";
         }
     }
+
+    /// <summary>True for the WebView2 "browser process crashed" family of errors.</summary>
+    private static bool IsViewerGone(Exception ex) =>
+        ex is InvalidOperationException or ObjectDisposedException
+        && (ex is ObjectDisposedException
+            || (ex.Message?.Contains("no longer valid", StringComparison.OrdinalIgnoreCase) ?? false)
+            || (ex.Message?.Contains("browser process", StringComparison.OrdinalIgnoreCase) ?? false));
 
     private static bool IsBarehandsWeaponTag(string? weaponTag) =>
         !string.IsNullOrEmpty(weaponTag) && weaponTag.EndsWith("Barehands", StringComparison.OrdinalIgnoreCase);
@@ -4827,6 +5324,98 @@ public partial class MainWindow : Window
         dialog.ShowDialog();
     }
 
+    /// <summary>
+    /// Maps extracted-file keys to true content-relative paths using UnrealPak -list.
+    /// -extract writes each entry relative to its mount point, so a pak mounted at
+    /// .../Sifu/Content/DB/_MainChar/Combos/ lands as a bare MainChar_ComboTree.uasset at
+    /// the extract root. Harvest must store it as DB/_MainChar/Combos/... or export can
+    /// never find the imported tree. Keys include the entry path, its file name and the
+    /// full content path so the lookup works whether extraction kept directories or not.
+    /// </summary>
+    private static Dictionary<string, string>? BuildPakContentRelMap(
+        string pakPath, string unrealPakPath, string? cryptoKeysPath)
+    {
+        try
+        {
+            var args = string.IsNullOrEmpty(cryptoKeysPath)
+                ? $"\"{pakPath}\" -list"
+                : $"\"{pakPath}\" -CryptoKeys=\"{cryptoKeysPath}\" -list";
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = unrealPakPath,
+                Arguments = args,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                WorkingDirectory = Setup.ContentExtractor.EnsureUnrealPakWorkingDirectory(),
+            };
+            using var process = System.Diagnostics.Process.Start(psi);
+            if (process == null) return null;
+            var stdout = process.StandardOutput.ReadToEnd();
+            var stderr = process.StandardError.ReadToEnd();
+            process.WaitForExit(60000);
+
+            var mountRegex = new Regex(@"Mount point\s+(.+?)\s*$", RegexOptions.Compiled);
+            var fileRegex = new Regex("\"([^\"]+)\"\\s+offset:", RegexOptions.Compiled);
+
+            static string? ToContentRel(string mount, string entry)
+            {
+                var mp = mount.Replace('\\', '/').Trim();
+                while (mp.StartsWith("../", StringComparison.Ordinal)) mp = mp.Substring(3);
+                var idx = mp.IndexOf("Sifu/Content/", StringComparison.OrdinalIgnoreCase);
+                if (idx >= 0)
+                    mp = mp.Substring(idx + "Sifu/Content/".Length);
+                else
+                {
+                    idx = mp.IndexOf("Content/", StringComparison.OrdinalIgnoreCase);
+                    if (idx >= 0) mp = mp.Substring(idx + "Content/".Length);
+                    else mp = "";
+                }
+                mp = mp.Trim('/');
+                entry = entry.Replace('\\', '/').TrimStart('/');
+                if (string.IsNullOrEmpty(entry) || entry.Contains("..")) return null;
+                return string.IsNullOrEmpty(mp) ? entry : mp + "/" + entry;
+            }
+
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            string currentMount = "";
+            foreach (var raw in (stdout + "\n" + stderr).Split('\n'))
+            {
+                var line = raw.Trim();
+                if (line.Length == 0) continue;
+
+                var mountMatch = mountRegex.Match(line);
+                if (mountMatch.Success)
+                {
+                    currentMount = mountMatch.Groups[1].Value;
+                    continue;
+                }
+
+                var fileMatch = fileRegex.Match(line);
+                if (!fileMatch.Success) continue;
+
+                var entry = fileMatch.Groups[1].Value.Replace('\\', '/');
+                if (entry.EndsWith(".pak", StringComparison.OrdinalIgnoreCase)) continue;
+                if (entry.EndsWith(".sig", StringComparison.OrdinalIgnoreCase)) continue;
+
+                var contentRel = ToContentRel(currentMount, entry);
+                if (string.IsNullOrEmpty(contentRel)) continue;
+
+                map[entry] = contentRel;
+                map.TryAdd(Path.GetFileName(entry), contentRel);
+                map.TryAdd(contentRel, contentRel);
+            }
+            ErrorLog.Write("IMPORT", new Exception($"Pak content map: {map.Count} key(s) from -list"));
+            return map.Count > 0 ? map : null;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("IMPORT", ex);
+            return null;
+        }
+    }
+
     private async void ImportMod_Click(object sender, RoutedEventArgs e)
     {
         CommitAttackDbPanel();
@@ -4878,6 +5467,8 @@ public partial class MainWindow : Window
         // True once step 7 has harvested this import's files; the finally-block
         // fallback then stays hands-off so harvest/register never run twice.
         bool customFilesCollected = false;
+        // Extracted-file -> content-relative path, recovered from the pak's mount points.
+        Dictionary<string, string>? pakContentRel = null;
 
         var importDialog = new Import.ImportDialog
         {
@@ -4992,6 +5583,13 @@ public partial class MainWindow : Window
 
                 UI(() => importDialog.SetProgress(30));
                 UI(() => { importDialog.UpdateStep(1, "done"); });
+
+                // UnrealPak -extract flattens entries to their mount-point-relative path,
+                // so a tree mounted under .../Content/DB/_MainChar/Combos/ lands as a bare
+                // MainChar_ComboTree.uasset. Recover the real content paths from -list so
+                // harvest stores each file where export looks for it.
+                pakContentRel = BuildPakContentRelMap(pakCopy, unrealPakPath,
+                    hasCryptoKeys ? cryptoKeysPath : null);
 
                 // Step 2: Discover combo trees + stance + unit properties
                 UI(() => { importDialog.UpdateStep(2, "active"); importDialog.SetCurrentAction("Finding combo trees / unit props..."); importDialog.SetProgress(35); });
@@ -5569,6 +6167,7 @@ public partial class MainWindow : Window
                     try
                     {
                         harvestedCustom = CustomAssets.Harvest(importTempRoot, AttackDbContentDir(),
+                            pakContentRel,
                             (phase, done, total) => UI(() =>
                             {
                                 string verb = phase == "copy" ? "Copying" : "Comparing";
@@ -5705,7 +6304,7 @@ public partial class MainWindow : Window
                         // the differing ones - minutes for large mods. Background it so the UI
                         // stays responsive; the await resumes on the dispatcher thread, so the
                         // mount/register below still run on the UI thread.
-                        int harvested = await Task.Run(() => CustomAssets.Harvest(importTempRoot, AttackDbContentDir()));
+                        int harvested = await Task.Run(() => CustomAssets.Harvest(importTempRoot, AttackDbContentDir(), pakContentRel));
                         _suppressCustomWatcher = false;
                         // Import harvest wrote its own files - drop any queued events so a
                         // flush after the flag clears can't pop the watcher dialog.
@@ -7446,12 +8045,14 @@ public partial class MainWindow : Window
             return;
         }
         SaveSettings();
-        if (webView?.CoreWebView2 != null)
+        var closeCore = ViewerCore;
+        if (closeCore != null)
         {
-            webView.CoreWebView2.ExecuteScriptAsync("window.getCameraState()")
+            closeCore.ExecuteScriptAsync("window.getCameraState()")
                 .ContinueWith(t =>
                 {
-                    var result = t.Result;
+                    string? result = null;
+                    try { result = t.Result; } catch { }
                     if (!string.IsNullOrEmpty(result) && result != "null")
                     {
                         try
@@ -7792,6 +8393,17 @@ public partial class MainWindow : Window
         var focused = FocusManager.GetFocusedElement(this);
         if (focused is TextBox) return;
 
+        // Preview transport shortcuts step aside for controls that own space/arrows
+        // (combo boxes, list navigation, text entry). Walkthrough mode has already
+        // returned above. Space still belongs to a focused button.
+        if (_previewNumFrames > 0 &&
+            focused is not (TextBox or ComboBox or ComboBoxItem or ListBoxItem or ListViewItem
+                or TreeViewItem or DataGrid or DataGridCell) &&
+            HandlePreviewShortcut(e, allowSpace: focused is not ButtonBase))
+        {
+            return;
+        }
+
         var mods = Keyboard.Modifiers;
         if (e.Key == Key.Z && mods == ModifierKeys.Control)
         {
@@ -7813,6 +8425,48 @@ public partial class MainWindow : Window
             case Key.S: _keyS = true; e.Handled = true; break;
             case Key.D: _keyD = true; e.Handled = true; break;
         }
+    }
+
+    /// <summary>Frame-accurate transport keys. Returns true when the key was consumed.
+    /// Shift+Left/Right step ten frames; Home/End jump to the ends.</summary>
+    private bool HandlePreviewShortcut(KeyEventArgs e, bool allowSpace)
+    {
+        var mods = Keyboard.Modifiers;
+        // Leave Ctrl/Alt/Win chords to their normal handlers.
+        if ((mods & ~ModifierKeys.Shift) != 0) return false;
+        bool shift = (mods & ModifierKeys.Shift) != 0;
+
+        switch (e.Key)
+        {
+            case Key.Space:
+                if (!allowSpace) return false;
+                if (e.IsRepeat) { e.Handled = true; return true; }
+                e.Handled = true;
+                SendPreviewCommand(_previewIsPlaying ? "window.pause()" : "window.play()");
+                return true;
+
+            case Key.Left:
+                e.Handled = true;
+                StepPreviewFrames(shift ? -10 : -1);
+                return true;
+
+            case Key.Right:
+                e.Handled = true;
+                StepPreviewFrames(shift ? 10 : 1);
+                return true;
+
+            case Key.Home:
+                e.Handled = true;
+                SendPreviewCommand("window.seekToStart()");
+                return true;
+
+            case Key.End:
+                e.Handled = true;
+                SendPreviewCommand("window.seekToEnd()");
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>Text input is a separate routed event; without this a focused editor control
@@ -7863,17 +8517,16 @@ public partial class MainWindow : Window
 
     private static SolidColorBrush GetInputColor(string input)
     {
-        // Order matters: "LMB Rush" contains LMB and "RMB Alt" contains RMB, so the
-        // derived variants must be matched before their base button. "RMB Hold"
+        // Order matters: "LMB Rush" contains LMB and "RMB Alt Delay" contains RMB, so
+        // the derived variants must be matched before their base button. "RMB Hold"
         // must also stay ahead of "RMB".
         if (input.Contains("Rush")) return new SolidColorBrush(Color.FromRgb(0xfa, 0xb3, 0x87));
         if (input.Contains("Alt")) return new SolidColorBrush(Color.FromRgb(0xeb, 0xa0, 0xac));
         if (input.Contains("LMB")) return new SolidColorBrush(Color.FromRgb(0xa6, 0xe3, 0xa1));
         if (input.Contains("RMB Hold")) return new SolidColorBrush(Color.FromRgb(0xf5, 0xc2, 0xe7));
         if (input.Contains("RMB")) return new SolidColorBrush(Color.FromRgb(0xf3, 0x8b, 0xa8));
-        if (input.Contains("S")) return new SolidColorBrush(Color.FromRgb(0xf9, 0xe2, 0xaf));
-        if (input.Contains("Shift")) return new SolidColorBrush(Color.FromRgb(0x89, 0xdc, 0xeb));
-        if (input.Contains("Q")) return new SolidColorBrush(Color.FromRgb(0xcb, 0xa6, 0xf7));
+        // Anything else is a raw value carried in from an imported project; the
+        // neutral colour keeps it visibly outside the catalog.
         return new SolidColorBrush(Color.FromRgb(0x89, 0xb4, 0xfa));
     }
 
@@ -9001,7 +9654,7 @@ public partial class MainWindow : Window
             yield break;
         }
         // One catalog for node links and start-entry rows, so the same input always
-        // reads and exports the same. HeavyAlt must read "RMB Alt" (plain "RMB"
+        // reads and exports the same. HeavyAlt must read "RMB Alt Delay" (plain "RMB"
         // exports as Heavy); Rush values need labels of their own.
         foreach (var choice in InputCatalog.Choices)
             yield return (choice.MenuLabel, choice.Label);
@@ -9065,33 +9718,6 @@ public partial class MainWindow : Window
             };
             menu.Items.Add(item);
         }
-        // Player links can carry a raw EComboTransition name the catalog does not list.
-        // Stored verbatim as the edge's input label; export writes it unchanged.
-        if (IsCurrentGraphMainChar())
-        {
-            menu.Items.Add(new Separator());
-            var custom = new MenuItem { Header = "Custom input…" };
-            custom.Click += (s, ev) =>
-            {
-                // Claim the pick before opening the prompt: the context menu closes
-                // immediately, and the close handler would otherwise cancel the link.
-                _linkPickCommitted = true;
-                menu.Closed -= OnPickerClosed;
-                var raw = InputPrompt.Show(this, "Custom input value",
-                    "Raw EComboTransition name (for example Special or Dodge).\n"
-                        + "Only names EComboTransition declares do anything; anything else is written verbatim.",
-                    "");
-                if (raw == null)
-                {
-                    ExitLinkMode();
-                    txtStatus.Text = "Link cancelled";
-                    return;
-                }
-                CommitLink(target, raw);
-            };
-            menu.Items.Add(custom);
-        }
-
         void OnPickerClosed(object? s, RoutedEventArgs ev)
         {
             menu.Closed -= OnPickerClosed;
@@ -11235,6 +11861,26 @@ public partial class MainWindow : Window
         node.HitEdits = inherited?.HitEdits;
     }
 
+    /// <summary>
+    /// Warning text for a MainChar node pointed at a card with no hit windows. Aim lives in
+    /// m_HitBoxes, so a hitless card cannot aim (a thrown weapon fires at the default facing
+    /// instead of at the enemy) and cannot land hits either. Null when the move is fine,
+    /// the graph is not MainChar, or the card file could not be probed.
+    /// </summary>
+    private string? NoHitWindowsWarning(ComboNode? node)
+    {
+        if (node == null || node.IsRedirect) return null;
+        if (!IsCurrentGraphMainChar()) return null;
+        string card = AttackDbCard.EffectiveCardPath(node);
+        if (string.IsNullOrEmpty(card)) return null;
+        if (CardHitProbe.HasHitWindows(card, AttackDbContentDir()) != false) return null;
+
+        string name = Path.GetFileNameWithoutExtension(card);
+        ErrorLog.Write("LIBRARY", new Exception(
+            $"AIM WARN: node '{node.DisplayName}' now uses hitless card '{card}' - no aim, no hits"));
+        return $"'{name}' has no hit windows, so this move cannot aim or land hits";
+    }
+
     /// <summary>Every node the editor can tune: the live graph plus all cached unit graphs.</summary>
     private IEnumerable<ComboNode> EnumerateAllGraphNodes()
     {
@@ -12009,8 +12655,10 @@ public partial class MainWindow : Window
         => node != null && !node.IsRedirect && !node.IsActionNode && !node.IsEventNode && !node.Removed;
 
     // Payload replacement targets: a vanilla node whose struct export can patch in place.
-    // MainChar cannot host AI actions (the player pawn lacks the Order system), and
-    // mod-imported / user-created nodes are not vanilla structs.
+    // MainChar nodes are excluded even though new AI nodes may now be appended to a
+    // player tree: turning a shipped player attack into an AI action is a much riskier
+    // edit than adding a separate experimental node. Mod-imported / user-created nodes
+    // are not vanilla structs either.
     private bool CanReplacePayload(ComboNode? node)
         => node != null && !node.IsRoot && !node.IsRedirect && !node.Removed
             && node.TreeIndex >= 0
@@ -12092,21 +12740,18 @@ public partial class MainWindow : Window
             if (e.Data.GetDataPresent(typeof(AiNodeInfo)))
             {
                 // Drop on a node to replace that node's payload at export; drop on the
-                // canvas background instead to append a new node. MainChar cannot host
-                // them - the player pawn cannot run the Order system those actions rely
-                // on for range/dash behavior.
-                if (IsCurrentGraphMainChar())
-                {
-                    e.Effects = DragDropEffects.None;
-                    e.Handled = true;
-                    txtStatus.Text = "AI actions are enemy-only - drop them on an enemy tree's canvas background "
-                      + "to append a new node";
-                    return;
-                }
+                // canvas background instead to append a new node. Vanilla MainChar nodes
+                // are never payload targets (the player pawn cannot run the Order system
+                // those actions rely on), but a *new* AI node can be appended to a player
+                // tree for experiments - CanReplacePayload() is what still refuses the
+                // rewrite-in-place case.
                 if (e.Data.GetData(typeof(AiNodeInfo)) is not AiNodeInfo ai || !CanReplacePayload(node))
                 {
                     e.Effects = DragDropEffects.None;
                     e.Handled = true;
+                    if (IsCurrentGraphMainChar())
+                        txtStatus.Text = "Drop an AI node on the empty canvas to add it - "
+                          + "a player move cannot be replaced by an AI action";
                     return;
                 }
 
@@ -12204,6 +12849,9 @@ public partial class MainWindow : Window
                         }
                         RenderComboGraph();
                         txtStatus.Text = $"Replaced {linkedNodes.Count} linked nodes -> {moveName}";
+                        string? linkedAimWarn = linkedNodes.Select(NoHitWindowsWarning)
+                            .FirstOrDefault(w => w != null);
+                        if (linkedAimWarn != null) txtStatus.Text += $" - WARNING: {linkedAimWarn}";
                     }
                     else
                     {
@@ -12213,6 +12861,8 @@ public partial class MainWindow : Window
                         ApplyMoveSourceDbPath(node, move);
                         RenderComboGraph();
                         txtStatus.Text = $"Replaced: {dropLabel} -> {moveName}";
+                        string? aimWarn = NoHitWindowsWarning(node);
+                        if (aimWarn != null) txtStatus.Text += $" - WARNING: {aimWarn}";
                     }
 
                     if (_nodeBorders.TryGetValue(node.Id, out var newNodeBorder))
@@ -12258,14 +12908,15 @@ public partial class MainWindow : Window
 
         if (e.Data.GetDataPresent(typeof(AiNodeInfo)))
         {
-            if (IsCurrentGraphMainChar())
-            {
-                txtStatus.Text = "AI actions are enemy-only - switch to an enemy moveset "
-                    + "to append action/event nodes";
-                return;
-            }
             if (e.Data.GetData(typeof(AiNodeInfo)) is AiNodeInfo aiNode)
+            {
                 AddAiNode(aiNode, canvasPos);
+                // MainChar can now carry these so people can experiment, but the player
+                // pawn has no Order system, so the node usually does nothing in game.
+                if (IsCurrentGraphMainChar())
+                    txtStatus.Text += " - experimental on player trees: the pawn has no Order system, "
+                        + "so it may do nothing in game";
+            }
             return;
         }
         if (!e.Data.GetDataPresent(typeof(MoveInfo))) return;
@@ -12362,6 +13013,8 @@ public partial class MainWindow : Window
         if (_nodeBorders.TryGetValue(id, out var border))
             SelectNode(border, node);
         txtStatus.Text = $"Added node '{display}' - right-click it, Connect to… to link it";
+        string? aimWarn = NoHitWindowsWarning(node);
+        if (aimWarn != null) txtStatus.Text += $" - WARNING: {aimWarn}";
     }
 
     #region Undo/Redo
@@ -12618,6 +13271,8 @@ public partial class MainWindow : Window
             DefaultAnimPath = n.DefaultAnimPath,
             DefaultDBPath = n.DefaultDBPath,
             SourceDBPath = n.SourceDBPath,
+            ImportedSlotKey = n.ImportedSlotKey,
+            ImportedDbPath = n.ImportedDbPath,
             DisplayName = n.DisplayName,
             ImportedDisplayName = n.ImportedDisplayName,
             IsRoot = n.IsRoot,
@@ -13759,7 +14414,9 @@ public partial class MainWindow : Window
         _thumbRenderers[id] = tcs;
         try
         {
-            await thumbWebView.CoreWebView2!.ExecuteScriptAsync($"window.renderThumb({id}, {payload}, {size})");
+            var thumbCore = ThumbCore;
+            if (thumbCore == null) return null;
+            await thumbCore.ExecuteScriptAsync($"window.renderThumb({id}, {payload}, {size})");
             var dataUrl = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(30));
             if (dataUrl == null) return null;
 
@@ -13896,6 +14553,12 @@ public class WebViewMessage
     public int? trackCount { get; set; }
     public float? time { get; set; }
     public float? progress { get; set; }
+    public int? frame { get; set; }
+    public bool? playing { get; set; }
+    public string? state { get; set; }
+    public bool? loop { get; set; }
+    public string? key { get; set; }
+    public bool? shift { get; set; }
 }
 
 public class CameraState

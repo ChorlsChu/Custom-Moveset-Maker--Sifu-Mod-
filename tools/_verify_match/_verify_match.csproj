@@ -10,6 +10,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\SifuMovesetEditor.csproj" />
+    <Reference Include="UAssetAPI">
+      <HintPath>..\..\libs\UAssetAPI.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
   </ItemGroup>
 
 </Project>

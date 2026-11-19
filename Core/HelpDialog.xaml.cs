@@ -64,6 +64,25 @@ public partial class HelpDialog : Window
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
+    /// <summary>
+    /// Report entry: Help is where a stuck user already looks. The form is owned by the
+    /// main window so closing Help does not take the report with it.
+    /// </summary>
+    private void ReportBug_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var owner = Owner ?? this;
+            var dlg = new BugReportDialog { Owner = owner };
+            dlg.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Could not open the report dialog:\n" + ex.Message,
+                "Report a bug", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (!_ready) return;

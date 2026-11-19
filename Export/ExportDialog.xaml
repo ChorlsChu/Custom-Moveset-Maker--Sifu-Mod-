@@ -259,6 +259,10 @@
                 <Button x:Name="btnCustomFiles" Content="Custom Files"
                         Style="{StaticResource DarkButton}" Click="CustomFiles_Click"
                         Padding="16,6" Visibility="Collapsed" Margin="0,0,8,0"/>
+                <Button x:Name="btnReportError" Content="Report this" Visibility="Collapsed"
+                        Style="{StaticResource DarkButton}" Click="ReportError_Click"
+                        Padding="12,6" Margin="0,0,8,0"
+                        ToolTip="Open a bug report with this error and the log attached"/>
                 <Button Content="Cancel" Style="{StaticResource DarkButton}"
                         Click="Cancel_Click" Padding="16,6"/>
                 <Button x:Name="btnConfirm" Content="Export &amp; Install"

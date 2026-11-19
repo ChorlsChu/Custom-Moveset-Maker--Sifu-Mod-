@@ -670,14 +670,8 @@ public partial class StartEntriesDialog : Window
             if (!InputCatalog.IsKnown(name))
             {
                 inputWarning.Text = "⚠";
-                inputWarning.ToolTip = $"'{t.InputEnum}' is not a known EComboTransition value. "
-                    + "It is written verbatim - the engine only reacts to names it declares.";
-            }
-            else if (!InputCatalog.IsVanillaUsed(name))
-            {
-                inputWarning.Text = "⚠";
-                inputWarning.ToolTip = $"{name} is declared by EComboTransition but no vanilla combo "
-                    + "asset uses it. It will be written, but the engine may ignore it.";
+                inputWarning.ToolTip = $"'{t.InputEnum}' is not one of the inputs the game's combo trees use. "
+                    + "It is written verbatim, and the engine ignores a row whose input nothing consumes.";
             }
             else
             {
@@ -693,9 +687,11 @@ public partial class StartEntriesDialog : Window
         {
             inputCombo.Items.Clear();
             foreach (var c in InputCatalog.Choices) inputCombo.Items.Add(c.MenuLabel);
+            // A project imported with a value the catalog no longer offers (Special,
+            // Dodge, Throw) has to keep displaying and exporting as itself, never as
+            // None, so the row's own value gets a read-only-looking item of its own.
             if (!InputCatalog.IsKnown(t.InputEnum) && !string.IsNullOrEmpty(t.InputEnum))
                 inputCombo.Items.Insert(0, CustomItemLabel());
-            inputCombo.Items.Add(InputCatalog.CustomMenuLabel);
         }
 
         FillInputItems();
@@ -709,26 +705,6 @@ public partial class StartEntriesDialog : Window
         inputCombo.SelectionChanged += (_, _) =>
         {
             if (suppressInput || inputCombo.SelectedItem is not string sel) return;
-            if (sel == InputCatalog.CustomMenuLabel)
-            {
-                var raw = InputPrompt.Show(this, "Custom input value",
-                    "Raw EComboTransition name (for example Special or Dodge).\n"
-                        + "Only names EComboTransition declares do anything; anything else is written verbatim.",
-                    t.InputEnum);
-                if (raw == null)
-                {
-                    // Cancel: put the picker back on the row's current value.
-                    suppressInput = true;
-                    inputCombo.SelectedItem = InputCatalog.IsKnown(t.InputEnum)
-                        ? InputCatalog.MenuLabelFor(t.InputEnum)
-                        : CustomItemLabel();
-                    suppressInput = false;
-                    return;
-                }
-                t.InputEnum = raw.Length == 0 ? InputCatalog.None.EnumName : raw;
-                Rebuild();
-                return;
-            }
             var choice = InputCatalog.Choices.FirstOrDefault(c => c.MenuLabel == sel);
             if (choice == null) return;
             t.InputEnum = choice.EnumName;

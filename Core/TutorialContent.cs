@@ -96,7 +96,7 @@ public static class TutorialContent
                 TutorialStep.Do(
                     "Click the follow-up, then pick an input",
                     "Click the move that should come after it. A popup then asks which input triggers the "
-                    + "link — Light, Heavy, Rush, Dodge, and so on.",
+                    + "link — LMB, RMB, RMB Alt Delay, RMB Hold or a Rush attack.",
                     TutorialAnchors.Graph,
                     TutorialEvents.LinkCreated,
                     "Enemy graphs only offer Default (None); MainChar graphs offer real player inputs."),

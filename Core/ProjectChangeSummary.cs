@@ -219,9 +219,11 @@ public static class ProjectChangeSummary
                     hitCard = AttackHitCard.ReadDbPath(CustomAssets.Root, cardPath, contentDir);
                 foreach (var e in n.HitEdits.Where(e => e != null && !e.IsEmpty()).OrderBy(e => e.Index))
                 {
-                    var vanillaWin = hitCard != null && e.Index >= 0 && e.Index < hitCard.Windows.Count
-                        ? hitCard.Windows[e.Index] : null;
-                    rows.Add(BuildHitEditRow($"{name} hit {e.Index + 1}", e, vanillaWin));
+                    int baselineIndex = e.Append ? e.TemplateIndex : e.Index;
+                    var vanillaWin = hitCard != null && baselineIndex >= 0 && baselineIndex < hitCard.Windows.Count
+                        ? hitCard.Windows[baselineIndex] : null;
+                    rows.Add(BuildHitEditRow(
+                        $"{name} hit {e.Index + 1}" + (e.Append ? " (new)" : ""), e, vanillaWin));
                 }
             }
         }
@@ -236,12 +238,17 @@ public static class ProjectChangeSummary
             if (now == null) return;
             parts.Add(was == null ? $"{label} {now}" : $"{label} {was} → {now}");
         }
-        if (e.FrameLo.HasValue || e.FrameHi.HasValue)
+        if (e.FrameLo.HasValue || e.FrameHi.HasValue || e.Append)
         {
             string was = vanillaWin != null ? $"{vanillaWin.FrameLo}-{vanillaWin.FrameHi}" : "?";
             string now = $"{e.FrameLo ?? (vanillaWin?.FrameLo ?? 0)}-{e.FrameHi ?? (vanillaWin?.FrameHi ?? 0)}";
             parts.Add($"frames {was} → {now}");
         }
+        if (e.Append)
+            parts.Add($"new window '{e.RowName}' in {TableLabel(e.TableRel)}");
+        if (!string.IsNullOrEmpty(e.AttackHeight))
+            Field("height", AttackHitCard.HeightLabel(e.AttackHeight),
+                vanillaWin != null ? AttackHitCard.HeightLabel(vanillaWin.AttackHeight) : null);
         Field("damage", e.Damage?.ToString("0.###"), vanillaWin?.Damage?.ToString("0.###"));
         Field("structure", e.StructureDamage?.ToString("0.###"), vanillaWin?.StructureDamage?.ToString("0.###"));
         Field("dmg on hit", e.DamageOnHit?.ToString("0.###"), vanillaWin?.Damage?.ToString("0.###"));
@@ -265,9 +272,23 @@ public static class ProjectChangeSummary
         BoolField("break structure", e.BreakStructure, vanillaWin?.BreakStructure);
         BoolField("dizzy on parry", e.DizzyOnParry, vanillaWin?.DizzyOnParry);
         BoolField("dizzy on avoid", e.DizzyOnAvoid, vanillaWin?.DizzyOnAvoid);
+        if (e.AvoidMatrix.HasValue)
+        {
+            parts.Add(vanillaWin?.AvoidMatrix.HasValue == true
+                ? $"avoidable {AttackHitCard.AvoidLabel(vanillaWin.AvoidMatrix)} → {AttackHitCard.AvoidLabel(e.AvoidMatrix)}"
+                : $"avoidable {AttackHitCard.AvoidLabel(e.AvoidMatrix)}");
+        }
         Field("attack power", e.AttackPower, vanillaWin?.AttackPower);
         Field("property level", e.PropertyLevel?.ToString(), vanillaWin?.PropertyLevel?.ToString());
         return MakeValueRow(title, "", string.Join(", ", parts));
+    }
+
+    /// <summary>Table file stem, e.g. FireDisciple_HitBoxData - the summary never shows raw paths.</summary>
+    private static string TableLabel(string? tableRel)
+    {
+        if (string.IsNullOrEmpty(tableRel)) return "?";
+        return System.IO.Path.GetFileNameWithoutExtension(
+            tableRel.Replace('/', System.IO.Path.DirectorySeparatorChar));
     }
 
     public static List<UnitReview> BuildFromUnitCaches(

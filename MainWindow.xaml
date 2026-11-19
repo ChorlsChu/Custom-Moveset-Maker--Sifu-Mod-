@@ -8,6 +8,7 @@
         Background="#1e1e2e" Foreground="#cdd6f4"
         Loaded="MainWindow_Loaded"
         Closing="MainWindow_Closing"
+        Closed="MainWindow_Closed"
         PreviewKeyDown="MainWindow_PreviewKeyDown"
         PreviewKeyUp="MainWindow_PreviewKeyUp"
         PreviewTextInput="MainWindow_PreviewTextInput"
@@ -356,6 +357,19 @@
             </DockPanel>
         </Border>
 
+        <Border Name="crashBanner" DockPanel.Dock="Bottom" Visibility="Collapsed"
+                Background="#45222b" BorderBrush="#f38ba8" BorderThickness="0,1,0,0" Padding="12,7">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="Dismiss" Style="{StaticResource DarkButton}"
+                        Padding="10,3" Click="DismissCrashBanner_Click"/>
+                <Button DockPanel.Dock="Right" Content="Send a report" Style="{StaticResource DarkButton}"
+                        Padding="10,3" Margin="0,0,6,0" Click="ReportCrashBanner_Click"/>
+                <TextBlock Name="txtCrashBanner" Text="" Foreground="#f5c2cb" FontSize="11"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           ToolTip="The previous session ended without shutting down. The log from that session is still on disk."/>
+            </DockPanel>
+        </Border>
+
         <Border DockPanel.Dock="Bottom" Background="#11111b" Padding="12,5">
             <DockPanel>
                 <TextBlock x:Name="txtVersion" DockPanel.Dock="Right" VerticalAlignment="Center"
@@ -471,38 +485,81 @@
                 <!-- Preview -->
                 <Grid Grid.Row="2">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="32"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <!-- Timeline -->
-                    <Border Grid.Row="0" Background="#181825" Padding="8,2">
-                        <DockPanel>
-                            <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
-                                <Button Content="&#9654;" Style="{StaticResource DarkButton}"
-                                        Click="Play_Click" Padding="6,2" FontSize="11"/>
-                                <Button Content="&#9632;" Style="{StaticResource DarkButton}"
-                                        Click="Stop_Click" Padding="6,2" FontSize="11"/>
+                    <Border Grid.Row="0" Background="#181825" Padding="8,3">
+                        <StackPanel>
+                            <WrapPanel Orientation="Horizontal" ItemHeight="26">
+                                <Button Name="btnFirstFrame" Content="&#x23EE;" Style="{StaticResource DarkButton}"
+                                        Click="FirstFrame_Click" Padding="6,2" FontSize="11"
+                                        Focusable="False"
+                                        ToolTip="First frame (Home)"/>
+                                <Button Name="btnPrevFrame" Content="&#x23F4;" Style="{StaticResource DarkButton}"
+                                        Click="PrevFrame_Click" Padding="6,2" FontSize="11"
+                                        Focusable="False"
+                                        ToolTip="Previous frame (Left, Shift+Left = 10)"/>
+                                <Button Name="btnPlayPause" Content="&#x25B6;" Style="{StaticResource DarkButton}"
+                                        Click="PlayPause_Click" Padding="6,2" FontSize="11"
+                                        Focusable="False"
+                                        ToolTip="Play / Pause (Space)"/>
+                                <Button Name="btnNextFrame" Content="&#x23F5;" Style="{StaticResource DarkButton}"
+                                        Click="NextFrame_Click" Padding="6,2" FontSize="11"
+                                        Focusable="False"
+                                        ToolTip="Next frame (Right, Shift+Right = 10)"/>
+                                <Button Name="btnLastFrame" Content="&#x23ED;" Style="{StaticResource DarkButton}"
+                                        Click="LastFrame_Click" Padding="6,2" FontSize="11"
+                                        Focusable="False"
+                                        ToolTip="Last frame (End)"/>
+                                <Button Content="&#x25A0;" Style="{StaticResource DarkButton}"
+                                        Click="Stop_Click" Padding="6,2" FontSize="11"
+                                        Focusable="False"
+                                        ToolTip="Stop and rewind to frame 0"/>
+                                <CheckBox Name="chkLoop" Content="Loop" Foreground="#6c7086" FontSize="11"
+                                          VerticalAlignment="Center" Margin="8,0,0,0" IsChecked="True"
+                                          Checked="Loop_Changed" Unchecked="Loop_Changed"
+                                          ToolTip="Loop the animation instead of stopping at the last frame"/>
                                 <TextBlock Text="Speed:" Foreground="#6c7086" FontSize="11"
-                                           VerticalAlignment="Center" Margin="8,0,4,0"/>
+                                           VerticalAlignment="Center" Margin="10,0,4,0"/>
                                 <ComboBox Name="cmbSpeed" Style="{StaticResource DarkComboBox}"
-                                          Width="60" SelectionChanged="Speed_Changed" FontSize="11">
+                                          Width="60" SelectionChanged="Speed_Changed" FontSize="11"
+                                          VerticalAlignment="Center">
                                     <ComboBoxItem Content="0.25x" Tag="0.25"/>
                                     <ComboBoxItem Content="0.5x" Tag="0.5"/>
                                     <ComboBoxItem Content="1x" IsSelected="True" Tag="1"/>
                                     <ComboBoxItem Content="1.5x" Tag="1.5"/>
                                     <ComboBoxItem Content="2x" Tag="2"/>
                                 </ComboBox>
-                            </StackPanel>
-                            <TextBlock Name="txtFrameInfo" Text="Frame: 0/0" Foreground="#6c7086"
-                                       FontSize="11" VerticalAlignment="Center" Margin="12,0,0,0"/>
-                            <TextBlock Name="txtTimeInfo" Text="0.00s / 0.00s" Foreground="#6c7086"
-                                       FontSize="11" VerticalAlignment="Center" Margin="12,0,0,0"/>
-                            <Slider Name="sliderTimeline" DockPanel.Dock="Right"
-                                    Minimum="0" Maximum="100" Value="0"
-                                    Width="200" HorizontalAlignment="Right"
-                                    ValueChanged="Timeline_Changed"
-                                    Margin="8,0"/>
-                        </DockPanel>
+                                <TextBlock Name="txtFrameInfo" Text="Frame: 0 / 0" Foreground="#6c7086"
+                                           FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"
+                                           ToolTip="Current frame index (0-based) / last frame index"/>
+                                <TextBlock Name="txtTimeInfo" Text="0.00s / 0.00s" Foreground="#6c7086"
+                                           FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                                <TextBlock Text="Go:" Foreground="#6c7086" FontSize="11"
+                                           VerticalAlignment="Center" Margin="10,0,3,0"/>
+                                <TextBox Name="txtJumpFrame" Width="42" FontSize="11"
+                                         Background="#11111b" Foreground="#cdd6f4" BorderBrush="#313244"
+                                         VerticalContentAlignment="Center" Padding="2,1"
+                                         KeyDown="JumpFrame_KeyDown"
+                                         ToolTip="Type a frame number (0-based) and press Enter"/>
+                            </WrapPanel>
+                            <Grid Margin="0,4,0,0" Height="20"
+                                  PreviewMouseLeftButtonDown="Timeline_PreviewMouseDown"
+                                  PreviewMouseLeftButtonUp="Timeline_PreviewMouseUp"
+                                  LostMouseCapture="Timeline_LostMouseCapture">
+                                <Slider Name="sliderTimeline" Minimum="0" Maximum="100" Value="0"
+                                        IsMoveToPointEnabled="True" IsSnapToTickEnabled="True" TickFrequency="1"
+                                        Focusable="False" IsTabStop="False"
+                                        ValueChanged="Timeline_Changed"
+                                        MouseMove="Timeline_MouseMove"
+                                        MouseLeave="Timeline_MouseLeave"
+                                        ToolTipService.ShowDuration="60000"
+                                        ToolTip="Click or drag to scrub. Red = hit frame, yellow = buildup frame."/>
+                                <Canvas Name="timelineMarkers" IsHitTestVisible="False" ClipToBounds="True"
+                                        SizeChanged="TimelineMarkers_SizeChanged"/>
+                            </Grid>
+                        </StackPanel>
                     </Border>
                     <!-- Info + 3D Preview -->
                     <Grid Grid.Row="1">
@@ -530,6 +587,9 @@
                                            FontSize="11" Margin="0,4,0,0"/>
                                 <TextBlock Name="txtAnimFPS" Text="FPS: -" Foreground="#cdd6f4"
                                            FontSize="11" Margin="0,4,0,0"/>
+                                <TextBlock Name="txtAnimTiming" Text="Hit/Buildup: -" Foreground="#cdd6f4"
+                                           FontSize="11" Margin="0,4,0,0"
+                                           ToolTip="Hit frame and buildup frame from the attack data table, shown as red/yellow ticks on the timeline"/>
                                 <!-- AttackDB card tuning (m_iWantedBuildupFrames / m_fGameplayRange) -->
                                 <Border x:Name="attackDbSection" BorderBrush="#313244" BorderThickness="1"
                                         CornerRadius="3" Padding="6,6" Margin="0,8,0,0" Visibility="Collapsed">
@@ -828,6 +888,18 @@
                             ToolTip="Permanently delete every file under CustomAssets (imported mod harvests + hand-dropped files). The current project stays open."/>
                     <TextBlock Name="txtCustomLibraryInfo" Foreground="#6c7086" FontSize="11" VerticalAlignment="Center" Text="Custom Library: -"/>
                 </DockPanel>
+                <Border Background="#181825" CornerRadius="4" Padding="10,8" Margin="0,0,0,12">
+                    <DockPanel>
+                        <Button Content="Report a bug" DockPanel.Dock="Right" Padding="10,3"
+                                Style="{StaticResource DarkButton}" Click="ReportBug_Click"
+                                ToolTip="Send a report (with the log attached) straight to the author"/>
+                        <Button Content="Open log folder" DockPanel.Dock="Right" Margin="0,0,6,0" Padding="10,3"
+                                Style="{StaticResource DarkButton}" Click="OpenLogFolder_Click"
+                                ToolTip="Where the diagnostics live (kept 14 days, 100 MB cap)"/>
+                        <TextBlock Text="Troubleshooting &#183; diagnostics kept 14 days"
+                                   Foreground="#6c7086" FontSize="11" VerticalAlignment="Center"/>
+                    </DockPanel>
+                </Border>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
                     <Button Content="Open Setup…" Padding="12,4" Click="OpenSetup_Click" Style="{StaticResource DarkButton}" Margin="0,0,6,0"
                             ToolTip="Re-open setup to browse folder or pak and refresh vanilla content"/>

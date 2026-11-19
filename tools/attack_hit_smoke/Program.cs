@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using SifuMovesetEditor;
 using SifuMovesetEditor.Custom;
 using SifuMovesetEditor.Export;
@@ -61,6 +62,8 @@ internal static class Program
         Run("LooksSharedRow", TestLooksSharedRow);
         Run("PatchCardFramesOnCopy", TestPatchCardFramesOnCopy);
         Run("PatchRowsOnCopy", TestPatchRowsOnCopy);
+        Run("AppendHitWindowAndRow", TestAppendHitWindowAndRow);
+        Run("AddHitDialogWiring", TestAddHitDialogWiring);
         Run("PatchImpactStructs", TestPatchImpactStructs);
         Run("DiffAgainstPerImpact", TestDiffAgainstPerImpact);
         Run("VanillaReactionValues", TestVanillaReactionValues);
@@ -332,6 +335,240 @@ internal static class Program
     /// OnGuard / OnDeflect); a per-impact override writes only its struct and
     /// leaves the others at their pre-patch values.
     /// </summary>
+    /// <summary>
+    /// "+ Add hit" export path: an appended window clones a base-card window (new row
+    /// name, own frames, own height) and an appended row clones the root row (fields +
+    /// avoid matrix), with no duplicate row when the export is retried.
+    /// </summary>
+    private static void TestAppendHitWindowAndRow()
+    {
+        var card = AttackHitCard.ReadDbPath(ContentRoot, QuickHookCardRel);
+        Check(card != null, "append setup: card readable");
+        string tableRel = card!.Windows[0].TableRel;
+        string templateRow = card.Windows[0].RowName;
+        string newRow = templateRow + "_2";
+        int appendIndex = card.Windows.Count;
+
+        var cardSrc = Vanilla(QuickHookCardRel);
+        var cardBase = Path.Combine(OutDir, "append_card_base.uasset");
+        var cardOut = Path.Combine(OutDir, "append_card_out.uasset");
+        File.Copy(cardSrc, cardBase, true);
+        string? cardUexp = Path.ChangeExtension(cardSrc, ".uexp");
+        if (File.Exists(cardUexp))
+            File.Copy(cardUexp, Path.ChangeExtension(cardBase, ".uexp")!, true);
+
+        var cardEdits = new List<AttackHitEdit>
+        {
+            new AttackHitEdit
+            {
+                Index = appendIndex, Append = true, RowName = newRow, TableRel = tableRel,
+                TemplateIndex = 0, TemplateRow = templateRow,
+                FrameLo = 60, FrameHi = 64, AttackHeight = "Low"
+            },
+            new AttackHitEdit { Index = 1, AttackHeight = "Mid_2" }
+        };
+        var entries = new List<(string src, string dest)>();
+        bool ok = AttackHitCard.PatchCardFrames(cardBase, cardOut, "dest", cardEdits, entries, out string cerr);
+        Check(ok, $"append card patch succeeds ({cerr})");
+
+        AttackHitCard.Invalidate(cardOut);
+        var patched = AttackHitCard.Read(cardOut);
+        Check(patched != null && patched.Windows.Count == card.Windows.Count + 1,
+            $"card now has {card.Windows.Count + 1} windows (got {patched?.Windows.Count ?? -1})");
+        if (patched != null && patched.Windows.Count == card.Windows.Count + 1)
+        {
+            var added = patched.Windows[appendIndex];
+            Check(added.RowName == newRow, $"appended row name {newRow} (got '{added.RowName}')");
+            Check(added.FrameLo == 60 && added.FrameHi == 64,
+                $"appended frames 60-64 (got {added.FrameLo}-{added.FrameHi})");
+            Check(added.AttackHeight == "Low", $"appended height Low (got '{added.AttackHeight}')");
+            Check(added.AltAttackHeight == "Low", $"appended alt height Low (got '{added.AltAttackHeight}')");
+            Check(patched.Windows[1].AttackHeight == "Mid_2" && patched.Windows[1].AltAttackHeight == "Mid_2",
+                "height-only edit writes both target enums");
+            Check(patched.Windows[1].FrameLo == card.Windows[1].FrameLo
+                && patched.Windows[1].FrameHi == card.Windows[1].FrameHi,
+                "height-only edit leaves frames untouched");
+        }
+
+        string tableUasset = AttackDbCard.ResolveUassetPath(ContentRoot, "/Game/" + tableRel)!;
+        var tableBase = Path.Combine(OutDir, "append_table_base.uasset");
+        var tableOut = Path.Combine(OutDir, "append_table_out.uasset");
+        File.Copy(tableUasset, tableBase, true);
+        string? tableUexp = Path.ChangeExtension(tableUasset, ".uexp");
+        if (File.Exists(tableUexp))
+            File.Copy(tableUexp, Path.ChangeExtension(tableBase, ".uexp")!, true);
+
+        int rowsBefore = TableRowCount(tableBase);
+        var rowEdits = new Dictionary<string, AttackHitEdit>(StringComparer.Ordinal)
+        {
+            [newRow] = new AttackHitEdit
+            {
+                Index = appendIndex, Append = true, RowName = newRow, TableRel = tableRel,
+                TemplateRow = templateRow, Damage = 11f, AvoidMatrix = 1, Parriable = true
+            }
+        };
+        ok = AttackHitCard.PatchRows(tableBase, tableOut, "dest", rowEdits, entries, out string rerr);
+        Check(ok, $"append row patch succeeds ({rerr})");
+        Check(TableRowCount(tableOut) == rowsBefore + 1,
+            $"appended row added once ({rowsBefore} -> {TableRowCount(tableOut)})");
+
+        var table = new UAssetAPI.UAsset(tableOut, UAssetAPI.UnrealTypes.EngineVersion.VER_UE4_26, null, UAssetAPI.CustomSerializationFlags.None);
+        var row = FindTableRow(table, newRow);
+        Check(row != null, "appended row present");
+        if (row != null)
+        {
+            Check(GetRowFloat(row, "m_fDamage") == 11f, $"appended damage 11 (got {GetRowFloat(row, "m_fDamage")})");
+            Check(GetRowInt(row, "m_iAvoidableDefenseMatrix") == 1,
+                $"appended avoid matrix 1 (got {GetRowInt(row, "m_iAvoidableDefenseMatrix")})");
+            Check(GetRowBool(row, "m_bParriable"), "appended parriable=true");
+        }
+
+        // Retry / re-export: the row already exists, so it must not be appended twice.
+        var tableBase2 = Path.Combine(OutDir, "append_table_base2.uasset");
+        var tableOut2 = Path.Combine(OutDir, "append_table_out2.uasset");
+        File.Copy(tableOut, tableBase2, true);
+        string? outUexp = Path.ChangeExtension(tableOut, ".uexp");
+        if (File.Exists(outUexp))
+            File.Copy(outUexp, Path.ChangeExtension(tableBase2, ".uexp")!, true);
+        ok = AttackHitCard.PatchRows(tableBase2, tableOut2, "dest", rowEdits, entries, out string rerr2);
+        Check(ok, $"append row re-patch succeeds ({rerr2})");
+        Check(TableRowCount(tableOut2) == rowsBefore + 1,
+            $"re-patch does not duplicate the appended row (got {TableRowCount(tableOut2)})");
+    }
+
+    /// <summary>
+    /// Dialog wiring for "+ Add hit": a vanilla-content card (no MakePrivate) keeps the
+    /// button disabled, a private card appends a copied hit named after the last row, the
+    /// new card is marked "new", the dropdowns show word labels only, and Remove drops it.
+    /// </summary>
+    private static void TestAddHitDialogWiring()
+    {
+        // Vanilla content: Add is blocked because the shared table cannot be modified.
+        var vanillaCard = AttackHitCard.ReadDbPath(ContentRoot, QuickHookCardRel);
+        Check(vanillaCard != null, "wiring setup: card readable");
+        if (vanillaCard == null) return;
+        var vanillaDialog = new AttackDbEditorDialog(vanillaCard, null);
+        try
+        {
+            Check(vanillaDialog.btnAddHit != null, "Add hit button exists");
+            Check(vanillaDialog.btnAddHitHelp != null, "Add hit help button exists");
+            if (vanillaCard.Windows[^1].CanPrivatize)
+                Check(!vanillaDialog.btnAddHit.IsEnabled,
+                    "Add hit disabled for vanilla content (no Make private available)");
+            Check(vanillaDialog.btnAddHit.ToolTip is string tip && tip.Contains("Clone this card first"),
+                $"disabled Add explains cloning (got '{vanillaDialog.btnAddHit.ToolTip}')");
+        }
+        finally { vanillaDialog.Close(); }
+
+        // Synthetic private card: exercise Add and Remove end to end (no file I/O).
+        const string tableRel = "DB/Test/TestCard_HitBoxData";
+        var card = new AttackHitCardData { CardRel = "DB/Test/TestCard" };
+        card.Windows.Add(new AttackHitWindowInfo
+        {
+            Index = 0, RowName = "TestCard_HB01", TableRel = tableRel,
+            FrameLo = 10, FrameHi = 12, Movement = "Horizontal",
+            Damage = 5f, Parriable = true, AttackPower = "Medium", PropertyLevel = 0,
+            AttackHeight = "High", AltAttackHeight = "High", AvoidMatrix = 15,
+            LookupStatus = VanillaLookupStatus.Ok, SharedRow = false, CanPrivatize = false
+        });
+        card.TableRowNames[tableRel] = new List<string> { "TestCard_HB01" };
+
+        var dialog = new AttackDbEditorDialog(card, null);
+        try
+        {
+            Check(dialog.btnAddHit.IsEnabled, "Add hit enabled on a private card");
+
+            var fields = GetWindowFields(dialog);
+            Check(fields.Count == 1, $"one hit card before Add (got {fields.Count})");
+            var first = fields[0];
+            var height = (System.Windows.Controls.ComboBox)first.GetType()
+                .GetField("Height")!.GetValue(first)!;
+            var avoid = (System.Windows.Controls.ComboBox)first.GetType()
+                .GetField("Avoid")!.GetValue(first)!;
+            var heightLabels = height.Items.Cast<object>().Select(o => o.ToString()).ToList();
+            Check(heightLabels.SequenceEqual(new[] { "High", "Mid 1", "Mid 2", "Low" }),
+                $"height labels are words only (got {string.Join(", ", heightLabels)})");
+            var avoidLabels = avoid.Items.Cast<object>().Select(o => o.ToString()).ToList();
+            Check(avoidLabels[0] == "Leave unchanged", $"avoid starts with Leave unchanged (got '{avoidLabels[0]}')");
+            Check(avoidLabels.Contains("Any height") && avoidLabels.Contains("Not avoidable"),
+                "avoid presets are word labels");
+            Check(!avoidLabels.Any(l => int.TryParse(l, out _)), "avoid dropdown shows no raw matrix numbers");
+
+            Invoke(dialog, "AddHit_Click");
+            fields = GetWindowFields(dialog);
+            Check(fields.Count == 2, $"Add appends one hit card (got {fields.Count})");
+            Check(card.Windows.Count == 1, "Add does not touch the base card's window list");
+            var added = fields[1];
+            var addedInfo = (AttackHitWindowInfo)added.GetType().GetField("Info")!.GetValue(added)!;
+            Check(addedInfo.RowName == "TestCard_HB01_2",
+                $"new row is named after the template row (got '{addedInfo.RowName}')");
+            Check(addedInfo.FrameLo == 10 && addedInfo.FrameHi == 12, "new hit copies the last hit's frames");
+            var title = (System.Windows.Controls.TextBlock)added.GetType().GetField("Title")!.GetValue(added)!;
+            Check(title.Text.Contains("new"), $"new hit title is marked (got '{title.Text}')");
+
+            var removeButton = new System.Windows.Controls.Button { Tag = added };
+            Invoke(dialog, "RemoveWindow_Click", removeButton);
+            Check(GetWindowFields(dialog).Count == 1, "Remove drops the pending hit");
+        }
+        finally { dialog.Close(); }
+
+        // Saved appended hits are rebuilt when the dialog is reopened.
+        var reopenCard = new AttackHitCardData { CardRel = card.CardRel };
+        reopenCard.Windows.Add(card.Windows[0].Clone());
+        reopenCard.TableRowNames[tableRel] = new List<string>(card.TableRowNames[tableRel]);
+        var savedEdit = new AttackHitEdit
+        {
+            Index = 1, Append = true, RowName = "TestCard_HB01_2", TableRel = tableRel,
+            TemplateIndex = 0, TemplateRow = "TestCard_HB01", FrameLo = 20, FrameHi = 22,
+            AttackHeight = "Low", AvoidMatrix = 1
+        };
+        var reopen = new AttackDbEditorDialog(reopenCard, new List<AttackHitEdit> { savedEdit });
+        try
+        {
+            var fields = GetWindowFields(reopen);
+            Check(fields.Count == 2, $"saved appended hit restored (got {fields.Count})");
+            var restored = (AttackHitWindowInfo)fields[1].GetType().GetField("Info")!.GetValue(fields[1])!;
+            Check(restored.RowName == "TestCard_HB01_2", "restored row name kept");
+            var flo = (System.Windows.Controls.TextBox)fields[1].GetType().GetField("FrameLo")!.GetValue(fields[1])!;
+            var fhi = (System.Windows.Controls.TextBox)fields[1].GetType().GetField("FrameHi")!.GetValue(fields[1])!;
+            Check(flo.Text == "20" && fhi.Text == "22",
+                $"restored frames shown in the dialog (got {flo.Text}-{fhi.Text})");
+            var height = (System.Windows.Controls.ComboBox)fields[1].GetType().GetField("Height")!.GetValue(fields[1])!;
+            Check(height.SelectedItem?.ToString() == "Low",
+                $"restored height selected (got '{height.SelectedItem}')");
+        }
+        finally { reopen.Close(); }
+    }
+
+    private static List<object> GetWindowFields(AttackDbEditorDialog dialog)
+    {
+        var field = typeof(AttackDbEditorDialog).GetField("_fields", BindingFlags.NonPublic | BindingFlags.Instance);
+        return ((System.Collections.IEnumerable)field!.GetValue(dialog)!).Cast<object>().ToList();
+    }
+
+    private static void Invoke(AttackDbEditorDialog dialog, string method, object? sender = null)
+    {
+        var m = typeof(AttackDbEditorDialog).GetMethod(method, BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new InvalidOperationException($"{method} not found");
+        m.Invoke(dialog, new object?[] { sender, new System.Windows.RoutedEventArgs() });
+    }
+
+    private static int TableRowCount(string uassetPath)
+    {
+        var asset = new UAssetAPI.UAsset(uassetPath, UAssetAPI.UnrealTypes.EngineVersion.VER_UE4_26, null, UAssetAPI.CustomSerializationFlags.None);
+        foreach (var exp in asset.Exports)
+            if (exp is UAssetAPI.ExportTypes.DataTableExport dte)
+                return dte.Table?.Data?.Count ?? -1;
+        return -1;
+    }
+
+    private static int? GetRowInt(UAssetAPI.PropertyTypes.Structs.StructPropertyData row, string name)
+    {
+        var p = row.Value?.FirstOrDefault(x => x.Name?.Value?.ToString() == name)
+            as UAssetAPI.PropertyTypes.Objects.IntPropertyData;
+        return p?.Value;
+    }
+
     private static void TestPatchImpactStructs()
     {
         var card = AttackHitCard.ReadDbPath(ContentRoot, QuickHookCardRel);
@@ -580,6 +817,32 @@ internal static class Program
         Check(!deflectDmgOnly.IsEmpty(), "deflect-damage-only edit is not empty");
 
         Check(!AttackHitCard.HasCardFields(null) && !AttackHitCard.HasRowFields(null), "null edit has nothing");
+
+        var heightOnly = new AttackHitEdit { Index = 0, AttackHeight = "Mid_1" };
+        Check(AttackHitCard.HasCardFields(heightOnly), "height-only has card fields");
+        Check(!heightOnly.IsEmpty(), "height-only edit is not empty");
+
+        var avoidOnly = new AttackHitEdit { Index = 0, AvoidMatrix = 12 };
+        Check(AttackHitCard.HasRowFields(avoidOnly), "avoid-matrix-only has row fields");
+        Check(!avoidOnly.IsEmpty(), "avoid-matrix-only edit is not empty");
+
+        // An appended hit must always write its new window + row, even with no overrides.
+        var appendOnly = new AttackHitEdit
+        {
+            Index = 3, Append = true, RowName = "HB01_2", TableRel = "DB/AI/Table"
+        };
+        Check(!appendOnly.IsEmpty(), "append-only edit is not empty");
+        Check(AttackHitCard.HasCardFields(appendOnly), "append-only has card fields");
+        Check(!AttackHitCard.HasRowFields(appendOnly), "append-only has no row field overrides");
+        Check(AttackHitCard.NeedsRowWrite(appendOnly), "append-only still needs its row written");
+        Check(!AttackHitCard.NeedsRowWrite(new AttackHitEdit { Index = 1, Append = true }),
+            "append without row/table does not need a row write");
+
+        Check(AttackHitCard.HeightLabel("Mid_1") == "Mid 1", "Mid_1 renders as 'Mid 1'");
+        Check(AttackHitCard.HeightLabel("Mid_2") == "Mid 2", "Mid_2 renders as 'Mid 2'");
+        Check(AttackHitCard.AvoidLabel(12) == "Mid", "avoid 12 renders as Mid");
+        Check(AttackHitCard.AvoidLabel(15) == "Any height", "avoid 15 renders as Any height");
+        Check(AttackHitCard.AvoidLabel(0) == "Not avoidable", "avoid 0 renders as Not avoidable");
     }
 
     private static void TestPruneVanillaEqualDialogFlow()
@@ -2014,9 +2277,29 @@ internal static class Program
             AnimPath = "Game/Animations/Test/Move", VanillaAnimPath = oldGame
         };
         var graph = new ComboGraph { Nodes = new List<ComboNode> { moved, customLabel } };
+        moved.HitEdits = new List<AttackHitEdit>
+        {
+            new()
+            {
+                Index = 2, Append = true, RowName = "OldCard_HB01_2",
+                TableRel = "DB/AI/Archetypes/Test/Attacks/OldCard_HitBoxData"
+            }
+        };
+        customLabel.HitEdits = new List<AttackHitEdit>
+        {
+            new()
+            {
+                Index = 2, Append = true, RowName = "Other_HB01_2",
+                TableRel = "DB/AI/Archetypes/Test/Attacks/OtherCard_HitBoxData"
+            }
+        };
 
         Check(CustomAttackDbRenamer.RepointGraph(graph, oldRel, newGame, "OldCard", "NewCard"),
             "repoint reports a change");
+        Check(moved.HitEdits[0].TableRel == "DB/AI/Archetypes/Test/Attacks/NewCard_HitBoxData",
+            $"appended hit follows renamed private table (got '{moved.HitEdits[0].TableRel}')");
+        Check(customLabel.HitEdits[0].TableRel == "DB/AI/Archetypes/Test/Attacks/OtherCard_HitBoxData",
+            "other node's appended hit table untouched");
         Check(moved.DefaultDBPath == newGame && moved.SourceDBPath == newGame
             && moved.ReplacedAttackCardRel == newGame && moved.AnimPath == newGame
             && moved.DefaultAnimPath == newGame, "all card path fields repointed");

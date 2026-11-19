@@ -121,6 +121,11 @@
         <Border DockPanel.Dock="Bottom" Background="#11111b" Padding="12,6">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="btnAddHit" Content="+ Add hit" Style="{StaticResource DarkButton}"
+                            Click="AddHit_Click" Padding="12,5" Margin="2,0,4,0"/>
+                    <Button x:Name="btnAddHitHelp" Content="?" Tag="AddHit"
+                            Style="{StaticResource DarkButton}" Click="Help_Click"
+                            Padding="6,5" Margin="0,0,12,0" Cursor="Help"/>
                     <Button Content="Cancel" Style="{StaticResource DarkButton}" Click="Cancel_Click"
                             Padding="14,5" IsCancel="True"/>
                     <Button Content="OK" Style="{StaticResource AccentButton}" Click="Ok_Click"

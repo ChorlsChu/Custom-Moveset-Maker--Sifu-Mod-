@@ -12,14 +12,16 @@ namespace SifuMovesetEditor;
 /// enum value passes through verbatim so an imported tree never silently renders
 /// as "None".
 ///
-/// "UsedByVanilla" is false for enum values that exist on the type but appear in
-/// no shipped *Combo* asset (280 files scanned: only None, Light, Heavy, HeavyAlt,
-/// HeavyHold, LightRushAttack and HeavyRushAttack occur). Those choices stay
-/// selectable but the dialog warns that the engine never sees them in vanilla.
+/// Only values that occur in shipped *Combo* assets are offered (280 files scanned:
+/// None, Light, Heavy, HeavyAlt, HeavyHold, LightRushAttack and HeavyRushAttack).
+/// Special/Dodge/Throw are deliberately absent - no combo tree consumes them, so a
+/// row using one is dead in game, and offering them invited edits that could never
+/// fire. A project that already carries one still round-trips it verbatim, and the
+/// Start Entries badge flags it as a value the catalog does not know.
 /// </summary>
 internal static class InputCatalog
 {
-    internal sealed record Choice(string Label, string EnumName, string MenuLabel, bool UsedByVanilla);
+    internal sealed record Choice(string Label, string EnumName, string MenuLabel);
 
     /// <summary>
     /// Ordered picker catalog. The "Default" choice doubles as the empty/None
@@ -27,25 +29,32 @@ internal static class InputCatalog
     /// </summary>
     internal static readonly IReadOnlyList<Choice> Choices = new List<Choice>
     {
-        new("", "None", "Default (no input)", true),
-        new("LMB", "Light", "LMB (Light)", true),
-        new("RMB", "Heavy", "RMB (Heavy)", true),
+        new("", "None", "Default (no input)"),
+        new("LMB", "Light", "LMB (Light)"),
+        new("RMB", "Heavy", "RMB (Heavy)"),
         // HeavyAlt must never display as plain "RMB": a rewritten HeavyAlt row that
-        // reads as "RMB" would silently export as Heavy.
-        new("RMB Alt", "HeavyAlt", "RMB Alt (HeavyAlt)", true),
-        new("RMB Hold", "HeavyHold", "RMB Hold (HeavyHold)", true),
-        new("LMB Rush", "LightRushAttack", "LMB Rush (LightRushAttack)", true),
-        new("RMB Rush", "HeavyRushAttack", "RMB Rush (HeavyRushAttack)", true),
-        new("S", "Special", "S (Special) - unused by vanilla combos", false),
-        new("Shift", "Dodge", "Shift (Dodge) - unused by vanilla combos", false),
-        new("Q", "Throw", "Q (Throw) - unused by vanilla combos", false)
+        // reads as "RMB" would silently export as Heavy. "Delay" in the label is the
+        // player-facing explanation - the button is pressed late, inside the move's
+        // MC_Attacks_Alt window, not at the same time as the base input.
+        new("RMB Alt Delay", "HeavyAlt", "RMB Alt Delay (HeavyAlt)"),
+        new("RMB Hold", "HeavyHold", "RMB Hold (HeavyHold)"),
+        new("LMB Rush", "LightRushAttack", "LMB Rush (LightRushAttack)"),
+        new("RMB Rush", "HeavyRushAttack", "RMB Rush (HeavyRushAttack)")
     };
 
     /// <summary>The "no input" choice (None).</summary>
     internal static Choice None => Choices[0];
 
-    /// <summary>Menu entry that switches a combo into raw-name entry mode.</summary>
-    internal const string CustomMenuLabel = "Custom…";
+    /// <summary>
+    /// Labels older builds wrote into saved projects, mapped to the value they meant.
+    /// A project saved before a label was renamed must keep exporting the same enum,
+    /// and its edges must keep pooling with new ones. None of these are offered in a
+    /// picker - they only resolve labels that already exist on disk.
+    /// </summary>
+    private static readonly Dictionary<string, string> LegacyLabels = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["RMB Alt"] = "HeavyAlt"
+    };
 
     /// <summary>Raw enum name for a label/menu label, or the label itself verbatim
     /// when it is not in the catalog (a custom raw name). "" maps to "None".</summary>
@@ -61,7 +70,7 @@ internal static class InputCatalog
         // Case-insensitive so a typed "light" still exports the canonical "Light".
         foreach (var c in Choices)
             if (string.Equals(c.EnumName, label, StringComparison.OrdinalIgnoreCase)) return c.EnumName;
-        return label.Trim();
+        return LegacyLabels.TryGetValue(label.Trim(), out var legacy) ? legacy : label.Trim();
     }
 
     /// <summary>Display label for a bare enum name (or an "Enum::Value" FName).
@@ -108,15 +117,6 @@ internal static class InputCatalog
         string label = LabelFor(groupKey);
         return string.IsNullOrEmpty(label) || string.Equals(groupKey, None.EnumName,
             StringComparison.OrdinalIgnoreCase) ? "(no input)" : label;
-    }
-
-    /// <summary>False only for a known value no vanilla combo asset uses.</summary>
-    internal static bool IsVanillaUsed(string? enumName)
-    {
-        if (string.IsNullOrEmpty(enumName)) return true;
-        var name = enumName.Contains("::") ? enumName.Split("::")[^1] : enumName;
-        var choice = Choices.FirstOrDefault(c => string.Equals(c.EnumName, name, StringComparison.OrdinalIgnoreCase));
-        return choice?.UsedByVanilla ?? false;
     }
 
     /// <summary>True when the name is one the catalog knows (including None).</summary>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The real implementations, not stubs: ErrorLog is deliberately WPF-free so the
+         retention/migration/redaction behaviour can be tested as-is. -->
+    <Compile Include="..\..\Core\ErrorLog.cs" Link="ErrorLog.cs" />
+    <Compile Include="..\..\Core\BugReport.cs" Link="BugReport.cs" />
+  </ItemGroup>
+</Project>

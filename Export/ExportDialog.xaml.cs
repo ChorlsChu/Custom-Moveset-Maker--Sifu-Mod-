@@ -1154,6 +1154,12 @@ public partial class ExportDialog : Window
                 return;
             }
 
+            // Pre-pak dependency audit: a move whose attack DB, animation or hit-card table
+            // is neither packed nor present in vanilla content would ship a dangling
+            // reference - the pak builds fine and the move just does nothing in game.
+            if (!AuditExportDependencies(fileEntries, gameRoot, outputPath))
+                return;
+
             ErrorLog.Write("EXPORT", new Exception($"Total files for pak: {fileEntries.Count}"));
             SetProgress(65);
 
@@ -1241,7 +1247,7 @@ public partial class ExportDialog : Window
                 if (proc.ExitCode == -1073741515)
                     ShowError("UnrealPak failed to start (missing DLLs).\n\nEnsure all UnrealPak-*.dll files sit next to UnrealPak.exe in tools\\ue4\\UnrealPak\\.");
                 else
-                    ShowError($"UnrealPak failed (exit {proc.ExitCode}):\n\n{stderr}\n{stdout}");
+                    ShowErrorWithReport($"UnrealPak failed (exit {proc.ExitCode}):\n\n{stderr}\n{stdout}");
                 return;
             }
 
@@ -1262,7 +1268,7 @@ public partial class ExportDialog : Window
                 var detail = skippedFiles.Count > 0
                     ? "UnrealPak skipped these files:\n" + string.Join("\n", skippedFiles)
                     : $"UnrealPak added {addedFiles} files but {uniqueDests} were staged.";
-                ShowError("Export aborted - the pak would have been incomplete and crash the game.\n\n" + detail);
+                ShowErrorWithReport("Export aborted - the pak would have been incomplete and crash the game.\n\n" + detail);
                 return;
             }
 
@@ -1347,7 +1353,7 @@ public partial class ExportDialog : Window
         catch (Exception ex)
         {
             ErrorLog.Write("EXPORT", ex);
-            ShowError($"Export failed: {ex.Message}");
+            ShowErrorWithReport($"Export failed: {ex.Message}");
         }
         finally
         {
@@ -1592,12 +1598,17 @@ public partial class ExportDialog : Window
                 int skippedNoDb = 0;
                 int patchedFallback = 0;
                 int redirectSkipped = 0;
+                int redirectActionable = 0;
                 int comboSwaps = 0;
                 var mainSwaps = new List<(string oldShortName, string newShortName, string newFullPath, string oldFullPath)>();
+                // Provenance-only key -> swap, merged into exactSwapDict after mainSwaps so
+                // FName / map-key renames also hit trees keyed by imported mod DB paths.
+                var provSwaps = new List<(string oldKey, string oldShortName, string newShortName, string newFullPath)>();
                 var swappedSlotShorts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var redirectNodes = new List<ComboNode>();
                 var patchedDbFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var delayPatched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var aimCarried = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var mainAmbiguousFiles = BuildAmbiguousFilenames(allMaps);
                 foreach (var node in _modifiedNodes)
                 {
@@ -1729,6 +1740,15 @@ public partial class ExportDialog : Window
                     var oldSlotShort = Path.GetFileNameWithoutExtension(node.DefaultDBPath);
                     var newSlotShort = Path.GetFileNameWithoutExtension(newDbPath);
 
+                    // Same provenance allowance as the redirect pass: the exported tree may
+                    // be an imported mod tree keyed by its own DB paths.
+                    var directSlotKeys = new List<string> { normalizedSlotKey };
+                    if (!string.IsNullOrEmpty(node.ImportedSlotKey))
+                        directSlotKeys.Add(NormalizeSlotKey(node.ImportedSlotKey));
+                    if (!string.IsNullOrEmpty(node.ImportedDbPath))
+                        directSlotKeys.Add(NormalizeSlotKey(node.ImportedDbPath));
+                    directSlotKeys = directSlotKeys.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
                     if (string.IsNullOrEmpty(attackName) || string.IsNullOrEmpty(attackPath))
                     {
                         ErrorLog.Write("EXPORT", new Exception($"  SKIP(empty attack name/path): {node.DisplayName} AnimPath='{node.AnimPath}' animToDb='{newDbPath}'"));
@@ -1741,7 +1761,7 @@ public partial class ExportDialog : Window
                         foreach (var kvp in attacksMap.Value)
                         {
                             string keyStr = GetKeyString(kvp.Key);
-                            if (!SlotKeysMatch(keyStr, normalizedSlotKey, mainAmbiguousFiles))
+                            if (!directSlotKeys.Any(k => SlotKeysMatch(keyStr, k, mainAmbiguousFiles)))
                             {
                                 continue;
                             }
@@ -1763,6 +1783,14 @@ public partial class ExportDialog : Window
                                 mainSwaps.Add((oldSlotShort, newSlotShort, attackPath, node.DefaultDBPath));
                                 ErrorLog.Write("EXPORT", new Exception($"  COMBO MAP VALUE: {oldSlotShort} -> {newSlotShort}"));
                                 TryPreserveDelayWindow(node.DefaultDBPath, newDbPath, gameRoot, outputPath, fileEntries, EngineVersion.VER_UE4_26, delayPatched, node.DelayWindowLo, node.DelayWindowHi);
+                                TryCarryAimWindows(node.DefaultDBPath, newDbPath, gameRoot, outputPath, fileEntries, EngineVersion.VER_UE4_26, aimCarried);
+                            }
+                            foreach (var k in directSlotKeys)
+                            {
+                                var kShort = Path.GetFileNameWithoutExtension(k);
+                                if (!string.IsNullOrEmpty(kShort) &&
+                                    !string.Equals(kShort, newSlotShort, StringComparison.OrdinalIgnoreCase))
+                                    provSwaps.Add((k, kShort, newSlotShort, attackPath));
                             }
                             found = true;
                             break;
@@ -1975,7 +2003,41 @@ public partial class ExportDialog : Window
                         if (newDbFullPath.StartsWith("//", StringComparison.Ordinal))
                             newDbFullPath = newDbFullPath.Substring(1);
 
-                        if (oldDbShortName == newDbShortName) continue;
+                        // Every key this node can be stored under in the target tree: the
+                        // vanilla slot plus the import provenance (the mod tree keys
+                        // m_Attacks by its own DB paths, so vanilla-only matching misses
+                        // the entry and the exported tree keeps the old move).
+                        var oldSlotKeys = new List<string> { NormalizeSlotKey(node.DefaultDBPath) };
+                        if (!string.IsNullOrEmpty(node.ImportedSlotKey))
+                            oldSlotKeys.Add(NormalizeSlotKey(node.ImportedSlotKey));
+                        if (!string.IsNullOrEmpty(node.ImportedDbPath))
+                            oldSlotKeys.Add(NormalizeSlotKey(node.ImportedDbPath));
+                        oldSlotKeys = oldSlotKeys.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+                        var oldShortNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                            { oldDbShortName };
+                        foreach (var k in oldSlotKeys)
+                        {
+                            var s = Path.GetFileNameWithoutExtension(k);
+                            if (!string.IsNullOrEmpty(s)) oldShortNames.Add(s);
+                        }
+                        // The tree's current import points at the DB it was last written with -
+                        // for an imported mod tree that is the mod's DB, not the vanilla slot DB.
+                        if (!string.IsNullOrEmpty(node.ImportedDbPath))
+                        {
+                            var s = Path.GetFileNameWithoutExtension(node.ImportedDbPath);
+                            if (!string.IsNullOrEmpty(s)) oldShortNames.Add(s);
+                        }
+
+                        // Nothing to rewrite when the tree already points at the target DB.
+                        var treeDbShort = Path.GetFileNameWithoutExtension(
+                            !string.IsNullOrEmpty(node.ImportedDbPath) ? node.ImportedDbPath : node.DefaultDBPath);
+                        if (!string.IsNullOrEmpty(treeDbShort) &&
+                            string.Equals(treeDbShort, newDbShortName, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        // This node really needs the tree rewritten - the abort guard below
+                        // fires only when such a rewrite was requested but none landed.
+                        if (NeedsComboRedirect(node)) redirectActionable++;
 
                         bool swappedThis = false;
                         foreach (var attacksMap in allMaps)
@@ -1983,8 +2045,7 @@ public partial class ExportDialog : Window
                             foreach (var kvp in attacksMap.Value)
                             {
                                 string keyStr = GetKeyString(kvp.Key);
-                                string normalizedDefault = NormalizeSlotKey(node.DefaultDBPath);
-                                if (!SlotKeysMatch(keyStr, normalizedDefault, mainAmbiguousFiles)) continue;
+                                if (!oldSlotKeys.Any(k => SlotKeysMatch(keyStr, k, mainAmbiguousFiles))) continue;
 
                                 var valData = kvp.Value as ObjectPropertyData;
                                 if (valData?.Value == null) continue;
@@ -2000,10 +2061,10 @@ public partial class ExportDialog : Window
                                 if (pkgOuterIdx >= 0 && pkgOuterIdx < asset.Imports.Count)
                                     curPkgPath = asset.Imports[pkgOuterIdx].ObjectName?.Value?.ToString() ?? "";
 
-                                if (!curPkgPath.Contains(oldDbShortName, StringComparison.OrdinalIgnoreCase) &&
-                                    curDbName != oldDbShortName)
+                                if (!oldShortNames.Any(s => curPkgPath.Contains(s, StringComparison.OrdinalIgnoreCase))
+                                    && !oldShortNames.Contains(curDbName))
                                 {
-                                    ErrorLog.Write("EXPORT", new Exception($"  COMBO SKIP: {node.DisplayName} import[{curImportIdx}] name='{curDbName}' pkg='{curPkgPath}' != expected '{oldDbShortName}'"));
+                                    ErrorLog.Write("EXPORT", new Exception($"  COMBO SKIP: {node.DisplayName} import[{curImportIdx}] name='{curDbName}' pkg='{curPkgPath}' != expected one of [{string.Join(", ", oldShortNames)}]"));
                                     break;
                                 }
 
@@ -2018,6 +2079,14 @@ public partial class ExportDialog : Window
                                 {
                                     mainSwaps.Add((oldDbShortName, newDbShortName, newDbFullPath, node.DefaultDBPath));
                                     TryPreserveDelayWindow(node.DefaultDBPath, newDbPath, gameRoot, outputPath, fileEntries, EngineVersion.VER_UE4_26, delayPatched, node.DelayWindowLo, node.DelayWindowHi);
+                                    TryCarryAimWindows(node.DefaultDBPath, newDbPath, gameRoot, outputPath, fileEntries, EngineVersion.VER_UE4_26, aimCarried);
+                                }
+                                foreach (var k in oldSlotKeys)
+                                {
+                                    var kShort = Path.GetFileNameWithoutExtension(k);
+                                    if (!string.IsNullOrEmpty(kShort) &&
+                                        !string.Equals(kShort, newDbShortName, StringComparison.OrdinalIgnoreCase))
+                                        provSwaps.Add((k, kShort, newDbShortName, newDbFullPath));
                                 }
                                 ErrorLog.Write("EXPORT", new Exception($"  COMBO IMPORT SWAP: {oldDbShortName} -> {newDbShortName} (import[{curImportIdx}])"));
                                 break;
@@ -2025,7 +2094,7 @@ public partial class ExportDialog : Window
                             if (swappedThis) break;
                         }
 
-                        if (!swappedThis && redirectNodes.Any(r => Path.GetFileNameWithoutExtension(r.DefaultDBPath) == oldDbShortName))
+                        if (!swappedThis && redirectNodes.Contains(node))
                         {
                             string attackName = newDbShortName;
                             string attackPath = newDbFullPath;
@@ -2039,7 +2108,7 @@ public partial class ExportDialog : Window
                                 foreach (var kvp in attacksMap.Value)
                                 {
                                     string keyStr = GetKeyString(kvp.Key);
-                                    if (!SlotKeysMatch(keyStr, NormalizeSlotKey(node.DefaultDBPath), mainAmbiguousFiles)) continue;
+                                    if (!oldSlotKeys.Any(k => SlotKeysMatch(keyStr, k, mainAmbiguousFiles))) continue;
                                     if (kvp.Value is not ObjectPropertyData od || od.Value == null) continue;
                                     od.Value = FPackageIndex.FromImport(importIdx);
                                     mapPatched = true;
@@ -2055,13 +2124,21 @@ public partial class ExportDialog : Window
                                 {
                                     mainSwaps.Add((oldDbShortName, newDbShortName, newDbFullPath, node.DefaultDBPath));
                                     TryPreserveDelayWindow(node.DefaultDBPath, newDbPath, gameRoot, outputPath, fileEntries, EngineVersion.VER_UE4_26, delayPatched, node.DelayWindowLo, node.DelayWindowHi);
+                                    TryCarryAimWindows(node.DefaultDBPath, newDbPath, gameRoot, outputPath, fileEntries, EngineVersion.VER_UE4_26, aimCarried);
+                                }
+                                foreach (var k in oldSlotKeys)
+                                {
+                                    var kShort = Path.GetFileNameWithoutExtension(k);
+                                    if (!string.IsNullOrEmpty(kShort) &&
+                                        !string.Equals(kShort, newDbShortName, StringComparison.OrdinalIgnoreCase))
+                                        provSwaps.Add((k, kShort, newDbShortName, newDbFullPath));
                                 }
                                 ErrorLog.Write("EXPORT", new Exception($"  COMBO MAP REPOINT: {oldDbShortName} -> {newDbShortName} (import[{importIdx}])"));
                             }
                         }
                     }
 
-                    if (mainSwaps.Count > 0)
+                    if (mainSwaps.Count > 0 || provSwaps.Count > 0)
                     {
                         var swapDict = mainSwaps
                             .GroupBy(s => s.oldShortName, StringComparer.OrdinalIgnoreCase)
@@ -2069,6 +2146,16 @@ public partial class ExportDialog : Window
                         var exactSwapDict = mainSwaps
                             .GroupBy(s => NormalizeSlotKey(s.oldFullPath), StringComparer.OrdinalIgnoreCase)
                             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+                        // Imported-tree slots: keyed by the mod's own DB paths, so they only
+                        // match on the provenance keys recorded above.
+                        foreach (var ps in provSwaps)
+                        {
+                            var provKey = NormalizeSlotKey(ps.oldKey);
+                            if (!exactSwapDict.ContainsKey(provKey))
+                                exactSwapDict[provKey] = (ps.oldShortName, ps.newShortName, ps.newFullPath, ps.oldKey);
+                            if (!string.IsNullOrEmpty(ps.oldShortName) && !swapDict.ContainsKey(ps.oldShortName))
+                                swapDict[ps.oldShortName] = (ps.oldShortName, ps.newShortName, ps.newFullPath, ps.oldKey);
+                        }
 
                         var nodesProp = comboExport.Data.FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Nodes");
                         if (nodesProp is ArrayPropertyData nodesArr)
@@ -2321,9 +2408,22 @@ public partial class ExportDialog : Window
                     }
                 }
 
-                if (redirectSkipped > 0 && comboSwaps == 0)
+                if (redirectActionable > 0 && comboSwaps == 0)
                 {
-                    ErrorLog.Write("EXPORT", new Exception($"WARNING: {redirectSkipped} redirect(s) requested but 0 combo tree swaps applied — weapon tree may be missing slot keys for this graph"));
+                    // Nothing was written into the combo tree, so every replaced move still
+                    // points at the old attack DB on disk. Shipping that pak is exactly the
+                    // "move does nothing in game" failure - abort instead of pretending.
+                    var sample = string.Join("; ", _modifiedNodes
+                        .Where(n => !string.IsNullOrEmpty(n.SourceDBPath) && NeedsComboRedirect(n))
+                        .Take(4)
+                        .Select(n => $"{n.DisplayName} '{Path.GetFileNameWithoutExtension(n.ImportedDbPath is { Length: > 0 } ip ? ip : n.DefaultDBPath)}' -> '{Path.GetFileNameWithoutExtension(n.SourceDBPath)}'"));
+                    ErrorLog.Write("EXPORT", new Exception($"ABORT: {redirectActionable} replaced slot(s) need a tree rewrite but 0 combo tree swaps applied. {sample}"));
+                    throw new InvalidOperationException(
+                        $"{redirectActionable} replaced move(s) could not be written into the combo tree, so they would do nothing in game. " +
+                        "Export aborted instead of shipping a broken pak.\n\n" +
+                        "This happens when the combo tree's m_Attacks slot keys do not match the moves you replaced. " +
+                        "If the project was imported from a mod pak before v1.3 slot provenance existed, re-import the mod and export again. " +
+                        (string.IsNullOrEmpty(sample) ? "" : $"\n\nUnmatched: {sample}"));
                 }
                 if (comboTreeModified)
                 {
@@ -2337,6 +2437,9 @@ public partial class ExportDialog : Window
                         $"  COMBO TREE WROTE: .uasset {new FileInfo(outUasset).Length}B" +
                         (File.Exists(comboOutUexp) ? $", .uexp {new FileInfo(comboOutUexp).Length}B" : ", .uexp MISSING")));
                     ComboWriteValidator.Validate(outUasset, asset, "MAIN COMBO");
+                    VerifyComboTreeWrites(outUasset, eng,
+                        mainSwaps.Select(s => (s.newShortName, s.newFullPath))
+                            .Concat(provSwaps.Select(p => (p.newShortName, p.newFullPath))));
                 }
             });
 
@@ -2425,7 +2528,36 @@ public partial class ExportDialog : Window
                                 string newDbShortName = Path.GetFileNameWithoutExtension(newDbPath);
                                 string newDbFullPath = "/" + newDbPath.TrimStart('/');
 
-                                if (oldDbShortName == newDbShortName) continue;
+                                // Same provenance allowance as the main-char pass: an enemy tree
+                                // imported from a mod is keyed by the mod's own DB paths, so the
+                                // vanilla slot key alone matches nothing (0 swaps -> the replaced
+                                // move never lands in the exported tree).
+                                var enemySlotKeys = new List<string> { NormalizeSlotKey(node.DefaultDBPath) };
+                                if (!string.IsNullOrEmpty(node.ImportedSlotKey))
+                                    enemySlotKeys.Add(NormalizeSlotKey(node.ImportedSlotKey));
+                                if (!string.IsNullOrEmpty(node.ImportedDbPath))
+                                    enemySlotKeys.Add(NormalizeSlotKey(node.ImportedDbPath));
+                                enemySlotKeys = enemySlotKeys.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+                                var enemyOldShorts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                                    { oldDbShortName };
+                                foreach (var k in enemySlotKeys)
+                                {
+                                    var s = Path.GetFileNameWithoutExtension(k);
+                                    if (!string.IsNullOrEmpty(s)) enemyOldShorts.Add(s);
+                                }
+                                if (!string.IsNullOrEmpty(node.ImportedDbPath))
+                                {
+                                    var s = Path.GetFileNameWithoutExtension(node.ImportedDbPath);
+                                    if (!string.IsNullOrEmpty(s)) enemyOldShorts.Add(s);
+                                }
+
+                                // Nothing to rewrite when the tree already points at the target DB.
+                                var enemyTreeDbShort = Path.GetFileNameWithoutExtension(
+                                    !string.IsNullOrEmpty(node.ImportedDbPath) ? node.ImportedDbPath : node.DefaultDBPath);
+                                if (!string.IsNullOrEmpty(enemyTreeDbShort) &&
+                                    string.Equals(enemyTreeDbShort, newDbShortName, StringComparison.OrdinalIgnoreCase))
+                                    continue;
 
                                 bool swapped = false;
                                 foreach (var attacksMap in enemyAllMaps)
@@ -2433,8 +2565,7 @@ public partial class ExportDialog : Window
                                     foreach (var kvp in attacksMap.Value)
                                     {
                                         string keyStr = GetKeyString(kvp.Key);
-                                        string normalizedDefault = NormalizeSlotKey(node.DefaultDBPath);
-                                        if (!SlotKeysMatch(keyStr, normalizedDefault, enemyAmbiguousFiles)) continue;
+                                        if (!enemySlotKeys.Any(k => SlotKeysMatch(keyStr, k, enemyAmbiguousFiles))) continue;
 
                                         var valData = kvp.Value as ObjectPropertyData;
                                         if (valData?.Value == null) continue;
@@ -2450,14 +2581,24 @@ public partial class ExportDialog : Window
                                         if (pkgOuterIdx >= 0 && pkgOuterIdx < enemyAsset.Imports.Count)
                                             curPkgPath = enemyAsset.Imports[pkgOuterIdx].ObjectName?.Value?.ToString() ?? "";
 
-                                        if (!curPkgPath.Contains(oldDbShortName, StringComparison.OrdinalIgnoreCase) &&
-                                            curDbName != oldDbShortName)
+                                        if (!enemyOldShorts.Any(s => curPkgPath.Contains(s, StringComparison.OrdinalIgnoreCase))
+                                            && !enemyOldShorts.Contains(curDbName))
                                         {
-                                            ErrorLog.Write("EXPORT", new Exception($"  ENEMY COMBO SKIP: {node.DisplayName} import[{curImportIdx}] name='{curDbName}' pkg='{curPkgPath}' != expected '{oldDbShortName}'"));
+                                            ErrorLog.Write("EXPORT", new Exception($"  ENEMY COMBO SKIP: {node.DisplayName} import[{curImportIdx}] name='{curDbName}' pkg='{curPkgPath}' != expected one of [{string.Join(", ", enemyOldShorts)}]"));
                                             break;
                                         }
 
                                         enemyComboBinSwaps.Add((oldDbShortName, newDbShortName, newDbFullPath));
+                                        // Provenance keys rename the FName / map key that the
+                                        // imported tree actually stores (mod DB name).
+                                        foreach (var k in enemyOldShorts)
+                                        {
+                                            if (string.IsNullOrEmpty(k)
+                                                || string.Equals(k, oldDbShortName, StringComparison.OrdinalIgnoreCase)
+                                                || string.Equals(k, newDbShortName, StringComparison.OrdinalIgnoreCase))
+                                                continue;
+                                            enemyComboBinSwaps.Add((k, newDbShortName, newDbFullPath));
+                                        }
                                         swapped = true;
                                         ErrorLog.Write("EXPORT", new Exception($"  ENEMY COMBO IMPORT SWAP: {oldDbShortName} -> {newDbShortName} (import[{curImportIdx}])"));
                                         TryPreserveDelayWindow(node.DefaultDBPath, newDbPath, gameRoot, outputPath, fileEntries, EngineVersion.VER_UE4_26, enemyDelayPatched, node.DelayWindowLo, node.DelayWindowHi);
@@ -2619,6 +2760,8 @@ public partial class ExportDialog : Window
                                 if (File.Exists(outUexpPath))
                                     ErrorLog.Write("EXPORT", new Exception($"  UAPI: wrote {new FileInfo(outUexpPath).Length} bytes .uexp"));
                                 ComboWriteValidator.Validate(enemyOutUasset, enemyAsset, "ENEMY COMBO");
+                                VerifyComboTreeWrites(enemyOutUasset, eng,
+                                    enemyComboBinSwaps.Select(s => (s.newShortName, s.newFullPath)));
 
                                 if (custom != null)
                                     RepointCustomDbRefs(custom, gameRoot, outputPath);
@@ -2979,6 +3122,192 @@ public partial class ExportDialog : Window
         return rel;
     }
 
+    /// <summary>
+    /// Content-relative path (no extension) of a pak destination such as
+    /// "../../../Sifu/Content/DB/AI/x.uasset". Null when the dest is outside Content.
+    /// </summary>
+    private static string? DestToContentRel(string dest)
+    {
+        if (string.IsNullOrEmpty(dest)) return null;
+        var d = dest.Replace('\\', '/');
+        const string marker = "Sifu/Content/";
+        var idx = d.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) return null;
+        var rel = d.Substring(idx + marker.Length).Trim('/');
+        var lastSlash = rel.LastIndexOf('/');
+        var lastDot = rel.LastIndexOf('.');
+        if (lastDot > lastSlash) rel = rel[..lastDot];
+        return rel;
+    }
+
+    /// <summary>Content rel + file stem of a game path ("Game/DB/x.y" -> "DB/x"/"x").</summary>
+    private static string GamePathToRelAndStem(string? gamePath, out string stem)
+    {
+        stem = "";
+        if (string.IsNullOrWhiteSpace(gamePath)) return "";
+        var rel = GamePathToContentRel(gamePath.Trim()).Trim('/');
+        var lastSlash = rel.LastIndexOf('/');
+        var lastDot = rel.LastIndexOf('.');
+        if (lastDot > lastSlash) rel = rel[..lastDot];
+        stem = rel[(rel.LastIndexOf('/') + 1)..];
+        return rel;
+    }
+
+    /// <summary>
+    /// Pre-pak dependency audit. Every move the pak rewrites must resolve its attack DB,
+    /// its animation and the DB's hit-card tables from either the staged file set or
+    /// vanilla content. A dangling reference still builds a valid pak - the game simply
+    /// plays nothing or crashes - which looks exactly like "the move does nothing", so
+    /// block the export with the concrete list instead of shipping it.
+    /// </summary>
+    private bool AuditExportDependencies(
+        List<(string src, string dest)> fileEntries, string gameRoot, string outputPath)
+    {
+        var staged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (_, dest) in fileEntries)
+        {
+            var rel = DestToContentRel(dest);
+            if (!string.IsNullOrEmpty(rel)) staged.Add(rel);
+        }
+        if (staged.Count == 0) return true;
+
+        // One index of the CustomAssets library, so a dependency that exists there under a
+        // different path (misplaced harvest) is reported instead of silently dangling.
+        Dictionary<string, List<string>>? customByStem = null;
+        try
+        {
+            if (Directory.Exists(CustomAssets.Root))
+            {
+                customByStem = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+                foreach (var f in Directory.GetFiles(CustomAssets.Root, "*.uasset", SearchOption.AllDirectories))
+                {
+                    var rel = Path.GetRelativePath(CustomAssets.Root, f).Replace('\\', '/');
+                    if (rel.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
+                        rel = rel[..^".uasset".Length];
+                    var stem = Path.GetFileName(rel);
+                    if (string.IsNullOrEmpty(stem)) continue;
+                    if (!customByStem.TryGetValue(stem, out var list))
+                        customByStem[stem] = list = new List<string>();
+                    list.Add(rel);
+                }
+            }
+        }
+        catch { }
+
+        var problems = new List<string>();
+        var warnings = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // blockMissing=false for dependencies whose absence is more likely a partial vanilla
+        // extract than a broken mod (shared hit-card tables) - log those, don't block.
+        void Check(string? gamePath, string owner, string kind, bool blockMissing = true)
+        {
+            var rel = GamePathToRelAndStem(gamePath, out var stem);
+            if (rel.Length == 0 || !rel.Contains('/')) return;
+            if (!seen.Add(kind + "|" + rel)) return;
+            if (staged.Contains(rel)) return;
+
+            var vanilla = Path.Combine(gameRoot, rel.Replace('/', Path.DirectorySeparatorChar) + ".uasset");
+            if (File.Exists(vanilla)) return;
+
+            if (customByStem != null && stem.Length > 0 && customByStem.TryGetValue(stem, out var hits))
+            {
+                if (hits.Contains(rel, StringComparer.OrdinalIgnoreCase))
+                {
+                    problems.Add($"{owner}: {kind} '{rel}' is in the Custom Section but this export leaves it out of the pak.");
+                    return;
+                }
+                if (hits.Count == 1)
+                {
+                    problems.Add($"{owner}: {kind} '{rel}' was imported as '{hits[0]}' - the pak would reference the wrong path.");
+                    return;
+                }
+            }
+
+            var msg = $"{owner}: {kind} '{rel}' is missing from both the pak and the game content.";
+            if (blockMissing) problems.Add(msg);
+            else warnings.Add(msg);
+        }
+
+        var auditNodes = (_perUnitModifiedNodes.Count > 0
+                ? _perUnitModifiedNodes.Values.SelectMany(v => v)
+                : _modifiedNodes)
+            .ToList();
+
+        foreach (var node in auditNodes)
+        {
+            // A removed node ships no reference - its old DB/anim is exactly what the
+            // export is getting rid of.
+            if (node.Removed) continue;
+
+            var label = !string.IsNullOrEmpty(node.DisplayName)
+                ? node.DisplayName
+                : $"tree[{node.TreeIndex}]";
+
+            var dbPath = !string.IsNullOrEmpty(node.SourceDBPath) ? node.SourceDBPath
+                : (!string.IsNullOrEmpty(node.DefaultDBPath) ? node.DefaultDBPath : null);
+            Check(dbPath, label, "attack DB");
+            Check(node.AnimPath, label, "animation");
+
+            // DB -> hit-card tables: animation DBs also reference HitBoxData tables that
+            // live outside the DB folder and must travel with the mod.
+            var dbRel = GamePathToRelAndStem(dbPath, out _);
+            if (dbRel.Contains('/'))
+            {
+                var dbFile = Path.Combine(outputPath, "Sifu", "Content",
+                    dbRel.Replace('/', Path.DirectorySeparatorChar) + ".uasset");
+                if (!File.Exists(dbFile))
+                {
+                    var customDb = CustomAssets.FileForContentRel(dbRel + ".uasset");
+                    dbFile = File.Exists(customDb)
+                        ? customDb
+                        : Path.Combine(gameRoot, dbRel.Replace('/', Path.DirectorySeparatorChar) + ".uasset");
+                }
+                if (File.Exists(dbFile))
+                {
+                    try
+                    {
+                        var card = AttackHitCard.Read(dbFile, gameRoot);
+                        if (card != null)
+                        {
+                            foreach (var w in card.Windows)
+                            {
+                                if (string.IsNullOrEmpty(w.TableRel)) continue;
+                                Check("Game/" + w.TableRel, label, "hit-card table", blockMissing: false);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        ErrorLog.Write("EXPORT", new Exception(
+                            $"  DEP AUDIT: could not read hit-card tables of {dbRel}: {ex.Message}"));
+                    }
+                }
+            }
+        }
+
+        foreach (var w in warnings)
+            ErrorLog.Write("EXPORT", new Exception($"[DEP AUDIT] WARN: {w}"));
+
+        if (problems.Count == 0)
+        {
+            ErrorLog.Write("EXPORT", new Exception(
+                $"[DEP AUDIT] OK: {auditNodes.Count} modified node(s), {staged.Count} staged asset(s)" +
+                (warnings.Count > 0 ? $", {warnings.Count} warning(s)" : "")));
+            return true;
+        }
+
+        ErrorLog.Write("EXPORT", new Exception($"[DEP AUDIT] ABORT: {problems.Count} unresolved dependenc(ies)"));
+        foreach (var p in problems)
+            ErrorLog.Write("EXPORT", new Exception($"[DEP AUDIT]   {p}"));
+
+        var shown = problems.Take(10).ToList();
+        ShowErrorWithReport("Export blocked - the pak would reference assets it does not contain, so these "
+            + "moves would do nothing in game:\n\n" + string.Join("\n", shown)
+            + (problems.Count > shown.Count ? $"\n... and {problems.Count - shown.Count} more (see log)." : ""));
+        return false;
+    }
+
     private static int ExtractPhaseFromName(string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return 0;
@@ -3006,10 +3335,16 @@ public partial class ExportDialog : Window
 
     private static bool NeedsComboRedirect(ComboNode node)
     {
-        if (string.IsNullOrEmpty(node.DefaultDBPath) || string.IsNullOrEmpty(node.SourceDBPath))
+        if (string.IsNullOrEmpty(node.SourceDBPath))
+            return false;
+        // The DB the target tree currently points at. For a tree imported from a mod that
+        // is the mod's own DB (provenance), not the vanilla slot DB - the imported tree
+        // keys its m_Attacks map by the mod's paths.
+        var currentDb = !string.IsNullOrEmpty(node.ImportedDbPath) ? node.ImportedDbPath : node.DefaultDBPath;
+        if (string.IsNullOrEmpty(currentDb))
             return false;
         return !string.Equals(
-            Path.GetFileNameWithoutExtension(node.DefaultDBPath),
+            Path.GetFileNameWithoutExtension(currentDb),
             Path.GetFileNameWithoutExtension(node.SourceDBPath),
             StringComparison.OrdinalIgnoreCase);
     }
@@ -3024,6 +3359,51 @@ public partial class ExportDialog : Window
         if (lastDot > lastSlash)
             path = path[..lastDot];
         return path;
+    }
+
+    /// <summary>
+    /// Post-write self-check: re-reads the combo tree we just saved and confirms every
+    /// rewritten slot really is keyed by its new DB path. A rename that silently misses
+    /// (wrong key shape, dedup drop) is invisible in-game - the move just does nothing -
+    /// so fail the export here instead of shipping it.
+    /// </summary>
+    private static void VerifyComboTreeWrites(
+        string outUasset,
+        EngineVersion eng,
+        IEnumerable<(string newShortName, string newFullPath)> rewrittenSlots)
+    {
+        var expectedNew = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var s in rewrittenSlots)
+            if (!string.IsNullOrEmpty(s.newFullPath) && !string.IsNullOrEmpty(s.newShortName))
+                expectedNew.Add(NormalizeSlotKey(s.newFullPath + "." + s.newShortName));
+        if (expectedNew.Count == 0) return;
+
+        var writtenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var check = new UAsset(outUasset, eng, null, CustomSerializationFlags.None);
+        foreach (var exp in check.Exports)
+        {
+            if (exp is not NormalExport ne || ne.Data == null) continue;
+            foreach (var map in FindAllMapsNamed(ne.Data, "m_Attacks"))
+            {
+                if (map.Value == null) continue;
+                foreach (var kvp in map.Value)
+                {
+                    var key = NormalizeSlotKey(GetKeyString(kvp.Key));
+                    if (!string.IsNullOrEmpty(key)) writtenKeys.Add(key);
+                }
+            }
+        }
+
+        var missing = expectedNew.Where(k => !writtenKeys.Contains(k)).ToList();
+        if (missing.Count > 0)
+        {
+            var detail = string.Join("\n  ", missing.Take(8));
+            ErrorLog.Write("EXPORT", new Exception($"POST-WRITE CHECK FAILED: {missing.Count}/{expectedNew.Count} rewritten slot(s) missing from {Path.GetFileName(outUasset)}: {detail}"));
+            throw new InvalidOperationException(
+                $"The combo tree was written but {missing.Count} replaced slot(s) are missing from it, so those moves would do nothing in game. " +
+                "Export aborted instead of shipping a broken pak.\n\n" + detail);
+        }
+        ErrorLog.Write("EXPORT", new Exception($"  POST-WRITE CHECK OK: {expectedNew.Count} rewritten slot(s) present in the combo tree"));
     }
 
     private static bool SlotKeysMatch(string keyStr, string normalizedSlotKey, HashSet<string>? ambiguousFiles = null)
@@ -3741,17 +4121,43 @@ public partial class ExportDialog : Window
                     ErrorLog.Write("EXPORT", new Exception($"  HITFRAMES FAIL: {node.DisplayName} ({rel}): {ferr}"));
                     continue;
                 }
+                foreach (var e in edits.Where(AttackHitCard.HasCardFields))
+                {
+                    if (e.Append)
+                    {
+                        ErrorLog.Write("EXPORT", new Exception(
+                            $"  NEWHIT: {node.DisplayName} -> {rel} "
+                            + $"window {e.Index + 1} row '{e.RowName}' {e.FrameLo?.ToString() ?? "-"}-{e.FrameHi?.ToString() ?? "-"}"
+                            + (string.IsNullOrEmpty(e.AttackHeight) ? "" : $" height {AttackHitCard.HeightLabel(e.AttackHeight)}")
+                            + $" (clone of hit{e.TemplateIndex + 1})"));
+                    }
+                }
                 ErrorLog.Write("EXPORT", new Exception(
                     $"  HITFRAMES: {node.DisplayName} -> {rel} "
                     + string.Join(", ", edits.Where(AttackHitCard.HasCardFields)
-                        .Select(e => $"hit{e.Index + 1} {e.FrameLo?.ToString() ?? "-"}-{e.FrameHi?.ToString() ?? "-"}"))));
+                        .Select(e => $"hit{e.Index + 1} {e.FrameLo?.ToString() ?? "-"}-{e.FrameHi?.ToString() ?? "-"}"
+                            + (string.IsNullOrEmpty(e.AttackHeight) ? "" : $" {AttackHitCard.HeightLabel(e.AttackHeight)}")
+                            + (e.Append ? " (new)" : "")))));
             }
 
-            foreach (var e in edits.Where(AttackHitCard.HasRowFields))
+            foreach (var e in edits.Where(AttackHitCard.NeedsRowWrite))
             {
-                var winInfo = ReadHitWindowInfo(gameRoot, rel, e.Index);
-                string tableRel = winInfo?.TableRel ?? "";
-                string rowName = winInfo?.RowName ?? "";
+                AttackHitWindowInfo? winInfo = null;
+                string tableRel;
+                string rowName;
+                if (e.Append)
+                {
+                    // Appended windows only exist after this export, so the base card
+                    // cannot resolve them - the edit carries its own table/row.
+                    tableRel = e.TableRel ?? "";
+                    rowName = e.RowName ?? "";
+                }
+                else
+                {
+                    winInfo = ReadHitWindowInfo(gameRoot, rel, e.Index);
+                    tableRel = winInfo?.TableRel ?? "";
+                    rowName = winInfo?.RowName ?? "";
+                }
                 if (string.IsNullOrEmpty(tableRel) || string.IsNullOrEmpty(rowName))
                 {
                     ErrorLog.Write("EXPORT", new Exception(
@@ -3818,10 +4224,12 @@ public partial class ExportDialog : Window
                 if (e.BreakStructure.HasValue) fields.Add($"break {(e.BreakStructure.Value ? "on" : "off")}");
                 if (e.DizzyOnParry.HasValue) fields.Add($"dizzyParry {(e.DizzyOnParry.Value ? "on" : "off")}");
                 if (e.DizzyOnAvoid.HasValue) fields.Add($"dizzyAvoid {(e.DizzyOnAvoid.Value ? "on" : "off")}");
+                if (e.AvoidMatrix.HasValue) fields.Add($"avoid {AttackHitCard.AvoidLabel(e.AvoidMatrix)}");
                 if (!string.IsNullOrEmpty(e.AttackPower)) fields.Add($"power {e.AttackPower}");
                 if (e.PropertyLevel.HasValue) fields.Add($"level {e.PropertyLevel.Value}");
                 ErrorLog.Write("EXPORT", new Exception(
-                    $"  HITROW: {tableRel}: {rowKvp.Key} {string.Join(" ", fields)}"));
+                    $"  HITROW: {tableRel}: {rowKvp.Key} {string.Join(" ", fields)}"
+                    + (e.Append ? $" (new, clone of '{e.TemplateRow}')" : "")));
             }
         }
     }
@@ -4274,6 +4682,91 @@ public partial class ExportDialog : Window
         }
     }
 
+    private static void TryCarryAimWindows(
+        string donorDbGamePath, string replacementDbGamePath, string gameRoot,
+        string outputPath, List<(string src, string dest)> fileEntries, EngineVersion eng,
+        HashSet<string> alreadyCarried)
+    {
+        const string Tag = "[AIM-CARRY]";
+        try
+        {
+            if (string.IsNullOrEmpty(donorDbGamePath) || string.IsNullOrEmpty(replacementDbGamePath)) return;
+
+            string donorRel = GamePathToContentRel(donorDbGamePath);
+            string replRel = GamePathToContentRel(replacementDbGamePath);
+            // Same card: the slot still owns its own windows, nothing to carry.
+            if (string.Equals(donorRel, replRel, StringComparison.OrdinalIgnoreCase)) return;
+
+            string donorFile = ResolveStageSource(gameRoot, donorRel)
+                ?? Path.Combine(gameRoot, donorRel + ".uasset");
+            string replStaged = Path.Combine(outputPath, "Sifu", "Content", replRel + ".uasset");
+            string replVanilla = ResolveStageSource(gameRoot, replRel)
+                ?? Path.Combine(gameRoot, replRel + ".uasset");
+            string replFile = File.Exists(replStaged) ? replStaged : replVanilla;
+            if (!File.Exists(donorFile))
+            {
+                ErrorLog.Write("EXPORT", new Exception($"  {Tag} SKIP: donor card not found: {donorRel}"));
+                return;
+            }
+            if (!File.Exists(replFile))
+            {
+                ErrorLog.Write("EXPORT", new Exception($"  {Tag} SKIP: replacement card not found: {replRel}"));
+                return;
+            }
+            if (!alreadyCarried.Add(replacementDbGamePath))
+            {
+                ErrorLog.Write("EXPORT", new Exception(
+                    $"  {Tag} {replRel} already carried for another slot - skipping duplicate"));
+                return;
+            }
+
+            var replAsset = new UAsset(replFile, eng, null, CustomSerializationFlags.None);
+            int existing = AimWindowCarrier.WindowCount(replAsset);
+            if (existing > 0)
+            {
+                ErrorLog.Write("EXPORT", new Exception(
+                    $"  {Tag} {replRel} already has {existing} hit window(s) - nothing to carry"));
+                return;
+            }
+
+            var donorAsset = new UAsset(donorFile, eng, null, CustomSerializationFlags.None);
+            int donorWindows = AimWindowCarrier.WindowCount(donorAsset);
+            if (donorWindows == 0)
+            {
+                ErrorLog.Write("EXPORT", new Exception(
+                    $"  {Tag} SKIP: donor {donorRel} has no hit windows to carry (the move keeps its default aim)"));
+                return;
+            }
+            int aimWindows = AimWindowCarrier.AimWindowCount(donorAsset);
+
+            if (!AimWindowCarrier.Carry(replAsset, donorAsset, out string err))
+            {
+                ErrorLog.Write("EXPORT", new Exception($"  {Tag} FAIL: {replRel}: {err}"));
+                return;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(replStaged)!);
+            replAsset.Write(replStaged);
+            var stagedUexp = Path.ChangeExtension(replStaged, ".uexp");
+            if (!File.Exists(stagedUexp))
+            {
+                ErrorLog.Write("EXPORT", new Exception(
+                    $"  {Tag} FAIL: .uexp missing after Write for {replRel} - aim not carried"));
+                return;
+            }
+            fileEntries.RemoveAll(e => string.Equals(e.src, replStaged, StringComparison.OrdinalIgnoreCase));
+            fileEntries.Add((replStaged, "../../../Sifu/Content/" + replRel + ".uasset"));
+            fileEntries.Add((stagedUexp, "../../../Sifu/Content/" + replRel + ".uexp"));
+            ErrorLog.Write("EXPORT", new Exception(
+                $"  {Tag} carried {donorWindows} hit window(s) ({aimWindows} with an aim target) "
+                + $"from {donorRel} onto {replRel}"));
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("EXPORT", new Exception($"  {Tag} FAILED {replacementDbGamePath}: {ex.Message}"));
+        }
+    }
+
     // Thin wrappers over DelayWindowCard so the panel gate and export share one finder
     // (the test harness reflects these private names).
     private static ArrayPropertyData? FindWindowArray(List<PropertyData> props)
@@ -4400,7 +4893,7 @@ public partial class ExportDialog : Window
     }
 
     /// <summary>Display label -> EComboTransition name. The shared catalog owns the
-    /// mapping (RMB Alt -> HeavyAlt, Rush values, ...); an unknown label passes through
+    /// mapping (RMB Alt Delay -> HeavyAlt, Rush values, ...); an unknown label passes through
     /// verbatim instead of collapsing to None, which used to silently erase the input.</summary>
     private static string InputToEnumRaw(string inputName) => InputCatalog.EnumFromLabel(inputName);
 
@@ -8174,6 +8667,49 @@ public partial class ExportDialog : Window
         txtStatus.Text = message;
         txtStatus.Foreground = MakeBrush("#f38ba8");
         btnConfirm.IsEnabled = true;
+        btnReportError.Visibility = Visibility.Collapsed;
+        _lastErrorMessage = null;
+    }
+
+    /// <summary>
+    /// Failure variant that offers a prefilled bug report. Used for the cases where the
+    /// export stopped instead of shipping a broken pak: those are exactly the failures a
+    /// user cannot describe better than the log already does.
+    /// </summary>
+    private void ShowErrorWithReport(string message)
+    {
+        ShowError(message);
+        _lastErrorMessage = message;
+        btnReportError.Visibility = Visibility.Visible;
+    }
+
+    private string? _lastErrorMessage;
+
+    private void ReportError_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var dlg = new BugReportDialog(
+                type: "bug",
+                title: FirstLineTitle(_lastErrorMessage),
+                body: _lastErrorMessage ?? "",
+                context: "export aborted",
+                contentPath: _contentPath,
+                outputPath: _outputPath) { Owner = this };
+            dlg.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("BUGREPORT", ex);
+        }
+    }
+
+    /// <summary>First line of an error, trimmed to a usable issue summary.</summary>
+    private static string FirstLineTitle(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "Export failed";
+        var line = text.Split('\n')[0].Trim();
+        return line.Length > 100 ? line.Substring(0, 97) + "..." : line;
     }
 
     private void ShowComplete(string pakName, int changeCount, string installedTo)

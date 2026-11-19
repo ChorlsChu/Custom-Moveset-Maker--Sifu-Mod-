@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 
 namespace SifuMovesetEditor;
 
@@ -42,6 +43,12 @@ public partial class CreateAttackDbDialog : Window
     private AttackDbTemplateOption? _selectedTemplate;
     private AttackDbTemplateOption? _recommended;
     private bool _ready;
+
+    // Same palette as the XAML reason line, plus a warn tone for hitless templates.
+    private static readonly Brush ReasonBrush =
+        new SolidColorBrush((Color)ColorConverter.ConvertFromString("#a6adc8"));
+    private static readonly Brush HitlessBrush =
+        new SolidColorBrush((Color)ColorConverter.ConvertFromString("#f9e2af"));
 
     /// <summary>True when the user asked to pick a template in the Move Library.</summary>
     public bool PickTemplateRequested { get; private set; }
@@ -162,11 +169,27 @@ public partial class CreateAttackDbDialog : Window
         txtTemplateMeta.ToolTip = option?.GamePath;
 
         if (option == null)
+        {
             txtTemplateReason.Text = "";
-        else if (option.IsRecommended)
-            txtTemplateReason.Text = $"Recommended — {option.MatchReason}.";
+            txtTemplateReason.Foreground = ReasonBrush;
+        }
         else
-            txtTemplateReason.Text = "Chosen from the library.";
+        {
+            string reason = option.IsRecommended
+                ? $"Recommended — {option.MatchReason}."
+                : "Chosen from the library.";
+            if (option.HasHitWindows == false)
+            {
+                reason += " This card has no hit windows, so the new move will not aim or "
+                    + "land hits. Pick a card with hit windows if the move should connect.";
+                txtTemplateReason.Foreground = HitlessBrush;
+            }
+            else
+            {
+                txtTemplateReason.Foreground = ReasonBrush;
+            }
+            txtTemplateReason.Text = reason;
+        }
 
         UpdateTemplateDerived();
     }

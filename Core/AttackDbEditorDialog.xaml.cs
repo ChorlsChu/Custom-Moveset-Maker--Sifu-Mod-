@@ -26,13 +26,46 @@ public partial class AttackDbEditorDialog : Window
     private static readonly Brush WarnBrush = new SolidColorBrush(Color.FromRgb(0xf9, 0xe2, 0xaf));
     private static readonly Brush HeadBrush = new SolidColorBrush(Color.FromRgb(0x31, 0x32, 0x44));
 
-    private readonly AttackHitCardData _card;
+    private AttackHitCardData _card;
     private readonly List<AttackHitEdit> _initial;
     private readonly List<ArmorNotifyInfo>? _armor;
+    private readonly List<WorkingWindow> _working = new();
+
+    /// <summary>One working window: a card window (IsNew=false) or a pending appended hit.</summary>
+    private sealed class WorkingWindow
+    {
+        /// <summary>Baseline values: vanilla for card windows, template-row values for appended hits.</summary>
+        public AttackHitWindowInfo Info = null!;
+        /// <summary>Saved edit for this window (null for a freshly-added hit).</summary>
+        public AttackHitEdit? Initial;
+        public bool IsNew;
+        /// <summary>Base-card window index cloned when this hit is appended.</summary>
+        public int TemplateIndex;
+        /// <summary>Root HitBoxData row cloned when this hit is appended.</summary>
+        public string TemplateRow = "";
+        public string TableRel = "";
+    }
+
+    /// <summary>One selectable attack-height preset (label -> EAttackTarget suffix).</summary>
+    private sealed class HeightOption
+    {
+        public string Label { get; set; } = "";
+        public string Value { get; set; } = "";
+        public override string ToString() => Label;
+    }
+
+    /// <summary>One selectable avoid-matrix preset (word label -> m_iAvoidableDefenseMatrix).</summary>
+    private sealed class AvoidOption
+    {
+        public string Label { get; set; } = "";
+        public int? Value { get; set; }
+        public override string ToString() => Label;
+    }
 
     private sealed class WindowFields
     {
         public AttackHitWindowInfo Info = null!;
+        public WorkingWindow Work = null!;
         public TextBox FrameLo = null!;
         public TextBox FrameHi = null!;
         public TextBox Damage = null!;
@@ -51,6 +84,8 @@ public partial class AttackDbEditorDialog : Window
         public TextBox Stun = null!;
         public TextBox Freeze = null!;
         public ComboBox Reaction = null!;
+        public ComboBox Height = null!;
+        public ComboBox Avoid = null!;
         public CheckBox Parriable = null!;
         public CheckBox Lethal = null!;
         public CheckBox BreakStructure = null!;
@@ -58,6 +93,8 @@ public partial class AttackDbEditorDialog : Window
         public CheckBox DizzyAvoid = null!;
         /// <summary>Window title - recolored when the row stops being shared.</summary>
         public TextBlock? Title;
+        /// <summary>Card root so Remove can take the whole block out of the panel.</summary>
+        public Border? Card;
     }
 
     /// <summary>One selectable Hit reaction preset; the dropdown writes power + property level together.</summary>
@@ -114,6 +151,8 @@ public partial class AttackDbEditorDialog : Window
         string cardName = System.IO.Path.GetFileNameWithoutExtension(card.CardRel);
         txtSubtitle.Text = $"{cardName} · {card.Windows.Count} window(s)";
 
+        BuildWorkingWindows();
+        txtSubtitle.Text = $"{cardName} · {_working.Count} window(s)";
         BuildWindows();
 
         UpdateSharedBanner();
@@ -143,6 +182,81 @@ public partial class AttackDbEditorDialog : Window
     }
 
     /// <summary>
+    /// Re-reads the card after a Make private pass. The privatizer rewrites the card's
+    /// m_HitRow.DataTable imports, so the dialog must refresh table paths/flags (and the
+    /// table row-name list) before it can append a new hit. Null = reload unavailable;
+    /// Add stays blocked while the row is shared.
+    /// </summary>
+    internal Func<AttackHitCardData?>? ReloadCard { get; set; }
+
+    /// <summary>
+    /// Builds the working window list: vanilla windows first, then any saved appended
+    /// hits (rebuilt from their template window so the dialog shows the same card again).
+    /// </summary>
+    private void BuildWorkingWindows()
+    {
+        foreach (var w in _card.Windows)
+        {
+            _working.Add(new WorkingWindow
+            {
+                Info = w,
+                IsNew = false,
+                TemplateIndex = w.Index,
+                TemplateRow = w.RowName,
+                TableRel = w.TableRel
+            });
+        }
+
+        foreach (var e in _initial)
+        {
+            if (e == null || e.Append) continue;
+            var ww = _working.FirstOrDefault(x => !x.IsNew && x.Info.Index == e.Index);
+            if (ww != null) ww.Initial = e;
+        }
+
+        int nextAppend = _card.Windows.Count;
+        var savedAppends = _initial.Where(e => e != null && e.Append)
+            .OrderBy(e => e.Index).ToList();
+        foreach (var e in savedAppends)
+        {
+            var template = _card.Windows.FirstOrDefault(x => x.Index == e.TemplateIndex)
+                ?? _card.Windows.LastOrDefault();
+            if (template == null) continue;
+            var info = CloneWindowInfo(template);
+            info.Index = Math.Max(e.Index, nextAppend);
+            nextAppend = info.Index + 1;
+            info.RowName = e.RowName ?? "";
+            info.TableRel = string.IsNullOrEmpty(e.TableRel) ? template.TableRel : e.TableRel;
+            info.SharedRow = false;
+            info.CanPrivatize = false;
+            info.LookupStatus = VanillaLookupStatus.Ok;
+            _working.Add(new WorkingWindow
+            {
+                Info = info,
+                Initial = e,
+                IsNew = true,
+                // Always the window actually cloned - an out-of-range saved template
+                // falls back to the last vanilla window instead of blocking OK.
+                TemplateIndex = template.Index,
+                TemplateRow = string.IsNullOrEmpty(e.TemplateRow) ? template.RowName : e.TemplateRow,
+                TableRel = info.TableRel
+            });
+        }
+
+        _working.Sort((a, b) => a.Info.Index.CompareTo(b.Info.Index));
+    }
+
+    private static AttackHitWindowInfo CloneWindowInfo(AttackHitWindowInfo w) => w.Clone();
+
+    private static string WindowTitle(WorkingWindow ww)
+    {
+        var w = ww.Info;
+        return $"Hit {w.Index + 1} — {w.RowName} ({w.FrameLo}–{w.FrameHi})"
+            + (string.IsNullOrEmpty(w.Movement) ? "" : $" · {w.Movement}")
+            + (ww.IsNew ? " · new" : "");
+    }
+
+    /// <summary>
     /// Shows the row/table warning banner and its "Make private" button. The button is
     /// driven by the resolved table path, not the row-name heuristic: a clone whose name
     /// happens to match its vanilla row still points at a shared table and must offer the
@@ -161,6 +275,7 @@ public partial class AttackDbEditorDialog : Window
         if (shared.Count == 0 && shareableTables.Count == 0)
         {
             panelShared.Visibility = Visibility.Collapsed;
+            UpdateAddButton();
             return;
         }
 
@@ -180,6 +295,75 @@ public partial class AttackDbEditorDialog : Window
             txtSharedWarning.Text += " Clone this card first to make it private.";
         btnMakePrivate.Visibility = canPrivatize ? Visibility.Visible : Visibility.Collapsed;
         panelShared.Visibility = Visibility.Visible;
+        UpdateAddButton();
+    }
+
+    /// <summary>
+    /// Add hit needs a private table: appended rows cannot live in a shared vanilla table
+    /// (they would leak into other attacks and cannot be created there). The button is
+    /// disabled when the card is vanilla content (no MakePrivate) or the table is
+    /// unresolvable; otherwise it stays enabled and Add offers to privatize first.
+    /// </summary>
+    private void UpdateAddButton()
+    {
+        if (btnAddHit == null) return;
+        var last = _fields.LastOrDefault();
+        bool hasWindows = last != null;
+        bool shared = last?.Info.CanPrivatize == true;
+        bool unresolvable = last != null && string.IsNullOrEmpty(last.Info.TableRel);
+        bool blocked = hasWindows && (shared && MakePrivate == null || unresolvable);
+        btnAddHit.IsEnabled = hasWindows && !blocked;
+        btnAddHit.ToolTip = !hasWindows
+            ? "This card has no hit window to copy"
+            : unresolvable
+                ? "This card's hit row table cannot be resolved"
+                : shared && MakePrivate == null
+                    ? "Clone this card first to add hits (the shared vanilla hit table cannot be modified)"
+                    : "Append a copy of the last hit window";
+    }
+
+    /// <summary>
+    /// Re-reads the card after Make private and refreshes every working window's table
+    /// path/flags. Appended hits retarget to their template window's new private table.
+    /// </summary>
+    private void ApplyPrivateReload()
+    {
+        var fresh = ReloadCard?.Invoke();
+        if (fresh != null)
+        {
+            foreach (var nw in fresh.Windows)
+            {
+                var old = _card.Windows.FirstOrDefault(x => x.Index == nw.Index);
+                if (old == null) continue;
+                old.RowName = nw.RowName;
+                old.TableRel = nw.TableRel;
+                old.LookupStatus = nw.LookupStatus;
+                old.SharedRow = nw.SharedRow;
+                old.CanPrivatize = nw.CanPrivatize;
+            }
+            _card.TableRowNames.Clear();
+            foreach (var kvp in fresh.TableRowNames)
+                _card.TableRowNames[kvp.Key] = kvp.Value;
+        }
+
+        foreach (var ww in _working.Where(x => x.IsNew))
+        {
+            var tmpl = _working.FirstOrDefault(x => !x.IsNew && x.Info.Index == ww.TemplateIndex);
+            if (tmpl != null)
+            {
+                ww.TableRel = tmpl.Info.TableRel;
+                ww.Info.TableRel = tmpl.Info.TableRel;
+            }
+            ww.Info.CanPrivatize = false;
+            ww.Info.SharedRow = false;
+        }
+
+        foreach (var f in _fields)
+        {
+            if (f.Title != null)
+                f.Title.Foreground = f.Info.SharedRow ? WarnBrush : BlueBrush;
+        }
+        UpdateSharedBanner();
     }
 
     private static string TableLabel(string tableRel)
@@ -203,23 +387,37 @@ public partial class AttackDbEditorDialog : Window
             txtStatus.Text = $"Make private failed: {err}";
             return;
         }
-        foreach (var f in _fields)
-        {
-            f.Info.SharedRow = false;
-            f.Info.CanPrivatize = false;
-            if (f.Title != null) f.Title.Foreground = BlueBrush;
-        }
-        panelShared.Visibility = Visibility.Collapsed;
+        ApplyPrivateReload();
         txtStatus.Text = "Hit row is private to this card now";
     }
 
     private void BuildWindows()
     {
         if (ShowArmorSection) BuildArmorSection();
-        foreach (var w in _card.Windows)
+        foreach (var ww in _working)
+            AddWindowCard(ww, null);
+
+        if (_working.Count == 0)
         {
-            var edit = _initial.FirstOrDefault(e => e.Index == w.Index);
-            var fields = new WindowFields { Info = w };
+            windowsPanel.Children.Add(new TextBlock
+            {
+                Text = "This card has no hit windows.",
+                Foreground = DimBrush,
+                FontSize = 12
+            });
+        }
+        UpdateAddButton();
+    }
+
+    /// <summary>
+    /// Builds one window card. <paramref name="seed"/> (a just-added hit) copies the
+    /// previous card's displayed values, including unsaved edits, into the new card.
+    /// </summary>
+    private void AddWindowCard(WorkingWindow ww, WindowFields? seed)
+    {
+            var w = ww.Info;
+            var edit = ww.Initial;
+            var fields = new WindowFields { Info = w, Work = ww };
 
             var root = new Border
             {
@@ -244,11 +442,25 @@ public partial class AttackDbEditorDialog : Window
             reset.Click += ResetWindow_Click;
             DockPanel.SetDock(reset, Dock.Right);
             header.Children.Add(reset);
+            if (ww.IsNew)
+            {
+                var remove = new Button
+                {
+                    Content = "Remove",
+                    Style = (Style)FindResource("DarkButton"),
+                    Padding = new Thickness(8, 2, 8, 2),
+                    FontSize = 10,
+                    Foreground = WarnBrush,
+                    Tag = fields
+                };
+                remove.Click += RemoveWindow_Click;
+                DockPanel.SetDock(remove, Dock.Right);
+                header.Children.Add(remove);
+            }
 
             var title = new TextBlock
             {
-                Text = $"Hit {w.Index + 1} — {w.RowName} ({w.FrameLo}–{w.FrameHi})"
-                    + (string.IsNullOrEmpty(w.Movement) ? "" : $" · {w.Movement}"),
+                Text = WindowTitle(ww),
                 Foreground = w.SharedRow ? WarnBrush : BlueBrush,
                 FontSize = 12,
                 FontWeight = FontWeights.SemiBold,
@@ -276,7 +488,7 @@ public partial class AttackDbEditorDialog : Window
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(130) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-            for (int i = 0; i < 14; i++)
+            for (int i = 0; i < 16; i++)
                 grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             fields.FrameLo = MakeBox();
@@ -294,6 +506,8 @@ public partial class AttackDbEditorDialog : Window
             fields.Stun = MakeBox();
             fields.Freeze = MakeBox();
             fields.Reaction = MakeCombo();
+            fields.Height = MakeCombo();
+            fields.Avoid = MakeCombo();
             fields.Parriable = MakeCheck();
             fields.Lethal = MakeCheck();
             fields.BreakStructure = MakeCheck();
@@ -318,40 +532,33 @@ public partial class AttackDbEditorDialog : Window
 
             AddIntRow(grid, 0, "Frames lo:", "Frames", w.FrameLo, edit?.FrameLo, fields.FrameLo, info: w);
             AddIntRow(grid, 1, "Frames hi:", "Frames", w.FrameHi, edit?.FrameHi, fields.FrameHi, info: w);
-            AddImpactFloatRow(grid, 2, "Damage:", "Damage", w.Damage, edit?.Damage, fields.Damage,
+            AddHeightRow(grid, 2, "Attack height:", "AttackHeight", w, edit, fields.Height);
+            AddImpactFloatRow(grid, 3, "Damage:", "Damage", w.Damage, edit?.Damage, fields.Damage,
                 w.Damage, w.GuardDamage, w.DeflectDamage,
                 edit?.DamageOnHit, edit?.DamageOnGuard, edit?.DamageOnDeflect,
                 fields.DamageOnHit, fields.DamageOnGuard, fields.DamageOnDeflect, w);
-            AddImpactFloatRow(grid, 3, "Structure:", "Structure", w.StructureDamage, edit?.StructureDamage, fields.Structure,
+            AddImpactFloatRow(grid, 4, "Structure:", "Structure", w.StructureDamage, edit?.StructureDamage, fields.Structure,
                 w.StructureDamage, w.GuardStructureDamage, w.DeflectStructureDamage,
                 edit?.StructureDamageOnHit, edit?.StructureDamageOnGuard, edit?.StructureDamageOnDeflect,
                 fields.StructureOnHit, fields.StructureOnGuard, fields.StructureOnDeflect, w);
-            AddFloatRow(grid, 4, "Knockback:", "Knockback", w.KnockbackDistance, edit?.KnockbackDistance, fields.Knockback, w);
-            AddFloatRow(grid, 5, "Super dizzy:", "SuperDizzy", w.SuperDizzyDamage, edit?.SuperDizzyDamage, fields.SuperDizzy, w);
-            AddIntRow(grid, 6, "Stun frames:", "StunFrames", w.StunFrames, edit?.StunFrames, fields.Stun, 0, 255, w);
-            AddIntRow(grid, 7, "Freeze frames:", "FreezeFrames", w.FreezeFrames, edit?.FreezeFrames, fields.Freeze, 0, 1000, w);
-            AddReactionRow(grid, 8, "Hit reaction:", "Reaction", w, edit, fields.Reaction);
-            AddBoolRow(grid, 9, "Parriable:", "Parriable", w.Parriable, edit?.Parriable, fields.Parriable, w);
-            AddBoolRow(grid, 10, "Lethal:", "Lethal", w.Lethal, edit?.Lethal, fields.Lethal, w);
-            AddBoolRow(grid, 11, "Break structure:", "BreakStructure", w.BreakStructure, edit?.BreakStructure, fields.BreakStructure, w);
-            AddBoolRow(grid, 12, "Dizzy on parry:", "DizzyOnParry", w.DizzyOnParry, edit?.DizzyOnParry, fields.DizzyParry, w);
-            AddBoolRow(grid, 13, "Dizzy on avoid:", "DizzyOnAvoid", w.DizzyOnAvoid, edit?.DizzyOnAvoid, fields.DizzyAvoid, w);
+            AddFloatRow(grid, 5, "Knockback:", "Knockback", w.KnockbackDistance, edit?.KnockbackDistance, fields.Knockback, w);
+            AddFloatRow(grid, 6, "Super dizzy:", "SuperDizzy", w.SuperDizzyDamage, edit?.SuperDizzyDamage, fields.SuperDizzy, w);
+            AddIntRow(grid, 7, "Stun frames:", "StunFrames", w.StunFrames, edit?.StunFrames, fields.Stun, 0, 255, w);
+            AddIntRow(grid, 8, "Freeze frames:", "FreezeFrames", w.FreezeFrames, edit?.FreezeFrames, fields.Freeze, 0, 1000, w);
+            AddReactionRow(grid, 9, "Hit reaction:", "Reaction", w, edit, fields.Reaction);
+            AddBoolRow(grid, 10, "Parriable:", "Parriable", w.Parriable, edit?.Parriable, fields.Parriable, w);
+            AddBoolRow(grid, 11, "Lethal:", "Lethal", w.Lethal, edit?.Lethal, fields.Lethal, w);
+            AddBoolRow(grid, 12, "Break structure:", "BreakStructure", w.BreakStructure, edit?.BreakStructure, fields.BreakStructure, w);
+            AddBoolRow(grid, 13, "Dizzy on parry:", "DizzyOnParry", w.DizzyOnParry, edit?.DizzyOnParry, fields.DizzyParry, w);
+            AddBoolRow(grid, 14, "Dizzy on avoid:", "DizzyOnAvoid", w.DizzyOnAvoid, edit?.DizzyOnAvoid, fields.DizzyAvoid, w);
+            AddAvoidRow(grid, 15, "Avoidable by:", "AvoidMatrix", w, edit, fields.Avoid);
 
             panel.Children.Add(grid);
             root.Child = panel;
+            fields.Card = root;
+            if (seed != null) CopyDisplayedValues(seed, fields);
             windowsPanel.Children.Add(root);
             _fields.Add(fields);
-        }
-
-        if (_card.Windows.Count == 0)
-        {
-            windowsPanel.Children.Add(new TextBlock
-            {
-                Text = "This card has no hit windows.",
-                Foreground = DimBrush,
-                FontSize = 12
-            });
-        }
     }
 
     /// <summary>
@@ -525,6 +732,274 @@ public partial class AttackDbEditorDialog : Window
         Hint(grid, row, 2, hasBoth ? $"vanilla {info.AttackPower}+{info.PropertyLevel}" : MissingVanillaHint(info));
     }
 
+    /// <summary>
+    /// Attack height dropdown (EAttackTarget). Writes m_eHitTarget + m_eAltHitTarget
+    /// together; word labels only (Mid 1 / Mid 2 are the enum's Mid_1 / Mid_2).
+    /// </summary>
+    private void AddHeightRow(Grid grid, int row, string label, string helpKey,
+        AttackHitWindowInfo info, AttackHitEdit? edit, ComboBox combo)
+    {
+        bool available = !string.IsNullOrEmpty(info.AttackHeight);
+        if (available)
+        {
+            foreach (var (text, value) in AttackHitCard.HeightPresets)
+                combo.Items.Add(new HeightOption { Label = text, Value = value });
+            if (!AttackHitCard.HeightPresets.Any(p => p.Value == info.AttackHeight))
+                combo.Items.Add(new HeightOption
+                {
+                    Label = $"{AttackHitCard.HeightLabel(info.AttackHeight)} (vanilla)",
+                    Value = info.AttackHeight
+                });
+
+            string current = edit?.AttackHeight ?? info.AttackHeight;
+            combo.SelectedItem = combo.Items.OfType<HeightOption>()
+                .FirstOrDefault(o => string.Equals(o.Value, current, StringComparison.OrdinalIgnoreCase));
+            if (combo.SelectedItem == null)
+            {
+                var custom = new HeightOption
+                {
+                    Label = AttackHitCard.HeightLabel(current),
+                    Value = current
+                };
+                combo.Items.Add(custom);
+                combo.SelectedItem = custom;
+            }
+            combo.IsEnabled = true;
+            combo.ToolTip = $"Vanilla: {AttackHitCard.HeightLabel(info.AttackHeight)} - pick a height to change";
+        }
+        else
+        {
+            combo.IsEnabled = false;
+            combo.ToolTip = MissingVanillaTip(info);
+        }
+        HelpLabel(grid, row, 0, label, helpKey);
+        Place(grid, combo, row, 1);
+        Hint(grid, row, 2, available
+            ? $"vanilla {AttackHitCard.HeightLabel(info.AttackHeight)}"
+            : MissingVanillaHint(info));
+    }
+
+    /// <summary>
+    /// "Avoidable by" dropdown over m_iAvoidableDefenseMatrix. Word labels only - the
+    /// raw bitfield numbers are never shown. "Leave unchanged" = no row override.
+    /// </summary>
+    private void AddAvoidRow(Grid grid, int row, string label, string helpKey,
+        AttackHitWindowInfo info, AttackHitEdit? edit, ComboBox combo)
+    {
+        combo.Items.Add(new AvoidOption { Label = "Leave unchanged", Value = null });
+        foreach (var (text, value) in AttackHitCard.AvoidPresets)
+            combo.Items.Add(new AvoidOption { Label = text, Value = value });
+
+        int? baseline = info.AvoidMatrix;
+        int? current = edit?.AvoidMatrix ?? baseline;
+        if (baseline.HasValue && !AttackHitCard.AvoidPresets.Any(p => p.Value == baseline.Value))
+            combo.Items.Add(new AvoidOption
+            {
+                Label = $"{AttackHitCard.AvoidLabel(baseline)} (vanilla)",
+                Value = baseline
+            });
+        if (current.HasValue && !combo.Items.OfType<AvoidOption>().Any(o => o.Value == current))
+            combo.Items.Add(new AvoidOption
+            {
+                Label = AttackHitCard.AvoidLabel(current),
+                Value = current
+            });
+
+        combo.SelectedItem = current.HasValue
+            ? combo.Items.OfType<AvoidOption>().FirstOrDefault(o => o.Value == current)
+            : combo.Items.OfType<AvoidOption>().FirstOrDefault(o => o.Value == null);
+        if (info.LookupStatus != VanillaLookupStatus.Ok)
+        {
+            // No readable row: nothing to overwrite safely (export would fail on a
+            // missing m_iAvoidableDefenseMatrix field).
+            combo.IsEnabled = false;
+            combo.ToolTip = MissingVanillaTip(info);
+        }
+        else
+        {
+            combo.ToolTip = baseline.HasValue
+                ? $"Vanilla: {AttackHitCard.AvoidLabel(baseline)} - leave unchanged to keep it"
+                : MissingVanillaTip(info);
+        }
+        HelpLabel(grid, row, 0, label, helpKey);
+        Place(grid, combo, row, 1);
+        Hint(grid, row, 2, baseline.HasValue
+            ? $"vanilla {AttackHitCard.AvoidLabel(baseline)}"
+            : MissingVanillaHint(info));
+    }
+
+    /// <summary>
+    /// Copies every displayed field from the previous hit card into a freshly added one.
+    /// The new card's baseline is the clone template row, so copied values that differ
+    /// from it become explicit overrides at OK time.
+    /// </summary>
+    private void CopyDisplayedValues(WindowFields from, WindowFields to)
+    {
+        static void Text(TextBox a, TextBox b) => b.Text = a.Text;
+
+        Text(from.FrameLo, to.FrameLo);
+        Text(from.FrameHi, to.FrameHi);
+        // Mirror boxes stay derived from the per-impact fields; copy those so the
+        // two-way sync rebuilds the mirror exactly.
+        Text(from.DamageOnHit, to.DamageOnHit);
+        Text(from.DamageOnGuard, to.DamageOnGuard);
+        Text(from.DamageOnDeflect, to.DamageOnDeflect);
+        Text(from.StructureOnHit, to.StructureOnHit);
+        Text(from.StructureOnGuard, to.StructureOnGuard);
+        Text(from.StructureOnDeflect, to.StructureOnDeflect);
+        Text(from.Knockback, to.Knockback);
+        Text(from.SuperDizzy, to.SuperDizzy);
+        Text(from.Stun, to.Stun);
+        Text(from.Freeze, to.Freeze);
+
+        to.Parriable.IsChecked = from.Parriable.IsChecked;
+        to.Lethal.IsChecked = from.Lethal.IsChecked;
+        to.BreakStructure.IsChecked = from.BreakStructure.IsChecked;
+        to.DizzyParry.IsChecked = from.DizzyParry.IsChecked;
+        to.DizzyAvoid.IsChecked = from.DizzyAvoid.IsChecked;
+
+        if (from.Reaction.SelectedItem is ReactionOption ro && to.Reaction.IsEnabled)
+        {
+            to.Reaction.SelectedItem = to.Reaction.Items.OfType<ReactionOption>()
+                .FirstOrDefault(p => p.Power == ro.Power && p.Level == ro.Level)
+                ?? to.Reaction.SelectedItem;
+        }
+        if (from.Height.SelectedItem is HeightOption ho && to.Height.IsEnabled)
+        {
+            to.Height.SelectedItem = to.Height.Items.OfType<HeightOption>()
+                .FirstOrDefault(o => string.Equals(o.Value, ho.Value, StringComparison.OrdinalIgnoreCase))
+                ?? to.Height.SelectedItem;
+        }
+        if (from.Avoid.SelectedItem is AvoidOption ao)
+        {
+            to.Avoid.SelectedItem = to.Avoid.Items.OfType<AvoidOption>()
+                .FirstOrDefault(o => o.Value == ao.Value)
+                ?? to.Avoid.SelectedItem;
+        }
+    }
+
+    /// <summary>Auto row name: root template row + _2, _3, ... unique in the table.</summary>
+    private string SuggestRowName(string baseRow, string tableRel)
+    {
+        if (string.IsNullOrEmpty(baseRow)) baseRow = "NewHit";
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrEmpty(tableRel)
+            && _card.TableRowNames.TryGetValue(tableRel, out var names))
+        {
+            foreach (var n in names) used.Add(n);
+        }
+        foreach (var f in _fields)
+        {
+            if (!string.IsNullOrEmpty(f.Info.RowName)) used.Add(f.Info.RowName);
+        }
+        for (int i = 2; i < 10000; i++)
+        {
+            string candidate = baseRow + "_" + i;
+            if (!used.Contains(candidate)) return candidate;
+        }
+        return baseRow + "_" + Guid.NewGuid().ToString("N")[..6];
+    }
+
+    private void AddHit_Click(object sender, RoutedEventArgs e)
+    {
+        var last = _fields.LastOrDefault();
+        if (last == null)
+        {
+            txtStatus.Text = "No hit window to copy";
+            return;
+        }
+        if (!EnsurePrivateTableForAdd(last)) return;
+
+        var lastWw = last.Work;
+        string templateRow = lastWw.IsNew ? lastWw.TemplateRow : lastWw.Info.RowName;
+        string tableRel = lastWw.Info.TableRel;
+        string rowName = SuggestRowName(templateRow, tableRel);
+
+        var info = CloneWindowInfo(lastWw.Info);
+        info.Index = _working.Count == 0 ? 0 : _working.Max(x => x.Info.Index) + 1;
+        info.RowName = rowName;
+        info.TableRel = tableRel;
+        info.SharedRow = false;
+        info.CanPrivatize = false;
+        info.LookupStatus = VanillaLookupStatus.Ok;
+
+        var ww = new WorkingWindow
+        {
+            Info = info,
+            IsNew = true,
+            TemplateIndex = lastWw.TemplateIndex,
+            TemplateRow = templateRow,
+            TableRel = tableRel
+        };
+        _working.Add(ww);
+        AddWindowCard(ww, last);
+        UpdateAddButton();
+        UpdateSharedBanner();
+
+        txtSubtitle.Text = $"{System.IO.Path.GetFileNameWithoutExtension(_card.CardRel)} · {_working.Count} window(s)";
+        txtStatus.Text = $"Added hit {info.Index + 1} ({rowName}) - edit its frames and values, or Remove it";
+        if (last.Card != null) last.Card.BringIntoView();
+        _fields.LastOrDefault()?.Card?.BringIntoView();
+    }
+
+    private void RemoveWindow_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not WindowFields f || !f.Work.IsNew) return;
+        _working.Remove(f.Work);
+        _fields.Remove(f);
+        if (f.Card != null) windowsPanel.Children.Remove(f.Card);
+
+        // Keep appended display indices contiguous: the dialog writes vanilla hits first,
+        // then these new windows in order.
+        int next = _card.Windows.Count;
+        foreach (var ww in _working.Where(x => x.IsNew))
+        {
+            ww.Info.Index = next++;
+            var wf = _fields.FirstOrDefault(x => ReferenceEquals(x.Work, ww));
+            if (wf?.Title != null) wf.Title.Text = WindowTitle(ww);
+        }
+        txtSubtitle.Text = $"{System.IO.Path.GetFileNameWithoutExtension(_card.CardRel)} · {_working.Count} window(s)";
+        txtStatus.Text = "Removed the pending hit";
+        UpdateAddButton();
+        UpdateSharedBanner();
+    }
+
+    /// <summary>
+    /// Add hit requires a private table. Run the existing Make private flow on demand,
+    /// then reload the card so the new window's row can be written to the private table.
+    /// </summary>
+    private bool EnsurePrivateTableForAdd(WindowFields last)
+    {
+        if (!last.Info.CanPrivatize) return true;
+
+        if (MakePrivate == null)
+        {
+            txtStatus.Text = "Clone this card first to add hits - the shared vanilla hit table cannot be modified.";
+            return false;
+        }
+        var confirm = MessageBox.Show(this,
+            "Adding a hit creates a new row in this card's HitBoxData table.\n\n"
+            + "This card still uses a shared table. Copy the hit row into a private table "
+            + "for this card first?",
+            "Private hit row required", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+        if (confirm != MessageBoxResult.OK) return false;
+
+        string? err = MakePrivate();
+        if (err == null) ApplyPrivateReload();
+        if (err != null)
+        {
+            txtStatus.Text = $"Make private failed: {err}";
+            return false;
+        }
+        if (last.Info.CanPrivatize || string.IsNullOrEmpty(last.Info.TableRel))
+        {
+            txtStatus.Text = "Hit row is still shared - cannot add hits.";
+            return false;
+        }
+        txtStatus.Text = "Hit row is private to this card now";
+        return true;
+    }
+
     /// <summary>Per-field help texts, shared by every window group (same idea as Unit PropsHelp).</summary>
     private static readonly Dictionary<string, (string Title, string Desc)> FieldHelp = new()
     {
@@ -573,7 +1048,32 @@ public partial class AttackDbEditorDialog : Window
             + "- Resilience: light armor - Grunt / BodyGuard / FlashKick heavies\n"
             + "- Super: strong armor - BigGuy / Fajar / FireDisciple strikes; the player's Resilient skill\n"
             + "- Unstoppable: full hyper armor - Kuroki / Sean / Yang; FalconPunch\n\n"
-            + "Some anims stack two notifies (e.g. BigGuy heavies = Super + Regular). Times are seconds on a 60 fps anim; read-only here (editing comes in a later phase).")
+            + "Some anims stack two notifies (e.g. BigGuy heavies = Super + Regular). Times are seconds on a 60 fps anim; read-only here (editing comes in a later phase)."),
+        ["AttackHeight"] = ("Attack height",
+            "Where this hit lands vertically (m_eHitTarget + m_eAltHitTarget on the window):\n\n"
+            + "- High: head/upper body - duckable by a low avoid\n"
+            + "- Mid 1 / Mid 2: torso-level hits; the difference is the exact aim band, not the damage\n"
+            + "- Low: sweeps and low kicks - must be jumped\n\n"
+            + "Vanilla usually keeps both target enums equal; a few staff/aerial moves use different "
+            + "primary/alternate targets, and this dropdown writes the same value to both. The row's "
+            + "\"Avoidable by\" field is the defense-side counterpart - keep them consistent."),
+        ["AvoidMatrix"] = ("Avoidable by",
+            "Which avoid directions can dodge this row (m_iAvoidableDefenseMatrix):\n\n"
+            + "- Not avoidable: throws, grabs and synced hits\n"
+            + "- Low: a low attack - jump/step over it\n"
+            + "- High: a high attack - duck under it\n"
+            + "- Mid: a normal-height strike\n"
+            + "- Low + Mid / High + Mid / Any height: combinations used by wide or special hitboxes\n\n"
+            + "Word labels only - the underlying matrix bits are not shown. Leave unchanged keeps the "
+            + "cloned row's vanilla value."),
+        ["AddHit"] = ("Add hit",
+            "Appends a new hit window after the vanilla ones, copying the last hit's displayed "
+            + "frames, row values, height and avoid setting. Edit the new card's frames and values, "
+            + "then OK - the extra window and its new HitBoxData row are written on export.\n\n"
+            + "Added hits need a private hit table: if this card still shares a vanilla table, Add "
+            + "offers to run Make private first. Vanilla-content cards must be cloned before hits "
+            + "can be added. Added hits get a Remove button; vanilla hits stay editable but cannot "
+            + "be deleted.")
     };
 
     private void Help_Click(object sender, RoutedEventArgs e)
@@ -949,6 +1449,15 @@ public partial class AttackDbEditorDialog : Window
         if (f.Reaction.IsEnabled)
             f.Reaction.SelectedItem = f.Reaction.Items.OfType<ReactionOption>()
                 .FirstOrDefault(p => p.Power == f.Info.AttackPower && p.Level == f.Info.PropertyLevel);
+        if (f.Height.IsEnabled)
+            f.Height.SelectedItem = f.Height.Items.OfType<HeightOption>()
+                .FirstOrDefault(o => string.Equals(o.Value, f.Info.AttackHeight, StringComparison.OrdinalIgnoreCase));
+        if (f.Info.AvoidMatrix.HasValue)
+            f.Avoid.SelectedItem = f.Avoid.Items.OfType<AvoidOption>()
+                .FirstOrDefault(o => o.Value == f.Info.AvoidMatrix);
+        else
+            f.Avoid.SelectedItem = f.Avoid.Items.OfType<AvoidOption>()
+                .FirstOrDefault(o => !o.Value.HasValue);
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
@@ -960,10 +1469,32 @@ public partial class AttackDbEditorDialog : Window
     {
         var inv = CultureInfo.InvariantCulture;
         var edits = new List<AttackHitEdit>();
+        int nextAppendIndex = _card.Windows.Count;
 
         foreach (var f in _fields)
         {
-            string hit = $"Hit {f.Info.Index + 1}";
+            bool isNew = f.Work.IsNew;
+            int index = isNew ? nextAppendIndex++ : f.Info.Index;
+            string hit = $"Hit {index + 1}";
+
+            // Baseline for "is this a change" checks: vanilla for card windows, the
+            // base-card window a new hit clones from for appended ones (its row and
+            // window are what the clone starts as, not the last hit's edited values).
+            var baseline = isNew
+                ? (_card.Windows.FirstOrDefault(x => x.Index == f.Work.TemplateIndex) ?? f.Info)
+                : f.Info;
+
+            if (isNew)
+            {
+                if (string.IsNullOrEmpty(f.Info.RowName))
+                { txtStatus.Text = $"{hit}: new hit has no row name"; return; }
+                if (string.IsNullOrEmpty(f.Work.TableRel))
+                { txtStatus.Text = $"{hit}: new hit has no hit row table"; return; }
+                if (string.IsNullOrEmpty(f.Work.TemplateRow))
+                { txtStatus.Text = $"{hit}: new hit has no template row to copy"; return; }
+                if (f.Work.TemplateIndex < 0 || f.Work.TemplateIndex >= _card.Windows.Count)
+                { txtStatus.Text = $"{hit}: new hit has no template window to copy"; return; }
+            }
 
             if (!TryParseInt(f.FrameLo, inv, out int? flo)) return;
             if (!TryParseInt(f.FrameHi, inv, out int? fhi)) return;
@@ -973,8 +1504,8 @@ public partial class AttackDbEditorDialog : Window
             { txtStatus.Text = $"{hit}: frames hi must be >= 0"; return; }
             if (flo.HasValue && fhi.HasValue && fhi.Value < flo.Value)
             { txtStatus.Text = $"{hit}: frames hi must be >= lo"; return; }
-            if (flo.HasValue && flo.Value == f.Info.FrameLo) flo = null;
-            if (fhi.HasValue && fhi.Value == f.Info.FrameHi) fhi = null;
+            if (flo.HasValue && flo.Value == baseline.FrameLo) flo = null;
+            if (fhi.HasValue && fhi.Value == baseline.FrameHi) fhi = null;
 
             // Damage: the three popup fields are the source of truth (the
             // mirror box stays two-way synced to them, so it is not parsed
@@ -983,15 +1514,15 @@ public partial class AttackDbEditorDialog : Window
             if (!TryParseFloat(f.DamageOnHit, out float? dmgHit)) return;
             if (dmgHit.HasValue && dmgHit.Value < 0)
             { txtStatus.Text = $"{hit}: on-hit damage must be >= 0"; return; }
-            if (dmgHit.HasValue && f.Info.Damage.HasValue && dmgHit.Value == f.Info.Damage.Value) dmgHit = null;
+            if (dmgHit.HasValue && baseline.Damage.HasValue && dmgHit.Value == baseline.Damage.Value) dmgHit = null;
             if (!TryParseFloat(f.DamageOnGuard, out float? dmgGuard)) return;
             if (dmgGuard.HasValue && dmgGuard.Value < 0)
             { txtStatus.Text = $"{hit}: on-guard damage must be >= 0"; return; }
-            if (dmgGuard.HasValue && f.Info.GuardDamage.HasValue && dmgGuard.Value == f.Info.GuardDamage.Value) dmgGuard = null;
+            if (dmgGuard.HasValue && baseline.GuardDamage.HasValue && dmgGuard.Value == baseline.GuardDamage.Value) dmgGuard = null;
             if (!TryParseFloat(f.DamageOnDeflect, out float? dmgDeflect)) return;
             if (dmgDeflect.HasValue && dmgDeflect.Value < 0)
             { txtStatus.Text = $"{hit}: on-deflect damage must be >= 0"; return; }
-            if (dmgDeflect.HasValue && f.Info.DeflectDamage.HasValue && dmgDeflect.Value == f.Info.DeflectDamage.Value) dmgDeflect = null;
+            if (dmgDeflect.HasValue && baseline.DeflectDamage.HasValue && dmgDeflect.Value == baseline.DeflectDamage.Value) dmgDeflect = null;
 
             // Compact: all three paths equal -> single mirror value (keeps the
             // saved shape backward compatible and patches all three structs).
@@ -1002,15 +1533,15 @@ public partial class AttackDbEditorDialog : Window
             if (!TryParseFloat(f.StructureOnHit, out float? strHit)) return;
             if (strHit.HasValue && strHit.Value < 0)
             { txtStatus.Text = $"{hit}: on-hit structure must be >= 0"; return; }
-            if (strHit.HasValue && f.Info.StructureDamage.HasValue && strHit.Value == f.Info.StructureDamage.Value) strHit = null;
+            if (strHit.HasValue && baseline.StructureDamage.HasValue && strHit.Value == baseline.StructureDamage.Value) strHit = null;
             if (!TryParseFloat(f.StructureOnGuard, out float? strGuard)) return;
             if (strGuard.HasValue && strGuard.Value < 0)
             { txtStatus.Text = $"{hit}: on-guard structure must be >= 0"; return; }
-            if (strGuard.HasValue && f.Info.GuardStructureDamage.HasValue && strGuard.Value == f.Info.GuardStructureDamage.Value) strGuard = null;
+            if (strGuard.HasValue && baseline.GuardStructureDamage.HasValue && strGuard.Value == baseline.GuardStructureDamage.Value) strGuard = null;
             if (!TryParseFloat(f.StructureOnDeflect, out float? strDeflect)) return;
             if (strDeflect.HasValue && strDeflect.Value < 0)
             { txtStatus.Text = $"{hit}: on-deflect structure must be >= 0"; return; }
-            if (strDeflect.HasValue && f.Info.DeflectStructureDamage.HasValue && strDeflect.Value == f.Info.DeflectStructureDamage.Value) strDeflect = null;
+            if (strDeflect.HasValue && baseline.DeflectStructureDamage.HasValue && strDeflect.Value == baseline.DeflectStructureDamage.Value) strDeflect = null;
 
             float? str = null;
             if (strHit.HasValue && strHit == strGuard && strGuard == strDeflect)
@@ -1019,36 +1550,56 @@ public partial class AttackDbEditorDialog : Window
             if (!TryParseFloat(f.Knockback, out float? kb)) return;
             if (kb.HasValue && kb.Value < 0)
             { txtStatus.Text = $"{hit}: knockback must be >= 0"; return; }
-            if (kb.HasValue && f.Info.KnockbackDistance.HasValue && kb.Value == f.Info.KnockbackDistance.Value) kb = null;
+            if (kb.HasValue && baseline.KnockbackDistance.HasValue && kb.Value == baseline.KnockbackDistance.Value) kb = null;
 
             if (!TryParseFloat(f.SuperDizzy, out float? sd)) return;
             if (sd.HasValue && sd.Value < 0)
             { txtStatus.Text = $"{hit}: super dizzy must be >= 0"; return; }
-            if (sd.HasValue && f.Info.SuperDizzyDamage.HasValue && sd.Value == f.Info.SuperDizzyDamage.Value) sd = null;
+            if (sd.HasValue && baseline.SuperDizzyDamage.HasValue && sd.Value == baseline.SuperDizzyDamage.Value) sd = null;
 
             if (!TryParseInt(f.Stun, inv, out int? stun)) return;
             if (stun.HasValue && (stun.Value < 0 || stun.Value > 255))
             { txtStatus.Text = $"{hit}: stun frames must be 0-255"; return; }
-            if (stun.HasValue && f.Info.StunFrames.HasValue && stun.Value == f.Info.StunFrames.Value) stun = null;
+            if (stun.HasValue && baseline.StunFrames.HasValue && stun.Value == baseline.StunFrames.Value) stun = null;
 
             if (!TryParseInt(f.Freeze, inv, out int? freeze)) return;
             if (freeze.HasValue && freeze.Value < 0)
             { txtStatus.Text = $"{hit}: freeze frames must be >= 0"; return; }
-            if (freeze.HasValue && f.Info.FreezeFrames.HasValue && freeze.Value == f.Info.FreezeFrames.Value) freeze = null;
+            if (freeze.HasValue && baseline.FreezeFrames.HasValue && freeze.Value == baseline.FreezeFrames.Value) freeze = null;
 
             string? power = null;
             int? level = null;
             if (f.Reaction.IsEnabled && f.Reaction.SelectedItem is ReactionOption ro)
             {
-                if (!string.Equals(ro.Power, f.Info.AttackPower, StringComparison.Ordinal)) power = ro.Power;
-                if (f.Info.PropertyLevel.HasValue && ro.Level != f.Info.PropertyLevel.Value) level = ro.Level;
+                if (!string.Equals(ro.Power, baseline.AttackPower, StringComparison.Ordinal)) power = ro.Power;
+                if (baseline.PropertyLevel.HasValue && ro.Level != baseline.PropertyLevel.Value) level = ro.Level;
             }
+
+            // Attack height: writes m_eHitTarget + m_eAltHitTarget on the window.
+            // Appended hits keep their copied height unless it changes.
+            string? height = null;
+            if (f.Height.IsEnabled && f.Height.SelectedItem is HeightOption ho
+                && !string.Equals(ho.Value, baseline.AttackHeight, StringComparison.OrdinalIgnoreCase))
+                height = ho.Value;
+
+            // Avoid matrix: a word-labelled row bitfield; "Leave unchanged" = no override.
+            int? avoid = null;
+            if (f.Avoid.IsEnabled && f.Avoid.SelectedItem is AvoidOption ao && ao.Value.HasValue
+                && baseline.AvoidMatrix != ao.Value)
+                avoid = ao.Value;
 
             var edit = new AttackHitEdit
             {
-                Index = f.Info.Index,
+                Index = index,
+                Append = isNew,
+                RowName = isNew ? f.Info.RowName : null,
+                TableRel = isNew ? f.Work.TableRel : null,
+                TemplateIndex = isNew ? f.Work.TemplateIndex : -1,
+                TemplateRow = isNew ? f.Work.TemplateRow : null,
                 FrameLo = flo,
                 FrameHi = fhi,
+                AttackHeight = height,
+                AvoidMatrix = avoid,
                 Damage = dmg,
                 StructureDamage = str,
                 DamageOnHit = dmgHit,
@@ -1061,14 +1612,17 @@ public partial class AttackDbEditorDialog : Window
                 SuperDizzyDamage = sd,
                 StunFrames = stun,
                 FreezeFrames = freeze,
-                Parriable = BoolOrNull(f.Parriable, f.Info.Parriable),
-                Lethal = BoolOrNull(f.Lethal, f.Info.Lethal),
-                BreakStructure = BoolOrNull(f.BreakStructure, f.Info.BreakStructure),
-                DizzyOnParry = BoolOrNull(f.DizzyParry, f.Info.DizzyOnParry),
-                DizzyOnAvoid = BoolOrNull(f.DizzyAvoid, f.Info.DizzyOnAvoid),
+                Parriable = BoolOrNull(f.Parriable, baseline.Parriable),
+                Lethal = BoolOrNull(f.Lethal, baseline.Lethal),
+                BreakStructure = BoolOrNull(f.BreakStructure, baseline.BreakStructure),
+                DizzyOnParry = BoolOrNull(f.DizzyParry, baseline.DizzyOnParry),
+                DizzyOnAvoid = BoolOrNull(f.DizzyAvoid, baseline.DizzyOnAvoid),
                 AttackPower = power,
                 PropertyLevel = level
             };
+
+            // A new hit always writes its window + row, even with no field overrides
+            // (Append makes IsEmpty false, so it is never dropped here).
             if (!edit.IsEmpty()) edits.Add(edit);
         }
 

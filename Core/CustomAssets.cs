@@ -198,6 +198,17 @@ public static class CustomAssets
     /// </summary>
     public static int Harvest(string extractRoot, string vanillaContentDir,
         Action<string, int, int>? onProgress = null)
+        => Harvest(extractRoot, vanillaContentDir, null, onProgress);
+
+    /// <summary>
+    /// Harvest overload with a pak entry -> content-relative path map. UnrealPak -extract
+    /// writes entries relative to their mount point, so a pak mounted below Content/
+    /// (e.g. .../Content/DB/_MainChar/Combos/) loses that prefix; the map restores it so
+    /// the file lands at the path export resolves rather than at the extract root.
+    /// </summary>
+    public static int Harvest(string extractRoot, string vanillaContentDir,
+        IReadOnlyDictionary<string, string>? contentRelByFile,
+        Action<string, int, int>? onProgress = null)
     {
         int copied = 0;
         try
@@ -217,6 +228,7 @@ public static class CustomAssets
                     if (file.EndsWith(".pak", StringComparison.OrdinalIgnoreCase)) continue;
 
                     var rel = Path.GetRelativePath(contentRoot, file).Replace('\\', '/');
+                    rel = ResolveContentRel(rel, contentRelByFile);
                     allFiles.Add((file, rel));
                 }
             }
@@ -296,6 +308,22 @@ public static class CustomAssets
             ErrorLog.Write("CUSTOM", ex);
         }
         return copied;
+    }
+
+    /// <summary>
+    /// Uses the pak mount-point map to put an extracted file back on its content path.
+    /// Tries the extract-relative path first (paks that already extract with directories),
+    /// then the bare file name (flattened mount-point extraction). Falls back to the
+    /// extract-relative path so folder imports behave exactly as before.
+    /// </summary>
+    private static string ResolveContentRel(string rel, IReadOnlyDictionary<string, string>? contentRelByFile)
+    {
+        if (contentRelByFile == null || contentRelByFile.Count == 0) return rel;
+        if (contentRelByFile.TryGetValue(rel, out var mapped) && !string.IsNullOrEmpty(mapped))
+            return mapped;
+        if (contentRelByFile.TryGetValue(Path.GetFileName(rel), out mapped) && !string.IsNullOrEmpty(mapped))
+            return mapped;
+        return rel;
     }
 
     private static readonly string[] CompanionExts = { ".uasset", ".uexp", ".ubulk", ".uptnl" };

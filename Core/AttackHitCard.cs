@@ -61,6 +61,12 @@ public sealed class AttackHitWindowInfo
     public string? AttackPower;
     /// <summary>First m_AttackPropertyLevel.m_Level (0 flinch, 1+ knockdown tiers); null = absent.</summary>
     public int? PropertyLevel;
+    /// <summary>m_eHitTarget suffix (High / Mid_1 / Mid_2 / Low); empty = absent from window.</summary>
+    public string AttackHeight = "";
+    /// <summary>m_eAltHitTarget suffix - usually equal to AttackHeight, differs on some staff/aerial moves.</summary>
+    public string AltAttackHeight = "";
+    /// <summary>m_iAvoidableDefenseMatrix bitfield on the row; null = absent.</summary>
+    public int? AvoidMatrix;
     /// <summary>Row name shares no token with the card file name - likely reused by other attacks.</summary>
     public bool SharedRow;
     /// <summary>
@@ -72,12 +78,21 @@ public sealed class AttackHitWindowInfo
     /// table and must offer the escape hatch.
     /// </summary>
     public bool CanPrivatize;
+
+    /// <summary>Shallow copy (every field is a value type or an immutable string).</summary>
+    public AttackHitWindowInfo Clone() => (AttackHitWindowInfo)MemberwiseClone();
 }
 
 public sealed class AttackHitCardData
 {
     public string CardRel = "";
     public List<AttackHitWindowInfo> Windows = new();
+    /// <summary>
+    /// Every row name seen in each HitBoxData table (table rel -> names, case-insensitive).
+    /// Used by the dialog to keep auto-generated appended-row names unique in the table.
+    /// Empty when a table could not be opened.
+    /// </summary>
+    public Dictionary<string, List<string>> TableRowNames = new(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>
@@ -107,6 +122,53 @@ public static class AttackHitCard
     public static void Invalidate(string uassetPath)
     {
         try { Cache.Remove(uassetPath); } catch { }
+    }
+
+    /// <summary>
+    /// Attack-height presets as (label, EAttackTarget suffix). Vanilla only ships these four.
+    /// </summary>
+    public static readonly (string Label, string Value)[] HeightPresets =
+    {
+        ("High", "High"),
+        ("Mid 1", "Mid_1"),
+        ("Mid 2", "Mid_2"),
+        ("Low", "Low"),
+    };
+
+    /// <summary>
+    /// Word-only avoid matrix presets: the row's m_iAvoidableDefenseMatrix is a bitfield
+    /// (1 Low, 2 High, 12 Mid, 13 Low+Mid, 14 High+Mid, 15 all, 0 not avoidable). Raw
+    /// numbers are never shown in the editor.
+    /// </summary>
+    public static readonly (string Label, int Value)[] AvoidPresets =
+    {
+        ("Not avoidable", 0),
+        ("Low", 1),
+        ("High", 2),
+        ("Low + High", 3),
+        ("Mid", 12),
+        ("Low + Mid", 13),
+        ("High + Mid", 14),
+        ("Any height", 15),
+    };
+
+    public static string HeightLabel(string? value) => value switch
+    {
+        "Mid_1" => "Mid 1",
+        "Mid_2" => "Mid 2",
+        "High" => "High",
+        "Low" => "Low",
+        null or "" => "?",
+        _ => value,
+    };
+
+    /// <summary>Word label for an avoid-matrix value; unknown combinations stay word-only.</summary>
+    public static string AvoidLabel(int? value)
+    {
+        if (!value.HasValue) return "?";
+        foreach (var (label, v) in AvoidPresets)
+            if (v == value.Value) return label;
+        return "Other combination";
     }
 
     /// <param name="tableFallbackRoot">
@@ -156,11 +218,21 @@ public static class AttackHitCard
             || e.StunFrames.HasValue || e.FreezeFrames.HasValue || e.Parriable.HasValue
             || e.Lethal.HasValue || e.BreakStructure.HasValue
             || e.DizzyOnParry.HasValue || e.DizzyOnAvoid.HasValue
+            || e.AvoidMatrix.HasValue
             || !string.IsNullOrEmpty(e.AttackPower) || e.PropertyLevel.HasValue);
 
-    /// <summary>True when the edit touches any field stored on the card itself (frame bounds).</summary>
+    /// <summary>True when the edit touches any field stored on the card itself (frames / window height).</summary>
     public static bool HasCardFields(AttackHitEdit? e)
-        => e != null && (e.FrameLo.HasValue || e.FrameHi.HasValue);
+        => e != null && (e.FrameLo.HasValue || e.FrameHi.HasValue
+            || !string.IsNullOrEmpty(e.AttackHeight) || e.Append);
+
+    /// <summary>
+    /// True when export must write this edit's HitBoxData row: a normal field override,
+    /// or an appended hit (whose new row must exist even when it has no field overrides).
+    /// </summary>
+    public static bool NeedsRowWrite(AttackHitEdit? e)
+        => HasRowFields(e) || (e != null && e.Append
+            && !string.IsNullOrEmpty(e.RowName) && !string.IsNullOrEmpty(e.TableRel));
 
     /// <summary>
     /// Per-window diff of a modded card against vanilla: every field that differs becomes
@@ -184,6 +256,9 @@ public static class AttackHitCard
 
             if (v.FrameLo != m.FrameLo) e.FrameLo = m.FrameLo;
             if (v.FrameHi != m.FrameHi) e.FrameHi = m.FrameHi;
+            if (!string.IsNullOrEmpty(m.AttackHeight)
+                && !string.Equals(v.AttackHeight, m.AttackHeight, StringComparison.OrdinalIgnoreCase))
+                e.AttackHeight = m.AttackHeight;
 
             // Row fields need the mod's row resolved; a vanilla lookup failure leaves its
             // fields null so every present mod value imports (mod-added table/row case).
@@ -211,6 +286,8 @@ public static class AttackHitCard
                     e.AttackPower = m.AttackPower;
                 if (m.PropertyLevel.HasValue && v.PropertyLevel != m.PropertyLevel)
                     e.PropertyLevel = m.PropertyLevel;
+                if (v.AvoidMatrix != m.AvoidMatrix)
+                    e.AvoidMatrix = m.AvoidMatrix;
             }
 
             if (!e.IsEmpty())
@@ -278,22 +355,56 @@ public static class AttackHitCard
             }
 
             var asset = new UAsset(outUasset, EngineVersion.VER_UE4_26, null, CustomSerializationFlags.None);
-            var windows = FindHitWindows(asset);
-            if (windows == null || windows.Count == 0)
+            var arr = FindHitWindowArray(asset);
+            if (arr?.Value == null)
             {
                 error = "card has no m_HitBoxes windows";
                 return false;
             }
+            var windows = arr.Value.OfType<StructPropertyData>().ToList();
+            if (windows.Count == 0)
+            {
+                error = "card has no m_HitBoxes windows";
+                return false;
+            }
+            int baseCount = windows.Count;
 
-            int applied = 0;
+            // Appends always clone a base-card window and are applied after the in-place
+            // edits, so a template that was retimed this session is copied in its final
+            // state when the appended hit leaves its own frames empty.
+            var appends = edits.Where(e => e != null && e.Append && HasCardFields(e))
+                .OrderBy(e => e.Index).ToList();
             foreach (var edit in edits)
             {
                 if (!HasCardFields(edit)) continue;
-                if (edit.Index < 0 || edit.Index >= windows.Count)
+                if (edit.Append)
                 {
-                    error = $"window index {edit.Index} out of range ({windows.Count} windows)";
+                    if (edit.TemplateIndex < 0 || edit.TemplateIndex >= baseCount)
+                    {
+                        error = $"append template index {edit.TemplateIndex} out of range ({baseCount} windows)";
+                        return false;
+                    }
+                    if (string.IsNullOrEmpty(edit.RowName))
+                    {
+                        error = "append edit has no row name";
+                        return false;
+                    }
+                    continue;
+                }
+                if (edit.Index < 0 || edit.Index >= baseCount)
+                {
+                    error = $"window index {edit.Index} out of range ({baseCount} windows)";
                     return false;
                 }
+            }
+
+            var expected = new Dictionary<int, (float Lo, float Hi, string? Height)>();
+            int applied = 0;
+
+            // 1) In-place frame / height edits on existing windows.
+            foreach (var edit in edits)
+            {
+                if (!HasCardFields(edit) || edit.Append) continue;
                 var w = windows[edit.Index];
                 var bounds = DelayWindowCard.GetWindowBounds(w);
                 if (bounds == null)
@@ -308,18 +419,64 @@ public static class AttackHitCard
                     error = $"window {edit.Index}: frame hi {hi} < lo {lo}";
                     return false;
                 }
-                if (!DelayWindowCard.TrySetWindowBounds(w, lo, hi))
+                if ((edit.FrameLo.HasValue || edit.FrameHi.HasValue)
+                    && !DelayWindowCard.TrySetWindowBounds(w, lo, hi))
                 {
                     error = $"window {edit.Index}: failed to set frame bounds";
                     return false;
                 }
+                if (!string.IsNullOrEmpty(edit.AttackHeight)
+                    && !TrySetWindowHeight(asset, w, edit.AttackHeight!, out error))
+                {
+                    error = $"window {edit.Index}: {error}";
+                    return false;
+                }
+                expected[edit.Index] = (lo, hi, string.IsNullOrEmpty(edit.AttackHeight) ? null : edit.AttackHeight);
                 applied++;
             }
+
+            // 2) Appended windows: deep-clone the template, retarget the row name, retime,
+            //    set height, then append to the m_HitBoxes array.
+            foreach (var edit in appends)
+            {
+                var template = windows[edit.TemplateIndex];
+                var clone = (StructPropertyData)template.Clone();
+                if (!TrySetWindowRowName(asset, clone, edit.RowName!, out error))
+                {
+                    error = $"append: {error}";
+                    return false;
+                }
+                var bounds = DelayWindowCard.GetWindowBounds(clone);
+                float lo = edit.FrameLo.HasValue ? edit.FrameLo.Value : bounds?.Lo ?? 0f;
+                float hi = edit.FrameHi.HasValue ? edit.FrameHi.Value : bounds?.Hi ?? lo;
+                if (hi < lo)
+                {
+                    error = $"append {edit.RowName}: frame hi {hi} < lo {lo}";
+                    return false;
+                }
+                if (!DelayWindowCard.TrySetWindowBounds(clone, lo, hi))
+                {
+                    error = $"append {edit.RowName}: failed to set frame bounds";
+                    return false;
+                }
+                if (!string.IsNullOrEmpty(edit.AttackHeight)
+                    && !TrySetWindowHeight(asset, clone, edit.AttackHeight!, out error))
+                {
+                    error = $"append {edit.RowName}: {error}";
+                    return false;
+                }
+                windows.Add(clone);
+                expected[windows.Count - 1] = (lo, hi,
+                    string.IsNullOrEmpty(edit.AttackHeight) ? null : edit.AttackHeight);
+                applied++;
+            }
+
             if (applied == 0)
             {
-                error = "no frame edits to apply";
+                error = "no card edits to apply";
                 return false;
             }
+            arr.Value = windows.ToArray();
 
             asset.Write(outUasset);
             Invalidate(outUasset);
@@ -327,29 +484,48 @@ public static class AttackHitCard
             // Reopen-verify every applied edit.
             var post = new UAsset(outUasset, EngineVersion.VER_UE4_26, null, CustomSerializationFlags.None);
             var postWindows = FindHitWindows(post);
-            if (postWindows == null)
+            if (postWindows == null || postWindows.Count != baseCount + appends.Count)
             {
-                error = "verification failed: staged card unreadable after write";
+                error = "verification failed: staged card window count changed after write";
                 return false;
             }
-            foreach (var edit in edits)
+            foreach (var kvp in expected)
             {
-                if (!HasCardFields(edit)) continue;
-                var b = DelayWindowCard.GetWindowBounds(postWindows[edit.Index]);
+                var b = DelayWindowCard.GetWindowBounds(postWindows[kvp.Key]);
                 if (b == null)
                 {
-                    error = $"verification failed: window {edit.Index} bounds missing";
+                    error = $"verification failed: window {kvp.Key} bounds missing";
                     return false;
                 }
-                if (edit.FrameLo.HasValue && (int)b.Value.Lo != edit.FrameLo.Value)
+                if ((int)b.Value.Lo != (int)kvp.Value.Lo || (int)b.Value.Hi != (int)kvp.Value.Hi)
                 {
-                    error = $"verification failed: window {edit.Index} lo re-read as {b.Value.Lo}";
+                    error = $"verification failed: window {kvp.Key} re-read as {b.Value.Lo}-{b.Value.Hi}";
                     return false;
                 }
-                if (edit.FrameHi.HasValue && (int)b.Value.Hi != edit.FrameHi.Value)
+                if (kvp.Value.Height != null
+                    && (!string.Equals(GetEnumSuffix(postWindows[kvp.Key].Value, "m_eHitTarget"),
+                            kvp.Value.Height, StringComparison.OrdinalIgnoreCase)
+                        || !string.Equals(GetEnumSuffix(postWindows[kvp.Key].Value, "m_eAltHitTarget"),
+                            kvp.Value.Height, StringComparison.OrdinalIgnoreCase)))
                 {
-                    error = $"verification failed: window {edit.Index} hi re-read as {b.Value.Hi}";
+                    error = $"verification failed: window {kvp.Key} height did not stick";
                     return false;
+                }
+            }
+            if (appends.Count > 0)
+            {
+                var appendedIdx = new List<int>();
+                for (int i = baseCount; i < postWindows.Count; i++) appendedIdx.Add(i);
+                for (int i = 0; i < appends.Count; i++)
+                {
+                    var edit = appends[i];
+                    var w = postWindows[appendedIdx[i]];
+                    if (!string.Equals(GetWindowRowName(w), edit.RowName, StringComparison.Ordinal))
+                    {
+                        error = $"verification failed: appended window {appendedIdx[i]} row is "
+                            + $"'{GetWindowRowName(w)}', expected '{edit.RowName}'";
+                        return false;
+                    }
                 }
             }
             return true;
@@ -480,6 +656,31 @@ public static class AttackHitCard
             }
 
             var asset = new UAsset(outDtUasset, EngineVersion.VER_UE4_26, null, CustomSerializationFlags.None);
+            var dte = asset.Exports.OfType<DataTableExport>().FirstOrDefault();
+            if (dte == null)
+            {
+                error = "table has no DataTableExport";
+                return false;
+            }
+
+            // Appended rows first: clone the root template row, rename, append to the
+            // table. Idempotent when the row already exists (re-export / retry).
+            foreach (var kvp in rowEdits.Where(kv => kv.Value.Append)
+                         .OrderBy(kv => kv.Value.Index))
+            {
+                if (FindRow(asset, kvp.Key) != null) continue;
+                string templateRow = kvp.Value.TemplateRow ?? "";
+                var template = FindRow(asset, templateRow);
+                if (template?.Value == null)
+                {
+                    error = $"append row '{kvp.Key}': template row '{templateRow}' not found";
+                    return false;
+                }
+                var clone = (StructPropertyData)template.Clone();
+                clone.Name = FName.FromString(asset, kvp.Key);
+                dte[FName.FromString(asset, kvp.Key)] = clone;
+            }
+
             foreach (var kvp in rowEdits)
             {
                 if (!PatchRowFields(asset, kvp.Key, kvp.Value, out error))
@@ -575,6 +776,9 @@ public static class AttackHitCard
             return false;
         if (edit.DizzyOnAvoid.HasValue && !TrySetBool(row.Value, "m_bDizzyOnAvoid", edit.DizzyOnAvoid.Value, out error))
             return false;
+        if (edit.AvoidMatrix.HasValue
+            && !TrySetInt(row.Value, "m_iAvoidableDefenseMatrix", edit.AvoidMatrix.Value, out error))
+            return false;
         if (!string.IsNullOrEmpty(edit.AttackPower)
             && !TrySetEnum(asset, row.Value, "m_eAttackPower", $"EAttackPowers::{edit.AttackPower}", out error))
             return false;
@@ -664,6 +868,8 @@ public static class AttackHitCard
         { error = "verification failed: dizzy-on-parry re-read"; return false; }
         if (edit.DizzyOnAvoid.HasValue && GetBool(row.Value, "m_bDizzyOnAvoid") != edit.DizzyOnAvoid.Value)
         { error = "verification failed: dizzy-on-avoid re-read"; return false; }
+        if (edit.AvoidMatrix.HasValue && GetInt(row.Value, "m_iAvoidableDefenseMatrix") != edit.AvoidMatrix.Value)
+        { error = $"verification failed: avoid matrix re-read as {GetInt(row.Value, "m_iAvoidableDefenseMatrix")}"; return false; }
         if (!string.IsNullOrEmpty(edit.AttackPower)
             && !string.Equals(GetEnum(row.Value, "m_eAttackPower"), $"EAttackPowers::{edit.AttackPower}", StringComparison.Ordinal))
         { error = $"verification failed: attack power re-read as {GetEnum(row.Value, "m_eAttackPower")}"; return false; }
@@ -732,6 +938,8 @@ public static class AttackHitCard
             string moveStr = move?.Value?.ToString() ?? "";
             int colon = moveStr.LastIndexOf("::", StringComparison.Ordinal);
             info.Movement = colon >= 0 ? moveStr.Substring(colon + 2) : moveStr;
+            info.AttackHeight = GetEnumSuffix(w.Value, "m_eHitTarget");
+            info.AltAttackHeight = GetEnumSuffix(w.Value, "m_eAltHitTarget");
 
             var hitRow = w.Value?.OfType<StructPropertyData>()
                 .FirstOrDefault(s => s.Name?.Value?.ToString() == "m_HitRow");
@@ -771,6 +979,20 @@ public static class AttackHitCard
             }
             if (entry.HasValue)
             {
+                if (!result.TableRowNames.ContainsKey(info.TableRel))
+                {
+                    var names = new List<string>();
+                    var tableExport = entry.Value.asset.Exports.OfType<DataTableExport>().FirstOrDefault();
+                    if (tableExport?.Table?.Data != null)
+                    {
+                        foreach (var p in tableExport.Table.Data)
+                        {
+                            string n = p.Name?.Value?.ToString() ?? "";
+                            if (n.Length > 0) names.Add(n);
+                        }
+                    }
+                    result.TableRowNames[info.TableRel] = names;
+                }
                 var row = FindRow(entry.Value.asset, info.RowName);
                 if (row?.Value != null)
                 {
@@ -831,6 +1053,7 @@ public static class AttackHitCard
             info.AttackPower = power.StartsWith(prefix, StringComparison.Ordinal) ? power[prefix.Length..] : power;
         }
         info.PropertyLevel = GetAttackPropertyLevel(rowProps);
+        info.AvoidMatrix = GetInt(rowProps, "m_iAvoidableDefenseMatrix");
     }
 
     /// <summary>
@@ -889,15 +1112,58 @@ public static class AttackHitCard
     }
 
     private static List<StructPropertyData>? FindHitWindows(UAsset asset)
+        => FindHitWindowArray(asset)?.Value?.OfType<StructPropertyData>().ToList();
+
+    private static ArrayPropertyData? FindHitWindowArray(UAsset asset)
     {
         var export = asset.Exports.OfType<NormalExport>().FirstOrDefault(e => e.Data != null);
         if (export?.Data == null) return null;
         var mAttack = export.Data.FirstOrDefault(p => p.Name?.Value?.ToString() == "m_Attack");
         if (mAttack is not StructPropertyData attack || attack.Value == null) return null;
-        var arr = attack.Value.OfType<ArrayPropertyData>()
+        return attack.Value.OfType<ArrayPropertyData>()
             .FirstOrDefault(a => a.Name?.Value?.ToString() == "m_HitBoxes");
-        if (arr?.Value == null) return null;
-        return arr.Value.OfType<StructPropertyData>().ToList();
+    }
+
+    /// <summary>Sets m_eHitTarget + m_eAltHitTarget to the same EAttackTarget suffix.</summary>
+    private static bool TrySetWindowHeight(UAsset asset, StructPropertyData window, string suffix, out string error)
+    {
+        error = "";
+        string full = $"EAttackTarget::{suffix}";
+        if (!TrySetEnum(asset, window.Value, "m_eHitTarget", full, out error))
+        {
+            error = $"field 'm_eHitTarget' not present";
+            return false;
+        }
+        if (!TrySetEnum(asset, window.Value, "m_eAltHitTarget", full, out error))
+        {
+            error = $"field 'm_eAltHitTarget' not present";
+            return false;
+        }
+        return true;
+    }
+
+    private static bool TrySetWindowRowName(UAsset asset, StructPropertyData window, string rowName, out string error)
+    {
+        error = "";
+        var hitRow = window.Value?.OfType<StructPropertyData>()
+            .FirstOrDefault(s => s.Name?.Value?.ToString() == "m_HitRow");
+        var rn = hitRow?.Value?.OfType<NamePropertyData>()
+            .FirstOrDefault(p => p.Name?.Value?.ToString() == "RowName");
+        if (rn == null)
+        {
+            error = "window has no m_HitRow.RowName";
+            return false;
+        }
+        rn.Value = FName.FromString(asset, rowName);
+        return true;
+    }
+
+    private static string GetWindowRowName(StructPropertyData window)
+    {
+        var hitRow = window.Value?.OfType<StructPropertyData>()
+            .FirstOrDefault(s => s.Name?.Value?.ToString() == "m_HitRow");
+        return hitRow?.Value?.OfType<NamePropertyData>()
+            .FirstOrDefault(p => p.Name?.Value?.ToString() == "RowName")?.Value?.ToString() ?? "";
     }
 
     private static StructPropertyData? FindRow(UAsset asset, string rowName)
@@ -988,6 +1254,13 @@ public static class AttackHitCard
 
     private static string? GetEnum(List<PropertyData>? props, string name)
         => props?.OfType<EnumPropertyData>().FirstOrDefault(f => f.Name?.Value?.ToString() == name)?.Value?.ToString();
+
+    private static string GetEnumSuffix(List<PropertyData>? props, string name)
+    {
+        string s = GetEnum(props, name) ?? "";
+        int colon = s.LastIndexOf("::", StringComparison.Ordinal);
+        return colon >= 0 ? s.Substring(colon + 2) : s;
+    }
 
     private static int? GetAttackPropertyLevel(List<PropertyData>? rowProps)
     {

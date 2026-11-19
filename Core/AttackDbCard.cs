@@ -400,7 +400,7 @@ public static class AttackDbCard
     }
 
     /// <summary>Header magic check + name table of a .uasset, null when malformed.</summary>
-    private static List<string>? ReadNameTable(string uassetPath)
+    internal static List<string>? ReadNameTable(string uassetPath)
     {
         var head = File.ReadAllBytes(uassetPath);
         if (head.Length < 73 || head[0] != 0xC1 || head[1] != 0x83 || head[2] != 0x2A || head[3] != 0x9E)

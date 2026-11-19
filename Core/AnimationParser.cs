@@ -164,6 +164,13 @@ public class ComboNode
     public string DefaultAnimPath { get; set; } = "";
     public string DefaultDBPath { get; set; } = "";
     public string SourceDBPath { get; set; } = "";
+    // Import provenance: the modded tree's own slot key (its m_AttackInfos.m_Attacks FName)
+    // and the DB path it pointed at when the mod was imported. An imported tree keys its
+    // m_Attacks map by the mod's DB paths instead of the vanilla slot DB names, so export
+    // must match these too - otherwise every redirect misses the map and the tree is
+    // never rewritten (the "move does nothing in game" bug).
+    public string ImportedSlotKey { get; set; } = "";
+    public string ImportedDbPath { get; set; } = "";
     public string DisplayName { get; set; } = "";
     public string ImportedDisplayName { get; set; } = "";
     public bool IsRoot { get; set; }
@@ -228,6 +235,25 @@ public class ComboNode
 public class AttackHitEdit
 {
     public int Index { get; set; }
+    /// <summary>
+    /// True when this edit appends a brand-new window after the card's vanilla windows
+    /// (the dialog's "+ Add hit"). Appended edits carry their own row name/table and the
+    /// window/row they were cloned from, because index lookups on the base card cannot
+    /// resolve slots that only exist after export.
+    /// </summary>
+    public bool Append { get; set; }
+    /// <summary>New HitBoxData row name for an appended hit (library-unique, e.g. HB02_2).</summary>
+    public string? RowName { get; set; }
+    /// <summary>Content-relative HitBoxData table the appended row is added to.</summary>
+    public string? TableRel { get; set; }
+    /// <summary>Base-card window index cloned for an appended hit.</summary>
+    public int TemplateIndex { get; set; } = -1;
+    /// <summary>Root HitBoxData row cloned for an appended hit.</summary>
+    public string? TemplateRow { get; set; }
+    /// <summary>EAttackTarget suffix written to m_eHitTarget + m_eAltHitTarget (High/Mid_1/Mid_2/Low).</summary>
+    public string? AttackHeight { get; set; }
+    /// <summary>m_iAvoidableDefenseMatrix bitfield (0 none, 1 Low, 2 High, 12 Mid, 13 Low+Mid, 14 High+Mid, 15 all).</summary>
+    public int? AvoidMatrix { get; set; }
     public int? FrameLo { get; set; }
     public int? FrameHi { get; set; }
     public float? Damage { get; set; }
@@ -257,7 +283,9 @@ public class AttackHitEdit
     public int? PropertyLevel { get; set; }
 
     public bool IsEmpty()
-        => !FrameLo.HasValue && !FrameHi.HasValue
+        => !Append
+        && string.IsNullOrEmpty(AttackHeight) && !AvoidMatrix.HasValue
+        && !FrameLo.HasValue && !FrameHi.HasValue
         && !Damage.HasValue && !StructureDamage.HasValue && !KnockbackDistance.HasValue
         && !DamageOnHit.HasValue && !DamageOnGuard.HasValue && !DamageOnDeflect.HasValue
         && !StructureDamageOnHit.HasValue && !StructureDamageOnGuard.HasValue && !StructureDamageOnDeflect.HasValue
@@ -984,6 +1012,10 @@ public class ModdedComboNodeInfo
     public string Name { get; set; } = "";
     public int RedirectTargetTreeIndex { get; set; } = -1;
     public List<string> AttackDbPaths { get; set; } = [];
+    // Raw m_AttackInfos.m_Attacks FNames, index-aligned with AttackDbPaths (the map override
+    // only rewrites the value, so the FName is the slot key the imported tree was written
+    // with). Import copies these onto ComboNode.ImportedSlotKey for export provenance.
+    public List<string> AttackSlotKeys { get; set; } = [];
     public List<ModdedTransitionInfo> Transitions { get; set; } = [];
     // Per-row snapshot (row index = position in the asset m_Transitions array) so the
     // import diff can align against vanilla TreeRows with a signature guard. Transitions
@@ -3176,6 +3208,7 @@ public class AnimationParser : IDisposable
                         var path = npd.Value?.Value?.ToString() ?? "";
                         if (string.IsNullOrEmpty(path) || path == "None" || !path.Contains('/'))
                             continue;
+                        var rawSlotKey = path;
                         var norm = NormalizeAnimPath(path);
                         if (mapOverrides.TryGetValue(norm, out var resolved) &&
                             !string.Equals(resolved, norm, StringComparison.OrdinalIgnoreCase))
@@ -3183,7 +3216,10 @@ public class AnimationParser : IDisposable
                             norm = resolved;
                         }
                         if (seen.Add(norm))
+                        {
                             info.AttackDbPaths.Add(norm);
+                            info.AttackSlotKeys.Add(rawSlotKey);
+                        }
                     }
                 }
 
@@ -3706,6 +3742,16 @@ public class AnimationParser : IDisposable
                 .Select(NormalizeAnimPath)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
+            // DB path -> the raw FName the modded tree keys its m_Attacks map with.
+            // AttackSlotKeys is index-aligned with AttackDbPaths, so the chosen DB's
+            // slot key travels with the node into export provenance.
+            var slotKeyByDbPath = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < modded.AttackDbPaths.Count; i++)
+            {
+                var dbKey = NormalizeAnimPath(modded.AttackDbPaths[i]);
+                if (!slotKeyByDbPath.ContainsKey(dbKey) && i < modded.AttackSlotKeys.Count)
+                    slotKeyByDbPath[dbKey] = modded.AttackSlotKeys[i];
+            }
             var directed = new List<(string Path, string Dir, string Base, string BaseNoDir, bool Used)>();
             var shared = new List<(string Path, string Dir, string Base, string BaseNoDir, bool Used)>();
             foreach (var p in paths)
@@ -3827,6 +3873,13 @@ public class AnimationParser : IDisposable
                     var used = directed[pickDir];
                     directed[pickDir] = used with { Used = true };
                 }
+
+                // Provenance for export: how the modded tree itself keys this move.
+                // Must be recorded even when the DB path is unchanged, because the mod's
+                // m_Attacks FName is what the exported tree has to be keyed by.
+                vNode.ImportedDbPath = moddedDb;
+                if (slotKeyByDbPath.TryGetValue(NormalizeAnimPath(moddedDb), out var importedSlotKey))
+                    vNode.ImportedSlotKey = importedSlotKey;
 
                 if (sameAsVanilla)
                     continue;

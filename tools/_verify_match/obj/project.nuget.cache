@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "cw1uqhp+o90=",
+  "dgSpecHash": "QjWS5lkzob4=",
   "success": true,
   "projectFilePath": "C:\\Users\\Charles\\Downloads\\Sifu Modding\\Movesets Prototypes\\Moveset Maker\\SifuMovesetEditor\\tools\\_verify_match\\_verify_match.csproj",
   "expectedPackageFiles": [
@@ -57,6 +57,78 @@
       "warningLevel": 1,
       "filePath": "C:\\Users\\Charles\\Downloads\\Sifu Modding\\Movesets Prototypes\\Moveset Maker\\SifuMovesetEditor\\tools\\_verify_match\\_verify_match.csproj",
       "libraryId": "Microsoft.Bcl.Memory",
+      "targetGraphs": [
+        "net10.0-windows"
+      ]
+    },
+    {
+      "code": "NU1902",
+      "level": "Warning",
+      "message": "Package 'SixLabors.ImageSharp' 3.1.12 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-gwg2-r3hj-4w44",
+      "projectPath": "C:\\Users\\Charles\\Downloads\\Sifu Modding\\Movesets Prototypes\\Moveset Maker\\SifuMovesetEditor\\tools\\_verify_match\\_verify_match.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Users\\Charles\\Downloads\\Sifu Modding\\Movesets Prototypes\\Moveset Maker\\SifuMovesetEditor\\tools\\_verify_match\\_verify_match.csproj",
+      "libraryId": "SixLabors.ImageSharp",
+      "targetGraphs": [
+        "net10.0-windows"
+      ]
+    },
+    {
+      "code": "NU1903",
+      "level": "Warning",
+      "message": "Package 'SixLabors.ImageSharp' 3.1.12 has a known high severity vulnerability, https://github.com/advisories/GHSA-j3p4-wp97-rph4",
+      "projectPath": "C:\\Users\\Charles\\Downloads\\Sifu Modding\\Movesets Prototypes\\Moveset Maker\\SifuMovesetEditor\\tools\\_verify_match\\_verify_match.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Users\\Charles\\Downloads\\Sifu Modding\\Movesets Prototypes\\Moveset Maker\\SifuMovesetEditor\\tools\\_verify_match\\_verify_match.csproj",
+      "libraryId": "SixLabors.ImageSharp",
+      "targetGraphs": [
+        "net10.0-windows"
+      ]
+    },
+    {
+      "code": "NU1903",
+      "level": "Warning",
+      "message": "Package 'SixLabors.ImageSharp' 3.1.12 has a known high severity vulnerability, https://github.com/advisories/GHSA-j9gm-c75j-xc9q",
+      "projectPath": "C:\\Users\\Charles\\Downloads\\Sifu Modding\\Movesets Prototypes\\Moveset Maker\\SifuMovesetEditor\\tools\\_verify_match\\_verify_match.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Users\\Charles\\Downloads\\Sifu Modding\\Movesets Prototypes\\Moveset Maker\\SifuMovesetEditor\\tools\\_verify_match\\_verify_match.csproj",
+      "libraryId": "SixLabors.ImageSharp",
+      "targetGraphs": [
+        "net10.0-windows"
+      ]
+    },
+    {
+      "code": "NU1903",
+      "level": "Warning",
+      "message": "Package 'SixLabors.ImageSharp' 3.1.12 has a known high severity vulnerability, https://github.com/advisories/GHSA-jjfr-hcj7-qf5w",
+      "projectPath": "C:\\Users\\Charles\\Downloads\\Sifu Modding\\Movesets Prototypes\\Moveset Maker\\SifuMovesetEditor\\tools\\_verify_match\\_verify_match.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Users\\Charles\\Downloads\\Sifu Modding\\Movesets Prototypes\\Moveset Maker\\SifuMovesetEditor\\tools\\_verify_match\\_verify_match.csproj",
+      "libraryId": "SixLabors.ImageSharp",
+      "targetGraphs": [
+        "net10.0-windows"
+      ]
+    },
+    {
+      "code": "NU1903",
+      "level": "Warning",
+      "message": "Package 'SixLabors.ImageSharp' 3.1.12 has a known high severity vulnerability, https://github.com/advisories/GHSA-v76p-62qx-wwq2",
+      "projectPath": "C:\\Users\\Charles\\Downloads\\Sifu Modding\\Movesets Prototypes\\Moveset Maker\\SifuMovesetEditor\\tools\\_verify_match\\_verify_match.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Users\\Charles\\Downloads\\Sifu Modding\\Movesets Prototypes\\Moveset Maker\\SifuMovesetEditor\\tools\\_verify_match\\_verify_match.csproj",
+      "libraryId": "SixLabors.ImageSharp",
+      "targetGraphs": [
+        "net10.0-windows"
+      ]
+    },
+    {
+      "code": "NU1902",
+      "level": "Warning",
+      "message": "Package 'SixLabors.ImageSharp' 3.1.12 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-wmxv-xphr-5c9g",
+      "projectPath": "C:\\Users\\Charles\\Downloads\\Sifu Modding\\Movesets Prototypes\\Moveset Maker\\SifuMovesetEditor\\tools\\_verify_match\\_verify_match.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Users\\Charles\\Downloads\\Sifu Modding\\Movesets Prototypes\\Moveset Maker\\SifuMovesetEditor\\tools\\_verify_match\\_verify_match.csproj",
+      "libraryId": "SixLabors.ImageSharp",
       "targetGraphs": [
         "net10.0-windows"
       ]

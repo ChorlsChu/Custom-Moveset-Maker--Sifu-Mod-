@@ -16,6 +16,12 @@ public sealed class AttackDbTemplateOption
     public string Category { get; set; } = "";
     public int Score { get; set; }
 
+    /// <summary>
+    /// False when the card package provably has no m_HitBoxes property (no hit windows,
+    /// so no hit rows and no aim target). Null when the card file could not be probed.
+    /// </summary>
+    public bool? HasHitWindows { get; set; }
+
     /// <summary>Why this card scored the way it did ("same character and weapon", ...).</summary>
     public string MatchReason { get; set; } = "";
 
@@ -51,16 +57,26 @@ public sealed class AttackDbTemplateOption
 /// mapping wins, then same character/weapon, then the same leaf folder (e.g. both
 /// under _old), then same category and shared name tokens. The list stays complete:
 /// ranking only decides the default pick, never hides cards from the user.
+/// Cards with no hit windows are demoted: a template without m_HitBoxes cannot aim
+/// (thrown weapons fly at the default facing) and cannot land hits, which is how a
+/// dagger throw ends up cloned from an equally hitless enemy throw card.
 /// </summary>
 public static class AttackDbTemplateRanker
 {
+    private const int HitlessPenalty = 200_000;
+    private const int ExactMappingBonus = 100_000;
+
     private static readonly HashSet<string> CommonNameTokens = new(StringComparer.OrdinalIgnoreCase)
     {
         "mainchar", "attack", "attacks", "barehands", "barehand", "weapon", "weapons"
     };
 
+    /// <param name="vanillaContentRoot">
+    /// Content root used to probe template cards that are not in CustomAssets; when null
+    /// the hit-window probe is skipped (options keep HasHitWindows = null).
+    /// </param>
     public static List<AttackDbTemplateOption> Rank(MoveInfo animation, string? mappedDb,
-        IEnumerable<MoveInfo>? libraryCards)
+        IEnumerable<MoveInfo>? libraryCards, string? vanillaContentRoot = null)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var options = new List<AttackDbTemplateOption>();
@@ -77,7 +93,8 @@ public static class AttackDbTemplateRanker
                 DisplayNameClean = card.DisplayNameClean,
                 Character = card.Character,
                 WeaponType = card.WeaponType,
-                Category = card.Category
+                Category = card.Category,
+                HasHitWindows = CardHitProbe.HasHitWindows(card.FullPath, vanillaContentRoot)
             });
         }
 
@@ -117,17 +134,25 @@ public static class AttackDbTemplateRanker
     private static int Score(AttackDbTemplateOption option, MoveInfo animation, string? mappedDb)
     {
         int score = 0;
-        if (IsMapped(option, mappedDb)) score += 100_000;
+        if (IsMapped(option, mappedDb)) score += ExactMappingBonus;
         if (SameCharacter(option, animation)) score += 1_000;
         if (SameWeapon(option, animation)) score += 200;
         if (SameCategory(option, animation)) score += 40;
         if (SameLeafFolder(option, animation)) score += 80;
         score += CommonNameTokenCount(option.DisplayName, animation.DisplayName) * 25;
+        // Outweighs the exact-mapping bonus: the mapped card is exactly the trap when it has
+        // no hit windows (enemy throw cards), so a working same-character card must win.
+        if (option.HasHitWindows == false) score -= HitlessPenalty;
         return score;
     }
 
     private static string Reason(AttackDbTemplateOption option, MoveInfo animation, string? mappedDb)
     {
+        if (option.HasHitWindows == false)
+            return IsMapped(option, mappedDb)
+                ? "the existing card for this animation, but it has no hit windows (no aim, no hits)"
+                : "no hit windows (this card cannot aim or land hits)";
+
         if (IsMapped(option, mappedDb)) return "the existing card for this animation";
 
         bool sameCharacter = SameCharacter(option, animation);

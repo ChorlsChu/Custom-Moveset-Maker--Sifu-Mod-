@@ -3,6 +3,10 @@ using System;
 using System.IO;
 using System.Linq;
 using SifuMovesetEditor;
+using UAssetAPI;
+using UAssetAPI.ExportTypes;
+using UAssetAPI.PropertyTypes.Objects;
+using UAssetAPI.PropertyTypes.Structs;
 
 var gameRoot = @"C:\Users\Charles\Downloads\Sifu Modding\Unreal Pak Extracter and Creator\extractedPaks\pakchunk0-WindowsNoEditor\Sifu";
 var contentDir = Path.Combine(gameRoot, "Content");
@@ -33,6 +37,7 @@ var parser = new AnimationParser();
 parser.Initialize(gameRoot, contentDir);
 
 var results = new System.Collections.Generic.List<(string Label, int Moves, int Unmatched)>();
+var provenanceFailures = new System.Collections.Generic.List<string>();
 
 foreach (var c in cases)
 {
@@ -42,6 +47,15 @@ foreach (var c in cases)
 
     var vanilla = parser.LoadComboTreeFromPath(c.VanillaGamePath, c.Weapon)!;
     var modded = parser.ReadModdedComboNodes(c.ModdedUasset);
+
+    // Provenance smoke check: every resolved DB path must carry the raw m_Attacks FName
+    // it was read from (index-aligned), otherwise export cannot match a mod-keyed tree.
+    int slotKeyMismatch = modded.Count(m => m.AttackSlotKeys.Count != m.AttackDbPaths.Count);
+    Console.WriteLine($"PROVENANCE READ: nodes={modded.Count} keys={modded.Sum(m => m.AttackSlotKeys.Count)} mismatchedNodes={slotKeyMismatch}");
+    foreach (var m in modded.Where(m => m.AttackSlotKeys.Count > 0).Take(3))
+    {
+        Console.WriteLine($"  m[{m.TreeIndex}] slot='{m.AttackSlotKeys[0]}' -> db='{m.AttackDbPaths[0]}'");
+    }
 
     var vanillaMoves = vanilla.Nodes
         .Where(n => n.TreeIndex >= 0 && !n.IsRedirect && !n.IsRoot)
@@ -114,9 +128,89 @@ foreach (var c in cases)
         }
     }
 
-    var (moves, retargets, unmatched) = parser.ApplyModdedComboToVanilla(vanilla, modded, c.Weapon);
+    var apply = parser.ApplyModdedComboToVanilla(vanilla, modded, c.Weapon);
+    int moves = apply.MoveChanges, retargets = apply.RetargetChanges, unmatched = apply.Unmatched;
     Console.WriteLine($"Apply: moves={moves} retargets={retargets} unmatched={unmatched} imported={vanilla.Nodes.Count(n => n.IsImportedFromMod)}");
     results.Add((c.Label, moves, unmatched));
+
+    // Export-provenance smoke check: imported vanilla nodes must remember the mod tree's
+    // own slot key, and that key must exist in the mod tree (that is what export matches).
+    var imported = vanilla.Nodes.Where(n => n.IsImportedFromMod).ToList();
+    var moddedKeys = new HashSet<string>(
+        modded.SelectMany(m => m.AttackSlotKeys).Select(NormalizeSlotKey), StringComparer.OrdinalIgnoreCase);
+    int withProv = imported.Count(n => !string.IsNullOrEmpty(n.ImportedSlotKey) && !string.IsNullOrEmpty(n.ImportedDbPath));
+    int provInTree = imported.Count(n => moddedKeys.Contains(NormalizeSlotKey(n.ImportedSlotKey)));
+    int divergent = imported.Count(n => !string.Equals(
+        Path.GetFileNameWithoutExtension(n.ImportedSlotKey),
+        Path.GetFileNameWithoutExtension(n.DefaultDBPath), StringComparison.OrdinalIgnoreCase));
+    Console.WriteLine($"PROVENANCE EXPORT: imported={imported.Count} withProvenance={withProv} " +
+        $"keyFoundInModTree={provInTree} vanillaDivergentKeys={divergent}");
+    if (imported.Count > 0 && (withProv < imported.Count || provInTree < imported.Count))
+        provenanceFailures.Add($"{c.Label}: imported={imported.Count} withProvenance={withProv} keyFound={provInTree}");
+
+    // The user-reported bug: export used to match only the vanilla slot DB name, which
+    // misses every entry in a mod-keyed tree (0 swaps, tree never written). Verify the
+    // legacy key set fails and the provenance key set matches all imported nodes.
+    int legacyMatched = imported.Count(n => moddedKeys.Contains(NormalizeSlotKey(n.DefaultDBPath)));
+    int provenanceMatched = imported.Count(n =>
+        moddedKeys.Contains(NormalizeSlotKey(n.DefaultDBPath))
+        || (!string.IsNullOrEmpty(n.ImportedSlotKey) && moddedKeys.Contains(NormalizeSlotKey(n.ImportedSlotKey)))
+        || (!string.IsNullOrEmpty(n.ImportedDbPath) && moddedKeys.Contains(NormalizeSlotKey(n.ImportedDbPath))));
+    Console.WriteLine($"EXPORT MATCH: imported={imported.Count} legacyKeyMatches={legacyMatched} provenanceKeyMatches={provenanceMatched}");
+    if (imported.Count > 0 && provenanceMatched < imported.Count)
+        provenanceFailures.Add($"{c.Label}: provenance matching still misses {imported.Count - provenanceMatched} node(s)");
+
+    // Full export simulation: find the real m_Attacks entry for each imported node with the
+    // provenance key set, then run the export's import-name sanity check against the entry's
+    // actual import. This is the check that silently broke the reported "replaced move does
+    // nothing" export: the tree entry points at the mod's DB, not the vanilla slot DB.
+    var entries = ReadAttackEntries(c.ModdedUasset);
+    var ambiguous = entries
+        .GroupBy(e => Path.GetFileNameWithoutExtension(e.Key), StringComparer.OrdinalIgnoreCase)
+        .Where(g => g.Count() > 1)
+        .Select(g => g.Key)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    int entryFound = 0, importCheckOk = 0, legacyImportOk = 0;
+    foreach (var n in imported)
+    {
+        var cands = new List<string> { NormalizeSlotKey(n.DefaultDBPath) };
+        if (!string.IsNullOrEmpty(n.ImportedSlotKey)) cands.Add(NormalizeSlotKey(n.ImportedSlotKey));
+        if (!string.IsNullOrEmpty(n.ImportedDbPath)) cands.Add(NormalizeSlotKey(n.ImportedDbPath));
+
+        var entry = entries.FirstOrDefault(en => cands.Any(k => SlotMatch(en.Key, k, ambiguous)));
+        if (entry.Key == null)
+        {
+            Console.WriteLine($"    EXPORT SIM MISS: no m_Attacks entry for '{n.DisplayName}' cands=[{string.Join(" | ", cands)}]");
+            continue;
+        }
+        entryFound++;
+
+        var shorts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in new[] { n.DefaultDBPath, n.ImportedSlotKey, n.ImportedDbPath })
+        {
+            var s = Path.GetFileNameWithoutExtension(p);
+            if (!string.IsNullOrEmpty(s)) shorts.Add(s);
+        }
+        bool ok = shorts.Any(s => entry.PkgPath.Contains(s, StringComparison.OrdinalIgnoreCase)
+                                  || string.Equals(entry.ImportName, s, StringComparison.OrdinalIgnoreCase));
+        // Legacy check (no ImportedDbPath): proves the import-name sanity check alone also
+        // blocked the rewrite on a mod-keyed tree.
+        var shortsLegacy = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in new[] { n.DefaultDBPath, n.ImportedSlotKey })
+        {
+            var s = Path.GetFileNameWithoutExtension(p);
+            if (!string.IsNullOrEmpty(s)) shortsLegacy.Add(s);
+        }
+        if (shortsLegacy.Any(s => entry.PkgPath.Contains(s, StringComparison.OrdinalIgnoreCase)
+                                  || string.Equals(entry.ImportName, s, StringComparison.OrdinalIgnoreCase)))
+            legacyImportOk++;
+        if (ok) importCheckOk++;
+        else
+            Console.WriteLine($"    EXPORT SIM IMPORT-MISMATCH: {n.DisplayName} key='{entry.Key}' import='{entry.ImportName}' pkg='{entry.PkgPath}' shorts=[{string.Join(", ", shorts)}]");
+    }
+    Console.WriteLine($"EXPORT SIM: entries={entries.Count} imported={imported.Count} entryFound={entryFound} importCheckOk={importCheckOk} legacyImportCheckOk={legacyImportOk}");
+    if (imported.Count > 0 && (entryFound < imported.Count || importCheckOk < imported.Count))
+        provenanceFailures.Add($"{c.Label}: export sim entryFound={entryFound}/{imported.Count} importCheckOk={importCheckOk}/{imported.Count}");
 }
 
 Console.WriteLine();
@@ -127,6 +221,11 @@ foreach (var r in results)
     bool pass = r.Moves > 0 && r.Unmatched == 0;
     if (!pass) allPass = false;
     Console.WriteLine($"{(pass ? "PASS" : "FAIL")}  {r.Label}: moves={r.Moves} unmatched={r.Unmatched}");
+}
+foreach (var f in provenanceFailures)
+{
+    allPass = false;
+    Console.WriteLine($"FAIL  PROVENANCE {f}");
 }
 Console.WriteLine(allPass ? "ALL PASS" : "SOME FAILED");
 
@@ -141,6 +240,98 @@ static string Norm(string p)
     var lastDot = p.LastIndexOf('.');
     if (lastDot > lastSlash) p = p[..lastDot];
     return p;
+}
+
+// Mirrors ExportDialog.NormalizeSlotKey: leading slash and a ".Asset" suffix appended
+// when the FName is stored without one.
+static string NormalizeSlotKey(string path)
+{
+    if (string.IsNullOrEmpty(path)) return "";
+    path = path.Replace("\\", "/").TrimStart('/');
+    path = "/" + path;
+    var lastSlash = path.LastIndexOf('/');
+    var lastDot = path.LastIndexOf('.');
+    if (lastDot < lastSlash)
+        path = path + "." + path.Substring(lastSlash + 1);
+    return path;
+}
+
+// Mirrors ExportDialog.SlotKeysMatch (exact, normalized, then unambiguous short name).
+static bool SlotMatch(string keyStr, string normalizedSlotKey, HashSet<string> ambiguous)
+{
+    if (string.IsNullOrEmpty(keyStr) || string.IsNullOrEmpty(normalizedSlotKey)) return false;
+    if (string.Equals(keyStr, normalizedSlotKey, StringComparison.OrdinalIgnoreCase)) return true;
+    if (string.Equals(NormalizeSlotKey(keyStr), normalizedSlotKey, StringComparison.OrdinalIgnoreCase)) return true;
+    var keyFile = Path.GetFileNameWithoutExtension(keyStr);
+    if (!string.Equals(keyFile, Path.GetFileNameWithoutExtension(normalizedSlotKey), StringComparison.OrdinalIgnoreCase))
+        return false;
+    return !ambiguous.Contains(keyFile);
+}
+
+// Every m_Attacks TMap entry in the tree: its FName key and the import it points at.
+static List<(string Key, string ImportName, string PkgPath)> ReadAttackEntries(string uassetPath)
+{
+    var list = new List<(string Key, string ImportName, string PkgPath)>();
+    var asset = new UAssetAPI.UAsset(uassetPath, UAssetAPI.UnrealTypes.EngineVersion.VER_UE4_26, null, UAssetAPI.CustomSerializationFlags.None);
+    var maps = new List<UAssetAPI.PropertyTypes.Objects.MapPropertyData>();
+    foreach (var exp in asset.Exports)
+    {
+        if (exp is not UAssetAPI.ExportTypes.NormalExport ne || ne.Data == null) continue;
+        foreach (var p in ne.Data)
+        {
+            if (p is UAssetAPI.PropertyTypes.Objects.MapPropertyData mp && p.Name?.Value?.ToString() == "m_Attacks")
+                maps.Add(mp);
+            FindMaps(p, maps);
+        }
+    }
+
+    foreach (var map in maps)
+    {
+        if (map.Value == null) continue;
+        foreach (var kvp in map.Value)
+        {
+            string key = kvp.Key is UAssetAPI.PropertyTypes.Objects.NamePropertyData knp
+                ? knp.Value?.Value?.ToString() ?? ""
+                : kvp.Key?.ToString() ?? "";
+            if (string.IsNullOrEmpty(key)) continue;
+
+            if (kvp.Value is not UAssetAPI.PropertyTypes.Objects.ObjectPropertyData op || op.Value == null) continue;
+            int idx = -(op.Value.Index + 1);
+            string importName = "", pkgPath = "";
+            if (idx >= 0 && idx < asset.Imports.Count)
+            {
+                var imp = asset.Imports[idx];
+                importName = imp.ObjectName?.Value?.ToString() ?? "";
+                int pkgIdx = -(imp.OuterIndex.Index + 1);
+                if (pkgIdx >= 0 && pkgIdx < asset.Imports.Count)
+                    pkgPath = asset.Imports[pkgIdx].ObjectName?.Value?.ToString() ?? "";
+            }
+            list.Add((key, importName, pkgPath));
+        }
+    }
+    return list;
+
+    static void FindMaps(PropertyData p, List<UAssetAPI.PropertyTypes.Objects.MapPropertyData> maps)
+    {
+        if (p is UAssetAPI.PropertyTypes.Structs.StructPropertyData sp && sp.Value != null)
+        {
+            foreach (var child in sp.Value)
+            {
+                if (child is UAssetAPI.PropertyTypes.Objects.MapPropertyData mp && child.Name?.Value?.ToString() == "m_Attacks")
+                    maps.Add(mp);
+                FindMaps(child, maps);
+            }
+        }
+        else if (p is UAssetAPI.PropertyTypes.Objects.ArrayPropertyData ap && ap.Value != null)
+        {
+            foreach (var child in ap.Value)
+            {
+                if (child is UAssetAPI.PropertyTypes.Objects.MapPropertyData mp && child.Name?.Value?.ToString() == "m_Attacks")
+                    maps.Add(mp);
+                FindMaps(child, maps);
+            }
+        }
+    }
 }
 
 Console.WriteLine();

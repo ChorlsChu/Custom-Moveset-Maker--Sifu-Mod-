@@ -1,6 +1,6 @@
 # Sifu Custom Moveset Maker
 
-**Current version: v1.3**
+**Current version: v1.4**
 
 A modding tool for [Sifu](https://www.sloclap.com/games/sifu/) that lets you create, visualize, and export custom moveset mods — no UE4 editor required.
 

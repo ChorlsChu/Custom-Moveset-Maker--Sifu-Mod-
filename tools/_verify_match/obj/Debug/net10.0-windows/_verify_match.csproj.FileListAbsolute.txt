@@ -107,3 +107,40 @@ C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMo
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\_verify_match\bin\Debug\net10.0-windows\Engine\Programs\UnrealPak\Saved\Config\Windows\Engine.ini
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\_verify_match\bin\Debug\net10.0-windows\Engine\Programs\UnrealPak\Saved\Logs\UnrealPak.log
 C:\Users\Charles\Downloads\Sifu Modding\Movesets Prototypes\Moveset Maker\SifuMovesetEditor\tools\_verify_match\bin\Debug\net10.0-windows\Engine\Saved\Config\Windows\Manifest.ini
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\SifuMovesetEditor.deps.json
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\SifuMovesetEditor.runtimeconfig.json
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\viewer\index.html
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\viewer\three.min.js
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\viewer\thumb.html
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\viewer\thumb.js
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\viewer\viewer.js
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\Template\StanceTemplateBase\BaseMovementDB.uasset
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\Template\StanceTemplateBase\BaseMovementDB.uexp
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\Template\StanceTemplateBase\BP_TransitionAnimRequest.uasset
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\Template\StanceTemplateBase\BP_TransitionAnimRequest.uexp
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\settings.json
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\README.md
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\tools\ue4\UnrealPak\UnrealPak.exe
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\tools\ue4\UnrealPak\UnrealPak-BuildSettings.dll
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\tools\ue4\UnrealPak\UnrealPak-Core.dll
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\tools\ue4\UnrealPak\UnrealPak-DerivedDataCache.dll
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\tools\ue4\UnrealPak\UnrealPak-Json.dll
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\tools\ue4\UnrealPak\UnrealPak-PakFile.dll
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\tools\ue4\UnrealPak\UnrealPak-PakFileUtilities.dll
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\tools\ue4\UnrealPak\UnrealPak-Projects.dll
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\tools\ue4\UnrealPak\UnrealPak-RSA.dll
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\tools\ue4\UnrealPak\UnrealPak-SSL.dll
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\tools\ue4\UnrealPak\UnrealPak-TraceLog.dll
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\tools\ue4\UnrealPak\UnrealPak.modules
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\tools\ue4\UnrealPak\pakchunk0-WindowsNoEditor.sig
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\Engine\Config\BaseEngine.ini
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\Engine\Saved\Config\Windows\Manifest.ini
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\SifuMovesetEditor.exe
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\runtimes\win-x86\native\WebView2Loader.dll
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\runtimes\win-x64\native\WebView2Loader.dll
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\runtimes\win-arm64\native\WebView2Loader.dll
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\_verify_match.exe
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\_verify_match.deps.json
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\_verify_match.runtimeconfig.json
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\_verify_match.dll
+C:\Users\Charles\AppData\Local\Temp\sifu_smoke\_verify_match.pdb

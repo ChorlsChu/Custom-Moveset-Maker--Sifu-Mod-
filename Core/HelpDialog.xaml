@@ -126,6 +126,9 @@
             <DockPanel>
                 <TextBlock DockPanel.Dock="Right" Text="F1 opens this guide · Esc closes"
                            FontSize="10" Foreground="#585b70" VerticalAlignment="Center"/>
+                <Button DockPanel.Dock="Right" Content="Report a bug" Margin="0,0,12,0" Padding="9,2"
+                        FontSize="10" Style="{StaticResource DarkButton}" Click="ReportBug_Click"
+                        ToolTip="Send a report (with the log attached) straight to the author"/>
                 <TextBlock x:Name="txtFooter" Text="" FontSize="10"
                            Foreground="#6c7086" VerticalAlignment="Center"/>
             </DockPanel>

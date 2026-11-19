@@ -211,13 +211,15 @@ public static class HelpContent
             {
                 "Use Change Unit to select MainChar and the stance or weapon variant you want to edit.",
                 "Right-click a move and choose Connect to., then click the follow-up move.",
-                "Pick the input that should trigger it: Light, Heavy, Rush, Dodge, and so on. Custom input. accepts a raw EComboTransition name.",
+                "Pick the input that should trigger it: LMB, RMB, RMB Alt Delay, RMB Hold, LMB Rush or RMB Rush.",
                 "When several links share an input, their chances must total 100% for that input."
             },
             new[]
             {
                 "Light 100% plus Heavy 100% on the same node is valid: those are separate pools.",
-                "The post-link check only opens Conditions & Chances when typed values leave a pool off 100%."
+                "The post-link check only opens Conditions & Chances when typed values leave a pool off 100%.",
+                "Only the seven inputs the vanilla combo trees actually use are offered; an older project that still carries a Special, Dodge or Throw row keeps it, but the game ignores that row.",
+                "AI Action and Event nodes can be dropped on a player canvas too, for experiments - the player pawn has no Order system, so they usually do nothing in game."
             },
             new[] { "mainchar", "player", "input", "light", "heavy", "rush", "link", "combo" },
             tutorialId: "link-mainchar"),
@@ -369,24 +371,6 @@ public static class HelpContent
                 "Deleting or renaming a card clears undo history because it can span several cached units."
             },
             new[] { "attackdb", "card", "clone", "create", "rename", "delete", "library", "custom" }),
-
-        T("custom-inputs", "Library & Cards",
-            "Custom inputs",
-            "Use a raw EComboTransition name when a link or start entry needs an input the list does not offer.",
-            "Link input picker or Start Entries → Custom input.",
-            new[]
-            {
-                "In the link input picker, choose Custom input.",
-                "Type the raw EComboTransition name, for example Special or Dodge.",
-                "Only names the game actually declares have gameplay meaning; anything else is written verbatim.",
-                "The same option appears in the Start Entries input dropdown."
-            },
-            new[]
-            {
-                "Double-check the spelling against the game's enum; a typo exports without an error.",
-                "Custom inputs are for advanced routing, not for renaming an existing vanilla input."
-            },
-            new[] { "custom", "input", "ecombotransition", "raw", "special", "dodge" }),
 
         T("hit-windows", "Library & Cards",
             "Hit windows",

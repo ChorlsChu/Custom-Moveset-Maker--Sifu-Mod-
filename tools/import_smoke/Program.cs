@@ -823,9 +823,11 @@ internal static class Program
         Expect(graph.StartEntries.SelectMany(e => e.Transitions)
                 .Any(t => InputCatalog.Normalize(t.InputEnum) == "Special"),
             "no MainChar start transition shows InputEnum=Special");
+        // Special is no longer in the picker catalog, so it must survive verbatim
+        // rather than being rounded down to a known label.
         Expect(graph.StartEntries.SelectMany(e => e.Transitions)
-                .Any(t => InputCatalog.LabelFor(t.InputEnum) == "S"),
-            "imported Special input does not display as 'S'");
+                .Any(t => InputCatalog.LabelFor(t.InputEnum) == "Special"),
+            "imported Special input does not display as 'Special'");
     }
 
     private static void TestAiPayloadEventToAttack()

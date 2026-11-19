@@ -9,6 +9,15 @@ let playbackSpeed = 1.0;
 let bones = [];
 let boneMap = {};
 
+// Playback metadata for frame-accurate scrubbing. The animation is sampled at
+// one keyframe per frame (times[f] = f / fps), so frame N starts at N / fps.
+let animationNumFrames = 0;
+let animationFps = 30;
+let animationDuration = 0;
+let isLooping = true;
+let playbackState = 'stopped'; // playing | paused | stopped | ended
+let lastTimePostMs = 0;
+
 let showSkeletonLines = true;
 
 window.setSkeletonVisible = function(visible) {
@@ -133,25 +142,65 @@ function onResize() {
     renderer.setSize(container.clientWidth, container.clientHeight);
 }
 
+function clampFrame(frame) {
+    const max = animationNumFrames > 0 ? animationNumFrames - 1 : 0;
+    if (!Number.isFinite(frame)) return 0;
+    return Math.max(0, Math.min(max, Math.round(frame)));
+}
+
+function frameFromTime(time) {
+    if (animationFps <= 0) return 0;
+    return clampFrame(time * animationFps);
+}
+
+function frameToTime(frame) {
+    const f = clampFrame(frame);
+    if (animationFps <= 0) return 0;
+    return f / animationFps;
+}
+
+function currentFrame() {
+    if (!currentAction) return 0;
+    return frameFromTime(currentAction.time);
+}
+
+function postPlaybackState(action = 'timeUpdate', force = false) {
+    if (!currentAction || !currentAction.getClip()) return;
+
+    const now = performance.now();
+    if (!force && now - lastTimePostMs < 33) return; // ~30 Hz
+    lastTimePostMs = now;
+
+    const time = currentAction.time;
+    const duration = currentAction.getClip().duration;
+    const progress = duration > 0 ? time / duration : 0;
+    const frame = frameFromTime(time);
+
+    window.chrome.webview.postMessage(JSON.stringify({
+        action: action,
+        time: time,
+        duration: duration,
+        progress: progress,
+        frame: frame,
+        numFrames: animationNumFrames,
+        fps: animationFps,
+        playing: isPlaying,
+        state: playbackState,
+        loop: isLooping
+    }));
+}
+
 function animate() {
     requestAnimationFrame(animate);
 
+    // Always drain the clock so pausing for a while doesn't hand the mixer a
+    // multi-second delta on resume.
+    const delta = clock.getDelta();
+
     if (mixer && isPlaying) {
-        const delta = clock.getDelta();
+        // Speed is applied here only; the action keeps its native playback rate.
         mixer.update(delta * playbackSpeed);
-
-        if (currentAction) {
-            const time = currentAction.time;
-            const duration = currentAction.getClip().duration;
-            const progress = duration > 0 ? time / duration : 0;
-
-            window.chrome.webview.postMessage(JSON.stringify({
-                action: 'timeUpdate',
-                time: time,
-                duration: duration,
-                progress: progress
-            }));
-        }
+        postPlaybackState();
     }
 
     renderer.render(scene, camera);
@@ -206,6 +255,26 @@ function coverGroups(groups, totalIndices) {
     if (pos < totalIndices) final.push({ png: null, start: pos, count: totalIndices - pos });
     return final;
 }
+
+// ---- Large payload staging -------------------------------------------------
+// Mesh/animation JSON can reach several MB on long clips. Injecting one enormous
+// ExecuteScript string is a known way to kill the WebView2 renderer, so the host
+// feeds the text in chunks and parses it only once at the end.
+let __payloadParts = [];
+window.beginPayload = function() {
+    __payloadParts = [];
+};
+window.appendPayload = function(chunk) {
+    __payloadParts.push(chunk);
+};
+window.endPayload = function(kind, arg) {
+    const text = __payloadParts.join('');
+    __payloadParts = [];
+    const data = JSON.parse(text);
+    if (kind === 'mesh') return loadMesh(data, arg);
+    if (kind === 'anim') return loadAnimation(data);
+    throw new Error('unknown payload kind: ' + kind);
+};
 
 async function loadMesh(data, characterName) {
     clearMesh();
@@ -446,10 +515,24 @@ function loadAnimation(data) {
         tracks
     );
 
+    animationFps = anim.fps > 0 ? anim.fps : 30;
+    animationNumFrames = anim.numFrames > 0
+        ? anim.numFrames
+        : Math.max(1, Math.round(clip.duration * animationFps) + 1);
+    animationDuration = clip.duration;
+    playbackState = 'playing';
+    lastTimePostMs = 0;
+
     const target = currentMesh || rootBone;
     mixer = new THREE.AnimationMixer(target);
+    mixer.addEventListener('finished', () => {
+        isPlaying = false;
+        playbackState = 'ended';
+        postPlaybackState('timeUpdate', true);
+        window.chrome.webview.postMessage(JSON.stringify({ action: 'playbackEnded' }));
+    });
     currentAction = mixer.clipAction(clip);
-    currentAction.setLoop(THREE.LoopRepeat);
+    applyLoopMode();
     currentAction.play();
     isPlaying = true;
 
@@ -465,48 +548,129 @@ function loadAnimation(data) {
         action: 'animationLoaded',
         name: anim.name,
         duration: anim.duration,
-        numFrames: anim.numFrames,
-        fps: anim.fps,
-        trackCount: tracks.length
+        numFrames: animationNumFrames,
+        fps: animationFps,
+        trackCount: tracks.length,
+        playing: isPlaying,
+        state: playbackState,
+        loop: isLooping
     }));
+
+    postPlaybackState('timeUpdate', true);
+}
+
+function applyLoopMode() {
+    if (!currentAction) return;
+    if (isLooping) {
+        currentAction.setLoop(THREE.LoopRepeat, Infinity);
+        currentAction.clampWhenFinished = false;
+    } else {
+        currentAction.setLoop(THREE.LoopOnce, 1);
+        currentAction.clampWhenFinished = true;
+    }
 }
 
 function setPlaybackSpeed(speed) {
-    playbackSpeed = speed;
-    if (currentAction) {
-        currentAction.setPlaybackRate(speed);
-    }
+    const value = Number(speed);
+    if (!Number.isFinite(value) || value <= 0) return;
+    playbackSpeed = value;
+    // The mixer delta in animate() already scales time, so the action keeps
+    // rate 1 to avoid applying the speed twice.
+    if (currentAction) currentAction.setPlaybackRate(1);
+    postPlaybackState('timeUpdate', true);
 }
 
 function play() {
-    if (currentAction) {
-        currentAction.play();
-        isPlaying = true;
-        clock.start();
-        clock.getDelta();
+    if (!currentAction || !currentAction.getClip()) return;
+
+    // Restarting from the end is what the transport button implies.
+    if (playbackState === 'ended' ||
+        (!isLooping && currentAction.time >= currentAction.getClip().duration - 1e-4)) {
+        currentAction.time = 0;
     }
+
+    currentAction.enabled = true;
+    currentAction.paused = false;
+    currentAction.play();
+    isPlaying = true;
+    playbackState = 'playing';
+    clock.start();
+    clock.getDelta();
+    postPlaybackState('timeUpdate', true);
 }
 
 function pause() {
-    if (currentAction) {
-        currentAction.paused = true;
-        isPlaying = false;
-    }
+    if (!currentAction) return;
+    currentAction.paused = true;
+    isPlaying = false;
+    playbackState = 'paused';
+    postPlaybackState('timeUpdate', true);
 }
 
 function stop() {
-    if (currentAction) {
-        currentAction.stop();
-        isPlaying = false;
-    }
+    if (!currentAction) return;
+    // Pause at frame 0 instead of action.stop(): a stopped action no longer
+    // drives the pose, so the mesh would keep the last played frame.
+    currentAction.paused = true;
+    currentAction.time = 0;
+    isPlaying = false;
+    playbackState = 'stopped';
+    if (mixer) mixer.update(0);
+    clock.start();
+    clock.getDelta();
+    postPlaybackState('timeUpdate', true);
 }
 
-function seekTo(progress) {
-    if (currentAction && currentAction.getClip()) {
-        const duration = currentAction.getClip().duration;
-        currentAction.time = progress * duration;
+function togglePlayPause() {
+    if (isPlaying) pause();
+    else play();
+}
+
+function seekToTime(time) {
+    if (!currentAction || !currentAction.getClip()) return;
+    const duration = currentAction.getClip().duration;
+    const clamped = Math.max(0, Math.min(duration, Number(time) || 0));
+    currentAction.time = clamped;
+    if (mixer) mixer.update(0);
+    clock.start();
+    clock.getDelta();
+    playbackState = isPlaying ? 'playing' : (clamped <= 0 ? 'stopped' : 'paused');
+    postPlaybackState('timeUpdate', true);
+}
+
+function seekToFrame(frame) {
+    seekToTime(frameToTime(frame));
+}
+
+function stepFrames(delta) {
+    if (!currentAction) return;
+    seekToFrame(currentFrame() + (Number(delta) || 0));
+}
+
+function seekToStart() {
+    seekToFrame(0);
+}
+
+function seekToEnd() {
+    seekToFrame(animationNumFrames > 0 ? animationNumFrames - 1 : 0);
+}
+
+function setLoop(enabled) {
+    isLooping = !!enabled;
+    applyLoopMode();
+    if (isLooping && playbackState === 'ended') {
+        // Re-arm so the toggle does something visible without pressing play.
+        if (currentAction) currentAction.time = 0;
         if (mixer) mixer.update(0);
+        playbackState = 'stopped';
     }
+    postPlaybackState('timeUpdate', true);
+}
+
+// Back-compat: older call sites seek by 0..1 progress.
+function seekTo(progress) {
+    if (!currentAction || !currentAction.getClip()) return;
+    seekToTime((Number(progress) || 0) * currentAction.getClip().duration);
 }
 
 function resetCamera() {
@@ -558,6 +722,9 @@ function showError(message) {
         mixer = null;
     }
     isPlaying = false;
+    playbackState = 'stopped';
+    animationNumFrames = 0;
+    animationDuration = 0;
 
     if (skeletonHelper) {
         scene.remove(skeletonHelper);
@@ -594,12 +761,42 @@ window.chrome.webview.addEventListener('message', event => {
             } else if (parsed.action === 'stop') {
                 stop();
             } else if (parsed.action === 'seek') {
-                seekTo(parsed.progress);
+                if (parsed.frame !== undefined && parsed.frame !== null) seekToFrame(parsed.frame);
+                else if (parsed.time !== undefined && parsed.time !== null) seekToTime(parsed.time);
+                else seekTo(parsed.progress);
+            } else if (parsed.action === 'seekFrame') {
+                seekToFrame(parsed.frame);
+            } else if (parsed.action === 'step') {
+                stepFrames(parsed.delta);
+            } else if (parsed.action === 'seekStart') {
+                seekToStart();
+            } else if (parsed.action === 'seekEnd') {
+                seekToEnd();
+            } else if (parsed.action === 'togglePlayPause') {
+                togglePlayPause();
+            } else if (parsed.action === 'setLoop') {
+                setLoop(parsed.enabled);
             }
         } catch (e) {
             console.error('Message parse error:', e);
         }
     }
+});
+
+// Keyboard transport when the 3D canvas owns focus: WPF never sees these, so
+// forward them over the bridge instead of letting the page scroll.
+window.addEventListener('keydown', (event) => {
+    const tag = (event.target && event.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (event.ctrlKey || event.altKey || event.metaKey) return;
+
+    if (![' ', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    window.chrome.webview.postMessage(JSON.stringify({
+        action: 'viewportKey',
+        key: event.key,
+        shift: event.shiftKey
+    }));
 });
 
 window.addEventListener('load', init);
