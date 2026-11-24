@@ -78,6 +78,7 @@ internal static class Program
         Run("AllZeroWarning", () => TestAllZeroWarning(seanP1));
         Run("ChanceRescale", () => TestChanceRescale(seanP1));
         Run("MainCharChancePerInput", () => TestMainCharChancePerInput(mainCharCombo));
+        Run("AppendMixupPools", () => TestAppendMixupPools(mainCharCombo));
         Run("ChanceGateVanillaAppend", TestChanceGateVanillaAppend);
         Run("ChanceGateTypedFullPool", TestChanceGateTypedFullPool);
         Run("ChanceGateOver100", TestChanceGateOver100);
@@ -3530,6 +3531,199 @@ internal static class Program
             foreach (int r in found.pools[heavyKey])
                 Expect(Math.Abs(ProbOf(patchedRows[r]) - 100f) <= 0.01f,
                     $"append pass rescaled Heavy row {ProbOf(patchedRows[r]):0.###}");
+        }
+    }
+
+    /// <summary>
+    /// Mix-up chance regression for MainChar trees. A brand-new node must split each
+    /// input's own 100% (LMB 100 + RMB 100) - one node-wide split wrote 50/50 and the
+    /// dialog still showed 100 per input, so presses fell through in game. A saved
+    /// MainChar tree can also carry duplicate same-input rows (two RMB rows at 100 each
+    /// = a 200% pool); an append on another input must leave that pool byte-for-byte,
+    /// where the old pass rebalanced every pool in the struct and shipped 50/50,
+    /// activating a row that never fired. Enemy trees keep the node-wide split (50/50).
+    /// </summary>
+    private static void TestAppendMixupPools(string targetFile)
+    {
+        static List<PropertyData> RowsOf(StructPropertyData sp)
+            => TransitionsOf(sp)?.Value?.ToList() ?? new List<PropertyData>();
+        static FloatPropertyData? ProbProp(PropertyData? row)
+            => (row as StructPropertyData)?.Value?.OfType<FloatPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_fProbability");
+        static float ProbOf(PropertyData? row) => ProbProp(row)?.Value ?? float.NaN;
+        static string ShortInput(PropertyData? row)
+        {
+            string s = (row as StructPropertyData)?.Value?.OfType<EnumPropertyData>()
+                .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_eInputTransition")
+                ?.Value?.Value?.ToString() ?? "";
+            return s.Contains("::") ? s.Split("::")[^1] : s;
+        }
+
+        // Staged clone card: the same bare-anim drop path TestAppendMainChar uses.
+        string cloneRel = "DB/_MainChar/Combos/Attacks/Custom/MainChar_Custom_SmokePools";
+        string stagedPath = Path.Combine(OutDir, "Sifu", "Content",
+            cloneRel.Replace('/', Path.DirectorySeparatorChar) + ".uasset");
+        Directory.CreateDirectory(Path.GetDirectoryName(stagedPath)!);
+        string template = Path.Combine(ContentRoot, "DB", "_MainChar", "Combos", "Attacks",
+            "BareHands", "LightCombo", "MainChar_Jab_FR.uasset");
+        if (File.Exists(template)) File.Copy(template, stagedPath, true);
+        else File.WriteAllText(stagedPath, "staged");
+        bool Staged(string rel) => string.Equals(rel, cloneRel, StringComparison.OrdinalIgnoreCase);
+
+        ComboNode SmokeAttack(int id) => new()
+        {
+            Id = id,
+            TreeIndex = -1,
+            Kind = ComboNodeKind.UserCreated,
+            DisplayName = "SmokePools",
+            SourceDBPath = "/Game/" + cloneRel
+        };
+
+        (UAsset Asset, List<PropertyData> Rows, int BaseCount) AppendNewMixup(
+            string sourcePath, string label, (string Label, string Enum)[] inputs)
+        {
+            var asset = Load(targetFile);
+            var (combo, nodes) = ComboOf(asset);
+            int baseCount = nodes.Value.Length;
+            var atk = SmokeAttack(100);
+            var graph = new ComboGraph
+            {
+                SourceGamePath = sourcePath,
+                Nodes = new List<ComboNode> { atk }
+            };
+            for (int i = 0; i < inputs.Length; i++)
+            {
+                graph.Nodes.Add(BaseNode(200 + i, 2 + i));
+                graph.Edges.Add(NewEdge(atk.Id, 200 + i, inputs[i].Label));
+            }
+            var r = ExportDialog.AppendEnemyAuthoredContent(graph, asset, combo, nodes, ContentRoot,
+                customReplace: false, stagedExists: Staged);
+            Expect(r.nodes == 1 && r.skipped == 0,
+                $"{label}: appended {r.nodes} nodes, {r.skipped} skipped");
+            Expect(r.links == inputs.Length,
+                $"{label}: appended {r.links} links, expected {inputs.Length}");
+            Expect(nodes.Value.Length == baseCount + 1,
+                $"{label}: m_Nodes {nodes.Value.Length} != {baseCount + 1}");
+            return (asset, RowsOf(NodeStructAt(nodes, baseCount)), baseCount);
+        }
+
+        void AssertPools(List<PropertyData> rows, (string Label, string Enum)[] inputs, string label)
+        {
+            Expect(rows.Count == inputs.Length, $"{label}: rows {rows.Count} != {inputs.Length}");
+            foreach (var (inputLabel, inputEnum) in inputs)
+            {
+                var pool = rows.Where(x => ShortInput(x) == inputEnum).ToList();
+                Expect(pool.Count == 1, $"{label}: '{inputLabel}' rows {pool.Count} != 1");
+                Expect(Math.Abs(ProbOf(pool[0]) - 100f) <= 0.01f,
+                    $"{label}: '{inputLabel}' chance {ProbOf(pool[0]):0.###} != 100 "
+                    + "(each input pool must total 100)");
+            }
+        }
+
+        var two = new[] { ("LMB", "Light"), ("RMB", "Heavy") };
+        var appended = AppendNewMixup("Game/DB/_MainChar/Combos/MainChar_ComboTree",
+            "mainchar two-input", two);
+        AssertPools(appended.Rows, two, "mainchar two-input");
+        string outPath = WriteAndValidate(appended.Asset, "mixup-pools-two");
+        var (_, n2) = ComboOf(Load(outPath));
+        AssertPools(RowsOf(NodeStructAt(n2, appended.BaseCount)), two, "mainchar two-input reparse");
+
+        var three = new[] { ("LMB", "Light"), ("RMB", "Heavy"), ("RMB Hold", "HeavyHold") };
+        appended = AppendNewMixup("Game/DB/_MainChar/Combos/MainChar_ComboTree",
+            "mainchar three-input", three);
+        AssertPools(appended.Rows, three, "mainchar three-input");
+        outPath = WriteAndValidate(appended.Asset, "mixup-pools-three");
+        var (_, n3) = ComboOf(Load(outPath));
+        AssertPools(RowsOf(NodeStructAt(n3, appended.BaseCount)), three, "mainchar three-input reparse");
+
+        // Enemy identity keeps the historic node-wide pool: two rows split 50/50.
+        appended = AppendNewMixup("Game/DB/AI/Archetypes/Smoke/Smoke_ComboTree",
+            "enemy two-input", two);
+        foreach (var row in appended.Rows)
+            Expect(Math.Abs(ProbOf(row) - 50f) <= 0.01f,
+                $"enemy two-input: node-wide row {ProbOf(row):0.###} != 50");
+
+        // Case C: a struct that received one append must leave its other input pools
+        // exactly as shipped, duplicate same-input rows included. Saved MainChar trees
+        // can carry duplicate same-input rows (two RMB rows at 100 = a 200% pool), so
+        // the shape is synthesized on a real node before the append.
+        {
+            var asset = Load(targetFile);
+            var (combo, nodes) = ComboOf(asset);
+            int baseCount = nodes.Value.Length;
+            int poolStruct = -1, dupRow = -1;
+            for (int s = 1; s < baseCount && poolStruct < 0; s++)
+            {
+                if (nodes.Value[s] is not StructPropertyData sp || sp.Value == null) continue;
+                var rows = RowsOf(sp);
+                if (rows.Count < 2) continue;
+                if (!rows.All(r => ProbProp(r) != null)) continue;
+                var pools = rows.GroupBy(ShortInput).ToList();
+                var light = pools.FirstOrDefault(g => g.Key == "Light");
+                var heavy = pools.FirstOrDefault(g => g.Key == "Heavy");
+                if (light == null || heavy == null) continue;
+                if (light.Count() != 1 || heavy.Count() != 1) continue;
+                if (Math.Abs(ProbOf(light.First()) - 100f) > 0.01f
+                    || Math.Abs(ProbOf(heavy.First()) - 100f) > 0.01f) continue;
+                poolStruct = s;
+                dupRow = rows.IndexOf(light.First());
+            }
+            Expect(poolStruct >= 0,
+                "no vanilla MainChar struct with a single 100% Light row + single 100% Heavy row");
+
+            var poolSp = NodeStructAt(nodes, poolStruct);
+            var trans = TransitionsOf(poolSp)!;
+            trans.Value = trans.Value.Append(trans.Value[dupRow]).ToArray();
+            var dupBefore = new List<float> { ProbOf(trans.Value[dupRow]), ProbOf(trans.Value[^1]) };
+            var existing = new HashSet<int>();
+            foreach (var row in RowsOf(poolSp))
+            {
+                var map = TargetMapOf((StructPropertyData)row);
+                if (map?.Value != null) existing.UnionWith(MapValues(map));
+            }
+            int targetIdx = Enumerable.Range(0, baseCount)
+                .FirstOrDefault(t => t != poolStruct && !existing.Contains(t), -1);
+            Expect(targetIdx >= 0, "no free target node for the duplicate-pool append");
+
+            int targetNodeId = 900;
+            var graph = new ComboGraph
+            {
+                SourceGamePath = "Game/DB/_MainChar/Combos/MainChar_ComboTree",
+                Nodes = new List<ComboNode>
+                {
+                    BaseNode(poolStruct, poolStruct),
+                    BaseNode(targetNodeId, targetIdx)
+                }
+            };
+            graph.Edges.Add(NewEdge(poolStruct, targetNodeId, "RMB"));
+
+            var r = ExportDialog.AppendEnemyAuthoredContent(graph, asset, combo, nodes, ContentRoot);
+            Expect(r.links == 1 && r.skipped == 0,
+                $"duplicate pool: appended {r.links} links, {r.skipped} skipped");
+
+            void AssertDup(List<PropertyData> rows, string label)
+            {
+                var dupNow = rows.Where(x => ShortInput(x) == "Light").ToList();
+                Expect(dupNow.Count == 2, $"{label}: duplicate Light rows {dupNow.Count} != 2");
+                for (int i = 0; i < dupNow.Count; i++)
+                    Expect(Math.Abs(ProbOf(dupNow[i]) - dupBefore[i]) <= 0.01f,
+                        $"{label}: untouched duplicate Light row {i} {ProbOf(dupNow[i]):0.###} "
+                        + $"!= shipped {dupBefore[i]:0.###}");
+                var addNow = rows.Where(x => ShortInput(x) == "Heavy").ToList();
+                Expect(addNow.Count == 2, $"{label}: Heavy pool rows {addNow.Count} != 2");
+                Expect(Math.Abs(addNow.Sum(ProbOf) - 100f) <= 0.01f,
+                    $"{label}: Heavy pool {addNow.Sum(ProbOf):0.###} != 100");
+            }
+
+            var patched = RowsOf(NodeStructAt(nodes, poolStruct));
+            AssertDup(patched, "duplicate pool append");
+            var newRow = patched[^1];
+            Expect(ShortInput(newRow) == "Heavy" && Math.Abs(ProbOf(newRow) - 50f) <= 0.01f,
+                $"duplicate pool append: new Heavy row {ProbOf(newRow):0.###} != 50");
+
+            outPath = WriteAndValidate(asset, "mixup-pools-dup");
+            var (_, nd) = ComboOf(Load(outPath));
+            AssertDup(RowsOf(NodeStructAt(nd, poolStruct)), "duplicate pool reparse");
         }
     }
 

@@ -1548,6 +1548,13 @@ public partial class ExportDialog : Window
             Directory.CreateDirectory(outputDirForAsset);
             var outUasset = Path.Combine(outputPath, "Sifu", "Content", mainComboRel + ".uasset");
 
+            // Replaced moves whose DB lives under an enemy archetype are deferred to the
+            // enemy-tree pass further down. This pass must not judge them against the
+            // MainChar tree, and the abort guards use these sets to tell replacements
+            // that still need writing from ones the enemy pass already handled.
+            var enemyDeferredNodes = new HashSet<ComboNode>();
+            var enemyTreeSwapped = new HashSet<int>();
+
             bool comboTreeModified = false;
             await System.Threading.Tasks.Task.Run(() =>
             {
@@ -1598,7 +1605,6 @@ public partial class ExportDialog : Window
                 int skippedNoDb = 0;
                 int patchedFallback = 0;
                 int redirectSkipped = 0;
-                int redirectActionable = 0;
                 int comboSwaps = 0;
                 var mainSwaps = new List<(string oldShortName, string newShortName, string newFullPath, string oldFullPath)>();
                 // Provenance-only key -> swap, merged into exactSwapDict after mainSwaps so
@@ -1621,6 +1627,7 @@ public partial class ExportDialog : Window
                     string deferDbPath = !string.IsNullOrEmpty(node.DefaultDBPath) ? node.DefaultDBPath : node.SourceDBPath ?? "";
                     if (!string.IsNullOrEmpty(deferDbPath) && deferDbPath.Contains("/AI/Archetypes/", StringComparison.OrdinalIgnoreCase) && _graph != null && !string.Equals(_graph.WeaponName, "MainChar", StringComparison.OrdinalIgnoreCase))
                     {
+                        enemyDeferredNodes.Add(node);
                         ErrorLog.Write("EXPORT", new Exception($"  ENEMY DEFER: {node.DisplayName} -> combo tree Import swap"));
                         continue;
                     }
@@ -1992,6 +1999,13 @@ public partial class ExportDialog : Window
                         if (string.IsNullOrEmpty(node.DefaultDBPath) || string.IsNullOrEmpty(node.AnimPath))
                             continue;
 
+                        // Enemy nodes are keyed by their own tree, not this one. Evaluated
+                        // here they can never match (so they look like a failed rewrite)
+                        // and a name collision could rename the wrong slot - the enemy
+                        // combo-tree pass below owns them.
+                        if (enemyDeferredNodes.Contains(node))
+                            continue;
+
                         string oldDbShortName = Path.GetFileNameWithoutExtension(node.DefaultDBPath);
                         if (swappedSlotShorts.Contains(oldDbShortName))
                             continue;
@@ -2037,7 +2051,6 @@ public partial class ExportDialog : Window
                             continue;
                         // This node really needs the tree rewritten - the abort guard below
                         // fires only when such a rewrite was requested but none landed.
-                        if (NeedsComboRedirect(node)) redirectActionable++;
 
                         bool swappedThis = false;
                         foreach (var attacksMap in allMaps)
@@ -2408,18 +2421,27 @@ public partial class ExportDialog : Window
                     }
                 }
 
-                if (redirectActionable > 0 && comboSwaps == 0)
+                // A slot only needs a rewrite in this tree if it was neither renamed here
+                // nor patched in place on disk (the fallback above still fixes the move).
+                // Enemy replacements never reach redirectNodes - they are deferred to the
+                // enemy pass - so they cannot trigger this guard.
+                var unresolvedRedirects = redirectNodes.Where(n =>
                 {
-                    // Nothing was written into the combo tree, so every replaced move still
-                    // points at the old attack DB on disk. Shipping that pak is exactly the
-                    // "move does nothing in game" failure - abort instead of pretending.
-                    var sample = string.Join("; ", _modifiedNodes
-                        .Where(n => !string.IsNullOrEmpty(n.SourceDBPath) && NeedsComboRedirect(n))
-                        .Take(4)
+                    var slotShort = Path.GetFileNameWithoutExtension(n.DefaultDBPath);
+                    return !swappedSlotShorts.Contains(slotShort)
+                        && !patchedDbFiles.Contains(n.DefaultDBPath);
+                }).ToList();
+
+                if (unresolvedRedirects.Count > 0)
+                {
+                    // Nothing was written for these, so they still point at the old attack
+                    // DB on disk. Shipping that pak is exactly the "move does nothing in
+                    // game" failure - abort instead of pretending.
+                    var sample = string.Join("; ", unresolvedRedirects.Take(4)
                         .Select(n => $"{n.DisplayName} '{Path.GetFileNameWithoutExtension(n.ImportedDbPath is { Length: > 0 } ip ? ip : n.DefaultDBPath)}' -> '{Path.GetFileNameWithoutExtension(n.SourceDBPath)}'"));
-                    ErrorLog.Write("EXPORT", new Exception($"ABORT: {redirectActionable} replaced slot(s) need a tree rewrite but 0 combo tree swaps applied. {sample}"));
+                    ErrorLog.Write("EXPORT", new Exception($"ABORT: {unresolvedRedirects.Count} replaced slot(s) need a tree rewrite but none was applied. {sample}"));
                     throw new InvalidOperationException(
-                        $"{redirectActionable} replaced move(s) could not be written into the combo tree, so they would do nothing in game. " +
+                        $"{unresolvedRedirects.Count} replaced move(s) could not be written into the combo tree, so they would do nothing in game. " +
                         "Export aborted instead of shipping a broken pak.\n\n" +
                         "This happens when the combo tree's m_Attacks slot keys do not match the moves you replaced. " +
                         "If the project was imported from a mod pak before v1.3 slot provenance existed, re-import the mod and export again. " +
@@ -2508,6 +2530,8 @@ public partial class ExportDialog : Window
 
                         var enemyComboBinSwaps = new List<(string oldShortName, string newShortName, string newFullPath)>();
                         var enemyDelayPatched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        var enemySecondaryPlans = new List<EnemySwapPlan>();
+                        var enemySecondaryByTree = new Dictionary<int, EnemySwapPlan>();
                         {
                             var enemyAllMaps = FindAllMapsNamed(enemyComboExport.Data, "m_Attacks");
                             ErrorLog.Write("EXPORT", new Exception($"Enemy combo tree: found {enemyAllMaps.Count} m_Attacks maps, {enemyAsset.Imports.Count} imports"));
@@ -2520,44 +2544,49 @@ public partial class ExportDialog : Window
                                 .ToList();
                             ErrorLog.Write("EXPORT", new Exception($"Enemy combo Import swap: {enemyModifiedNodes.Count} modified existing nodes"));
 
-                            foreach (var node in enemyModifiedNodes)
+                            // Several tree nodes can share one vanilla attack slot: the tree's
+                            // m_Attacks map is a registry, so two different combo positions may
+                            // both point at the same attack DB. Replacing both with different
+                            // moves therefore needs one slot per target - the first keeps the
+                            // renamed slot, each extra target gets a new slot added after the
+                            // import swap and only the nodes that asked for it are repointed.
+                            var enemySwapPlans = PlanEnemySlotSwaps(enemyModifiedNodes);
+                            enemySecondaryPlans.AddRange(enemySwapPlans.Where(p => !p.IsPrimary));
+                            foreach (var plan in enemySecondaryPlans)
+                                foreach (var planNode in plan.Nodes)
+                                    if (planNode.TreeIndex >= 0) enemySecondaryByTree[planNode.TreeIndex] = plan;
+                            if (enemySecondaryPlans.Count > 0)
+                                ErrorLog.Write("EXPORT", new Exception(
+                                    $"  ENEMY SHARED SLOT: {enemySecondaryPlans.Count} extra target(s) will be split into their own slot(s)"));
+
+                            foreach (var plan in enemySwapPlans.Where(p => p.IsPrimary))
                             {
-                                string oldDbShortName = Path.GetFileNameWithoutExtension(node.DefaultDBPath);
-                                string newDbPath = string.IsNullOrEmpty(node.SourceDBPath) ? "" : node.SourceDBPath;
-                                if (string.IsNullOrEmpty(newDbPath)) continue;
-                                string newDbShortName = Path.GetFileNameWithoutExtension(newDbPath);
-                                string newDbFullPath = "/" + newDbPath.TrimStart('/');
+                                string oldDbShortName = plan.OldShortName;
+                                string newDbPath = plan.Nodes[0].SourceDBPath?.Trim() ?? "";
+                                string newDbShortName = plan.NewShortName;
+                                string newDbFullPath = plan.NewFullPath;
 
                                 // Same provenance allowance as the main-char pass: an enemy tree
                                 // imported from a mod is keyed by the mod's own DB paths, so the
                                 // vanilla slot key alone matches nothing (0 swaps -> the replaced
                                 // move never lands in the exported tree).
-                                var enemySlotKeys = new List<string> { NormalizeSlotKey(node.DefaultDBPath) };
-                                if (!string.IsNullOrEmpty(node.ImportedSlotKey))
-                                    enemySlotKeys.Add(NormalizeSlotKey(node.ImportedSlotKey));
-                                if (!string.IsNullOrEmpty(node.ImportedDbPath))
-                                    enemySlotKeys.Add(NormalizeSlotKey(node.ImportedDbPath));
-                                enemySlotKeys = enemySlotKeys.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-
-                                var enemyOldShorts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                                    { oldDbShortName };
-                                foreach (var k in enemySlotKeys)
+                                var enemySlotKeys = new List<string>();
+                                var enemyOldShorts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                                foreach (var planNode in plan.Nodes)
                                 {
-                                    var s = Path.GetFileNameWithoutExtension(k);
-                                    if (!string.IsNullOrEmpty(s)) enemyOldShorts.Add(s);
+                                    foreach (var slotKey in new[]
+                                             {
+                                                 NormalizeSlotKey(planNode.DefaultDBPath),
+                                                 string.IsNullOrEmpty(planNode.ImportedSlotKey) ? "" : NormalizeSlotKey(planNode.ImportedSlotKey),
+                                                 string.IsNullOrEmpty(planNode.ImportedDbPath) ? "" : NormalizeSlotKey(planNode.ImportedDbPath),
+                                             })
+                                    {
+                                        if (!string.IsNullOrEmpty(slotKey)
+                                            && !enemySlotKeys.Contains(slotKey, StringComparer.OrdinalIgnoreCase))
+                                            enemySlotKeys.Add(slotKey);
+                                    }
+                                    foreach (var s in EnemyOldSlotShorts(planNode)) enemyOldShorts.Add(s);
                                 }
-                                if (!string.IsNullOrEmpty(node.ImportedDbPath))
-                                {
-                                    var s = Path.GetFileNameWithoutExtension(node.ImportedDbPath);
-                                    if (!string.IsNullOrEmpty(s)) enemyOldShorts.Add(s);
-                                }
-
-                                // Nothing to rewrite when the tree already points at the target DB.
-                                var enemyTreeDbShort = Path.GetFileNameWithoutExtension(
-                                    !string.IsNullOrEmpty(node.ImportedDbPath) ? node.ImportedDbPath : node.DefaultDBPath);
-                                if (!string.IsNullOrEmpty(enemyTreeDbShort) &&
-                                    string.Equals(enemyTreeDbShort, newDbShortName, StringComparison.OrdinalIgnoreCase))
-                                    continue;
 
                                 bool swapped = false;
                                 foreach (var attacksMap in enemyAllMaps)
@@ -2584,7 +2613,7 @@ public partial class ExportDialog : Window
                                         if (!enemyOldShorts.Any(s => curPkgPath.Contains(s, StringComparison.OrdinalIgnoreCase))
                                             && !enemyOldShorts.Contains(curDbName))
                                         {
-                                            ErrorLog.Write("EXPORT", new Exception($"  ENEMY COMBO SKIP: {node.DisplayName} import[{curImportIdx}] name='{curDbName}' pkg='{curPkgPath}' != expected one of [{string.Join(", ", enemyOldShorts)}]"));
+                                            ErrorLog.Write("EXPORT", new Exception($"  ENEMY COMBO SKIP: {plan.Nodes[0].DisplayName} import[{curImportIdx}] name='{curDbName}' pkg='{curPkgPath}' != expected one of [{string.Join(", ", enemyOldShorts)}]"));
                                             break;
                                         }
 
@@ -2600,8 +2629,15 @@ public partial class ExportDialog : Window
                                             enemyComboBinSwaps.Add((k, newDbShortName, newDbFullPath));
                                         }
                                         swapped = true;
-                                        ErrorLog.Write("EXPORT", new Exception($"  ENEMY COMBO IMPORT SWAP: {oldDbShortName} -> {newDbShortName} (import[{curImportIdx}])"));
-                                        TryPreserveDelayWindow(node.DefaultDBPath, newDbPath, gameRoot, outputPath, fileEntries, EngineVersion.VER_UE4_26, enemyDelayPatched, node.DelayWindowLo, node.DelayWindowHi);
+                                        foreach (var planNode in plan.Nodes)
+                                        {
+                                            enemyTreeSwapped.Add(planNode.Id);
+                                            TryPreserveDelayWindow(planNode.DefaultDBPath, planNode.SourceDBPath ?? "",
+                                                gameRoot, outputPath, fileEntries, EngineVersion.VER_UE4_26,
+                                                enemyDelayPatched, planNode.DelayWindowLo, planNode.DelayWindowHi);
+                                        }
+                                        ErrorLog.Write("EXPORT", new Exception(
+                                            $"  ENEMY COMBO IMPORT SWAP: {oldDbShortName} -> {newDbShortName} (import[{curImportIdx}], {plan.Nodes.Count} node(s))"));
                                         break;
                                     }
                                     if (swapped) break;
@@ -2620,9 +2656,13 @@ public partial class ExportDialog : Window
                                 ErrorLog.Write("EXPORT", new Exception($"  [{swapResult}]"));
 
                                 int fNamesPatched = 0;
-                                foreach (var elem in enemyNodesArr.Value)
+                                for (int ni = 0; ni < enemyNodesArr.Value.Length; ni++)
                                 {
-                                    if (elem is not StructPropertyData nodeStruct || nodeStruct.Value == null) continue;
+                                    // Nodes that want a second, different target for a shared
+                                    // slot are repointed by the split pass below; rewriting
+                                    // them here would give them the first target's move.
+                                    if (enemySecondaryByTree.ContainsKey(ni)) continue;
+                                    if (enemyNodesArr.Value[ni] is not StructPropertyData nodeStruct || nodeStruct.Value == null) continue;
 
                                     var attackInfos = nodeStruct.Value
                                         .OfType<StructPropertyData>()
@@ -2698,6 +2738,86 @@ public partial class ExportDialog : Window
                             }
                             }
 
+                            // Shared-slot split: the import swap above renamed the vanilla slot
+                            // for the first target. Every extra target gets its own m_Attacks
+                            // entry (import pair + key) and only the nodes that asked for it are
+                            // repointed, so two positions can play different moves.
+                            int enemyNodesResplit = 0;
+                            foreach (var plan in enemySecondaryPlans)
+                            {
+                                // Only register the slot when the card is actually available, so a
+                                // missing DB cannot leave a dangling import in the registry.
+                                if (ResolveStageSource(gameRoot, GamePathToContentRel(plan.NewFullPath)) == null)
+                                {
+                                    ErrorLog.Write("EXPORT", new Exception(
+                                        $"  ENEMY SLOT SPLIT SKIP: {plan.NewShortName} card not found"));
+                                    continue;
+                                }
+
+                                string? splitKey = null;
+                                try
+                                {
+                                    splitKey = EnsureEnemyAttackSlot(enemyAsset, enemyComboExport,
+                                        plan.NewFullPath, plan.NewShortName);
+                                }
+                                catch (Exception ex)
+                                {
+                                    ErrorLog.Write("EXPORT", new Exception(
+                                        $"  ENEMY SLOT ADD FAIL: {plan.NewShortName}: {ex.Message}"));
+                                }
+                                if (string.IsNullOrEmpty(splitKey))
+                                {
+                                    ErrorLog.Write("EXPORT", new Exception(
+                                        $"  ENEMY SLOT SPLIT FAILED: no m_Attacks slot for {plan.NewShortName}"));
+                                    continue;
+                                }
+
+                                int repointed = 0;
+                                foreach (var planNode in plan.Nodes)
+                                {
+                                    if (planNode.TreeIndex < 0 || planNode.TreeIndex >= enemyNodesArr.Value.Length) continue;
+                                    if (enemyNodesArr.Value[planNode.TreeIndex] is not StructPropertyData nodeStruct
+                                        || nodeStruct.Value == null) continue;
+
+                                    int nodeRepointed = 0;
+                                    var attackInfos = nodeStruct.Value.OfType<StructPropertyData>()
+                                        .FirstOrDefault(p => p.Name?.Value?.ToString() == "m_AttackInfos");
+                                    if (attackInfos?.Value != null)
+                                    {
+                                        var oldShorts = EnemyOldSlotShorts(planNode);
+                                        foreach (var field in attackInfos.Value)
+                                        {
+                                            if (field is not NamePropertyData nameProp) continue;
+                                            if (nameProp.Name?.Value?.ToString() != "m_Attacks") continue;
+                                            string curPath = nameProp.Value?.Value?.ToString() ?? "";
+                                            if (string.IsNullOrEmpty(curPath) || curPath == "None") continue;
+                                            string curShort = Path.GetFileNameWithoutExtension(curPath);
+                                            if (!oldShorts.Contains(curShort)) continue;
+                                            nameProp.Value = FName.FromString(enemyAsset, splitKey);
+                                            nodeRepointed++;
+                                        }
+                                    }
+
+                                    repointed += nodeRepointed;
+                                    if (nodeRepointed > 0)
+                                    {
+                                        enemyNodesResplit++;
+                                        enemyTreeSwapped.Add(planNode.Id);
+                                    }
+                                    // Hit-window edits belong to the node, not the slot; preserve
+                                    // them on every replacement that ends up in this tree.
+                                    TryPreserveDelayWindow(planNode.DefaultDBPath, planNode.SourceDBPath ?? "",
+                                        gameRoot, outputPath, fileEntries, EngineVersion.VER_UE4_26,
+                                        enemyDelayPatched, planNode.DelayWindowLo, planNode.DelayWindowHi);
+                                }
+
+                                ErrorLog.Write("EXPORT", new Exception(repointed > 0
+                                    ? $"  ENEMY SLOT SPLIT: {plan.OldShortName} -> {plan.NewShortName} ({repointed} FName(s))"
+                                    : $"  ENEMY SLOT SPLIT MISSED: {plan.OldShortName} -> {plan.NewShortName} (no node slot matched)"));
+                            }
+                            if (enemyNodesResplit > 0)
+                                ErrorLog.Write("EXPORT", new Exception($"  ENEMY SHARED SLOTS: {enemyNodesResplit} node(s) repointed to their own slot"));
+
                             int enemyRedirectPatched = 0;
                             if (_graph != null)
                             {
@@ -2760,8 +2880,11 @@ public partial class ExportDialog : Window
                                 if (File.Exists(outUexpPath))
                                     ErrorLog.Write("EXPORT", new Exception($"  UAPI: wrote {new FileInfo(outUexpPath).Length} bytes .uexp"));
                                 ComboWriteValidator.Validate(enemyOutUasset, enemyAsset, "ENEMY COMBO");
-                                VerifyComboTreeWrites(enemyOutUasset, eng,
-                                    enemyComboBinSwaps.Select(s => (s.newShortName, s.newFullPath)));
+                                var enemyVerifySlots = enemyComboBinSwaps
+                                    .Select(s => (s.newShortName, s.newFullPath))
+                                    .Concat(enemySecondaryPlans.Select(p => (p.NewShortName, p.NewFullPath)))
+                                    .ToList();
+                                VerifyComboTreeWrites(enemyOutUasset, eng, enemyVerifySlots);
 
                                 if (custom != null)
                                     RepointCustomDbRefs(custom, gameRoot, outputPath);
@@ -3025,6 +3148,28 @@ public partial class ExportDialog : Window
                 {
                     ErrorLog.Write("EXPORT", new Exception($"Enemy combo file not found: {enemyVanillaPath}"));
                 }
+            }
+
+            // Deferred replacements that never landed in the enemy tree would do nothing
+            // in game. This is the enemy-side counterpart of the main-tree guard above:
+            // it catches a missing/unresolvable enemy combo path as well as slot keys that
+            // did not match. New nodes (TreeIndex < 0) are appended by the authored-content
+            // pass, not swapped, so they are not counted here.
+            var unresolvedEnemy = enemyDeferredNodes
+                .Where(n => NeedsComboRedirect(n) && n.TreeIndex >= 0 && !enemyTreeSwapped.Contains(n.Id))
+                .ToList();
+            if (unresolvedEnemy.Count > 0)
+            {
+                var sample = string.Join("; ", unresolvedEnemy.Take(4).Select(n =>
+                    $"{n.DisplayName} '{Path.GetFileNameWithoutExtension(n.DefaultDBPath)}' -> '{Path.GetFileNameWithoutExtension(n.SourceDBPath)}'"));
+                var reason = string.IsNullOrEmpty(_enemyComboPath)
+                    ? "the unit's combo tree path is unknown"
+                    : $"the slot keys were not found in '{_enemyComboPath}'";
+                ErrorLog.Write("EXPORT", new Exception(
+                    $"ABORT: {unresolvedEnemy.Count} replaced enemy slot(s) were not written into the combo tree - {reason}. {sample}"));
+                throw new InvalidOperationException(
+                    $"{unresolvedEnemy.Count} replaced enemy move(s) could not be written into the combo tree, so they would do nothing in game. " +
+                    $"Export aborted instead of shipping a broken pak.\n\nReason: {reason}.\n\nUnmatched: {sample}");
             }
         }
         else
@@ -3404,6 +3549,124 @@ public partial class ExportDialog : Window
                 "Export aborted instead of shipping a broken pak.\n\n" + detail);
         }
         ErrorLog.Write("EXPORT", new Exception($"  POST-WRITE CHECK OK: {expectedNew.Count} rewritten slot(s) present in the combo tree"));
+    }
+
+    /// <summary>One target of a replaced enemy slot: the vanilla slot short name, the
+    /// replacement DB, and every edited node that asked for that target. <see cref="IsPrimary"/>
+    /// marks the target that keeps the renamed vanilla slot; the rest get their own slot.</summary>
+    internal sealed class EnemySwapPlan
+    {
+        public string OldShortName = "";
+        public string NewShortName = "";
+        public string NewFullPath = "";
+        public bool IsPrimary;
+        public List<ComboNode> Nodes = new();
+    }
+
+    /// <summary>
+    /// Groups edited enemy nodes by the vanilla attack slot they replace. The tree's
+    /// m_Attacks map is a registry, so several nodes often share one DB; when those
+    /// nodes are edited to different moves one slot is not enough. Each distinct new
+    /// target becomes a plan, and the first one stays primary (keeps the renamed slot).
+    /// </summary>
+    internal static List<EnemySwapPlan> PlanEnemySlotSwaps(IEnumerable<ComboNode> modifiedNodes)
+    {
+        var plans = new List<EnemySwapPlan>();
+        foreach (var group in modifiedNodes.GroupBy(
+                     n => Path.GetFileNameWithoutExtension(n.DefaultDBPath), StringComparer.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrEmpty(group.Key)) continue;
+            var targets = new List<EnemySwapPlan>();
+            foreach (var node in group)
+            {
+                string db = node.SourceDBPath?.Trim() ?? "";
+                if (string.IsNullOrEmpty(db)) continue;
+                string newShortName = Path.GetFileNameWithoutExtension(db);
+                if (string.IsNullOrEmpty(newShortName)) continue;
+                string newFullPath = "/" + db.TrimStart('/');
+
+                // Nothing to rewrite when the tree already points at the target DB.
+                string treeDbShort = Path.GetFileNameWithoutExtension(
+                    !string.IsNullOrEmpty(node.ImportedDbPath) ? node.ImportedDbPath : node.DefaultDBPath);
+                if (!string.IsNullOrEmpty(treeDbShort)
+                    && string.Equals(treeDbShort, newShortName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var target = targets.FirstOrDefault(t =>
+                    string.Equals(t.NewFullPath, newFullPath, StringComparison.OrdinalIgnoreCase));
+                if (target == null)
+                {
+                    target = new EnemySwapPlan
+                    {
+                        OldShortName = group.Key,
+                        NewShortName = newShortName,
+                        NewFullPath = newFullPath
+                    };
+                    targets.Add(target);
+                }
+                target.Nodes.Add(node);
+            }
+            for (int i = 0; i < targets.Count; i++)
+            {
+                targets[i].IsPrimary = i == 0;
+                plans.Add(targets[i]);
+            }
+        }
+        return plans;
+    }
+
+    /// <summary>All short names an enemy node's vanilla slot may be keyed by: its own DB
+    /// plus any import-provenance key captured when the tree was read.</summary>
+    internal static HashSet<string> EnemyOldSlotShorts(ComboNode node)
+    {
+        var shorts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in new[] { node.DefaultDBPath, node.ImportedSlotKey, node.ImportedDbPath })
+        {
+            string s = Path.GetFileNameWithoutExtension(path ?? "");
+            if (!string.IsNullOrEmpty(s)) shorts.Add(s);
+        }
+        return shorts;
+    }
+
+    /// <summary>Adds (or reuses) the m_Attacks registry entry for a replacement DB so one
+    /// node can point at its own slot. Returns the FName path nodes must carry, or null
+    /// when the tree has no usable m_Attacks map.</summary>
+    private static string? EnsureEnemyAttackSlot(UAsset asset, NormalExport comboExport,
+        string newFullPath, string newShortName)
+    {
+        string dbPath = "/" + newFullPath.TrimStart('/');
+        string key = dbPath + "." + newShortName;
+
+        var maps = FindAllMapsNamed(comboExport.Data, "m_Attacks");
+        if (maps.Count == 0) return null;
+
+        bool exists = maps.Any(m => m.Value != null
+            && m.Value.Any(kvp => string.Equals(GetKeyString(kvp.Key), key, StringComparison.OrdinalIgnoreCase)));
+        if (exists) return key;
+
+        int importIdx = AddAttackDBImport(asset, newShortName, dbPath);
+        bool added = false;
+        foreach (var map in maps)
+        {
+            if (map.Value == null) continue;
+            var valueTemplate = map.Value.Select(kvp => kvp.Value).OfType<ObjectPropertyData>().FirstOrDefault();
+            if (valueTemplate == null) continue;
+            map.Value.Add(
+                new NamePropertyData
+                {
+                    Name = new FName(asset, "m_Attacks"),
+                    Value = FName.FromString(asset, key)
+                },
+                new ObjectPropertyData
+                {
+                    Name = valueTemplate.Name,
+                    Value = FPackageIndex.FromImport(importIdx)
+                });
+            added = true;
+        }
+        if (added)
+            ErrorLog.Write("EXPORT", new Exception($"  ENEMY SLOT ADDED: {key}"));
+        return added ? key : null;
     }
 
     private static bool SlotKeysMatch(string keyStr, string normalizedSlotKey, HashSet<string>? ambiguousFiles = null)
@@ -4991,9 +5254,12 @@ public partial class ExportDialog : Window
     /// 100%: the engine rolls one winner per m_eInputTransition, and vanilla ships
     /// Light 100 + Heavy 100 on the same node - node-wide scaling would silently halve
     /// Heavy when Light is edited. Enemy trees stay node-wide.
+    ///
+    /// <paramref name="touchedPools"/> narrows the pass to the pools an export actually
+    /// edited (<see cref="ChancePoolKey"/>). Null keeps the historic whole-struct scan.
     /// </summary>
     public static int NormalizeChanceSums(ArrayPropertyData nodesArr, HashSet<int>? touchedStructs,
-        bool perInput = false)
+        bool perInput = false, ISet<string>? touchedPools = null)
     {
         if (touchedStructs == null || touchedStructs.Count == 0 || nodesArr?.Value == null) return 0;
         int fixedStructs = 0;
@@ -5031,6 +5297,8 @@ public partial class ExportDialog : Window
             bool anyFixed = false;
             foreach (var (key, pool) in pools)
             {
+                if (touchedPools != null && !touchedPools.Contains(ChancePoolKey(structIdx, key)))
+                    continue;
                 if (pool.Probs.Count == 0 || pool.Sum <= 0.01f) continue;   // all-zero: intentional-dead, warned elsewhere
                 if (Math.Abs(pool.Sum - TreeChanceMath.SumTarget) <= 0.01f) continue;
 
@@ -5066,6 +5334,12 @@ public partial class ExportDialog : Window
         }
         return fixedStructs;
     }
+
+    /// <summary>Identity of one input pool inside one node struct (struct index + input
+    /// grouping key). Lets an export scope the chance-sum guard to the pools it actually
+    /// wrote, so untouched vanilla pools keep their exact bytes.</summary>
+    public static string ChancePoolKey(int structIdx, string? poolKey)
+        => structIdx.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|" + (poolKey ?? "");
 
     /// <summary>Per-input grouping key for a transition row's m_eInputTransition.
     /// Accepts "EComboTransition::Light" and bare enum names; a row without the
@@ -6829,12 +7103,30 @@ public partial class ExportDialog : Window
                 }
                 // Branch chances: an all-new struct has no vanilla rows to take weight
                 // from - auto rows split the 100 evenly unless a link set an explicit chance.
+                // Player trees pool per input (LMB and RMB each own a 100% roll), so the
+                // split runs per input group; one node-wide split left every pool short and
+                // dropped presses in game while the dialog still showed 100% per input.
                 if (built.Count > 0)
                 {
-                    var newChanceRows = new List<TreeChanceMath.Row>(builtEdges.Count);
-                    foreach (var e in builtEdges)
-                        newChanceRows.Add(new TreeChanceMath.Row(e.NewLinkProbability, TreeChanceMath.SumTarget));
-                    var newChanceVals = TreeChanceMath.Compute(newChanceRows, normalize: true);
+                    var newChanceVals = new float[built.Count];
+                    var groups = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+                    for (int bi = 0; bi < built.Count; bi++)
+                    {
+                        if (built[bi] is not StructPropertyData grs || grs.Value == null) continue;
+                        string gkey = perInputChances ? RowInputGroupKey(grs) : "";
+                        if (!groups.TryGetValue(gkey, out var gidxs))
+                            groups[gkey] = gidxs = new List<int>();
+                        gidxs.Add(bi);
+                    }
+                    foreach (var gidxs in groups.Values)
+                    {
+                        var newChanceRows = new List<TreeChanceMath.Row>(gidxs.Count);
+                        foreach (int bi in gidxs)
+                            newChanceRows.Add(new TreeChanceMath.Row(
+                                builtEdges[bi].NewLinkProbability, TreeChanceMath.SumTarget));
+                        var vals = TreeChanceMath.Compute(newChanceRows, normalize: true);
+                        for (int k = 0; k < gidxs.Count; k++) newChanceVals[gidxs[k]] = vals[k];
+                    }
                     bool anyChance = false;
                     for (int bi = 0; bi < built.Count; bi++)
                     {
@@ -7016,11 +7308,16 @@ public partial class ExportDialog : Window
 
             // Player trees rebalance each input pool independently (a Light append must
             // not take share from Heavy); enemy nodes rebalance their single node set.
-            var rebVals = new float[rebArr.Value.Length];
+            // Only pools this append (or a typed value) actually touched are recomputed:
+            // vanilla ships duplicate same-input rows (BellyPalm FR RMB ships 100 + 100),
+            // and rescaling a pool that got no new row would activate a dead row and
+            // change the vanilla route the custom tree hangs off.
+            var rebVals = curVals.ToArray();
             foreach (var pool in Enumerable.Range(0, rebArr.Value.Length)
                          .GroupBy(i => rowKeys[i], StringComparer.OrdinalIgnoreCase))
             {
                 var idxs = pool.ToList();
+                if (!idxs.Any(i => isNewRows[i] || explicitVals[i].HasValue)) continue;
                 var vanillaRows = new List<TreeChanceMath.Row>();
                 foreach (int i in idxs)
                 {
@@ -7060,14 +7357,32 @@ public partial class ExportDialog : Window
                     $"  PROB REBALANCE tree[{s}]: [{string.Join(", ", beforeStr)}] -> [{string.Join(", ", afterStr)}]"));
             }
         }
-        // Chance-sum guard: touched structs (overrides or appends) whose rows don't
+        // Chance-sum guard: touched pools (overrides or appends) whose rows don't
         // total 100 - typically a link deleted after probabilities were typed - get
         // the remainder on the largest row. Runs before the mirror pass so mirrored
-        // rows inherit already-fixed owner values; untouched vanilla is never scanned.
+        // rows inherit already-fixed owner values; untouched vanilla is never scanned,
+        // and pools that got no append/typed row keep their exact shipped values.
         var chanceTouchedStructs = new HashSet<int>(appendedStructs);
         if (graph.TreeRowProbabilityOverrides != null)
             foreach (int k in graph.TreeRowProbabilityOverrides.Keys) chanceTouchedStructs.Add(k);
-        int chanceSumsRescaled = NormalizeChanceSums(enemyNodesArr, chanceTouchedStructs, perInputChances);
+        var chanceTouchedPools = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void MarkChancePool(int structIdx, int rowIdx)
+        {
+            if (structIdx < 0 || structIdx >= enemyNodesArr.Value.Length) return;
+            if (enemyNodesArr.Value[structIdx] is not StructPropertyData sp || sp.Value == null) return;
+            var arr = TransitionsArray(sp);
+            if (arr?.Value == null || rowIdx < 0 || rowIdx >= arr.Value.Length) return;
+            if (arr.Value[rowIdx] is not StructPropertyData rowSp) return;
+            chanceTouchedPools.Add(ChancePoolKey(structIdx,
+                perInputChances ? RowInputGroupKey(rowSp) : ""));
+        }
+        foreach (var r in appendedRows) MarkChancePool(r.structIdx, r.rowIdx);
+        if (graph.TreeRowProbabilityOverrides != null)
+            foreach (var kvp in graph.TreeRowProbabilityOverrides)
+                if (kvp.Value != null)
+                    foreach (int r in kvp.Value.Keys) MarkChancePool(kvp.Key, r);
+        int chanceSumsRescaled = NormalizeChanceSums(enemyNodesArr, chanceTouchedStructs,
+            perInputChances, chanceTouchedPools);
         // Phase A3: redirect continuation mirror. Vanilla keeps an attack's
         // continuation rows on its owning redirect struct (BellyPalm's rows live on
         // the BellyPalm owner, not the attack), and the engine continues from the

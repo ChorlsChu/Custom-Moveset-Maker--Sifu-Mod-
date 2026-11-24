@@ -1,10 +1,15 @@
 # Sifu Custom Moveset Maker
 
-**Current version: v1.4**
+**Current version: v1.4.1**
 
 A modding tool for [Sifu](https://www.sloclap.com/games/sifu/) that lets you create, visualize, and export custom moveset mods — no UE4 editor required.
 
 > **Windows shows "Windows protected your PC"?** That's Microsoft SmartScreen flagging the app as unrecognized (it's currently unsigned while [code signing](https://signpath.org/) is being set up — it is not a virus). Click **More info → Run anyway**. If the downloaded zip is flagged, right-click it → **Properties → Unblock** before extracting. You can verify the source yourself: [github.com/ChorlsChu/Custom-Moveset-Maker--Sifu-Mod-](https://github.com/ChorlsChu/Custom-Moveset-Maker--Sifu-Mod-).
+
+## What's new in v1.4.1
+
+- **Version history** — Settings → Version history… lists every published release and installs the one you pick, older ones included. New in this release, so rollback only works from v1.4.1 onward.
+- **Exporter fixes** — a new MainChar node with several inputs now keeps a separate chance pool per input, and only the pools an edit actually touched are rebalanced. Untouched pools keep their exact odds. Enemy and boss move replacements also export again: the v1.4 guard that verifies every replaced move found its slot was checking the player's tree only, so an enemy-only project (like `VanillaEnemyMoveset.sifu-edit`) aborted with *"could not be written into the combo tree"* before the enemy pass ran.
 
 ## What it does
 
@@ -51,6 +56,7 @@ A modding tool for [Sifu](https://www.sloclap.com/games/sifu/) that lets you cre
 
 - **Auto Updates** — No more manually downloading the zip from GitHub: on launch the editor checks for a newer release and pops up an **"Update & Restart"** button when one exists. Click it, and it downloads, installs, and relaunches you on the new version.
   - Updates only touch the app files — your settings and Custom Library (`CustomAssets`) are never touched.
+- **Version History** — New in v1.4.1. If a release misbehaves, **Settings → Version history…** lists every published version with its notes and installs any of them, older ones included. A revert can optionally back up the files it replaces.
 
 - **Export Pak** — Package your modified combo tree into a UE4 `.pak` mod that installs into Sifu's `~mods` folder.
 
@@ -305,6 +311,21 @@ No more manually downloading the zip from GitHub:
 
 Updates only replace the app files. Your `settings.json`, projects (`.sifu-edit`), and **Custom Library (`CustomAssets/`)** are never touched.
 
+### Going back to an earlier version
+
+If a release causes problems, **Settings → Version history…** lists every published version with its date and release notes.
+
+1. Pick the version you want.
+2. Leave **Back up the current install first** ticked (it is on by default) and press **Revert to vX & Restart**.
+3. The editor downloads that release, installs it over the current one, and relaunches you on it.
+
+- Backups land in the `Backups/` folder next to the exe; the last three are kept. Each holds the app files the install replaced, with the same relative paths, plus a `backup.json` manifest.
+- Only app files are swapped. `settings.json`, `.sifu-edit` projects, `CustomAssets/` and `ExportedMods/` are left alone in both directions.
+- Files that only the newer release shipped stay in the folder after a downgrade. They are unused, not harmful.
+- Projects or custom assets saved by a newer version may not open correctly in an older one, so keep a copy before editing them there.
+- The startup check keeps offering the newer release. Press **Not now** to stay on the older one until a fix ships, or open Version history again to go forward.
+- The button ships from **v1.4.1** onward. If you are on v1.4 or older, download the release you want from the [releases page](https://github.com/ChorlsChu/Custom-Moveset-Maker--Sifu-Mod-/releases) and extract it over the app folder by hand.
+
 ---
 
 ## Credits
@@ -365,6 +386,9 @@ A: Those moves aren't stored as plain Attack nodes — units perform them throug
 
 **Q: Will updating the app erase my custom content?**  
 A: No. Updates only replace app files. Your `settings.json`, `.sifu-edit` projects, and Custom Library (`CustomAssets/`) are never touched.
+
+**Q: What if the new version breaks something?**  
+A: Open **Settings → Version history…**, pick the release that worked, and press **Revert to vX & Restart**. It installs that version in place and keeps your projects, settings and custom library. Tick the backup box if you want the replaced files saved under `Backups/` first.
 
 ---
 

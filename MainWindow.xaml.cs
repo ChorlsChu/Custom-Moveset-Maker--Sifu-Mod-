@@ -886,6 +886,25 @@ public partial class MainWindow : Window
 
     private void ReportBug_Click(object sender, RoutedEventArgs e) => OpenBugReport();
 
+    /// <summary>Settings → Version history: install any published release, older
+    /// ones included. The dialog runs the same swap pipeline as the updater and
+    /// asks for a restart, so this window shuts down on success.</summary>
+    private void VersionHistory_Click(object sender, RoutedEventArgs e)
+    {
+        // Installing restarts the editor, so anything unsaved would go with it.
+        if (ProjectHasExistingChanges() &&
+            MessageBox.Show(this,
+                "Version history installs a different build and restarts the editor, so unsaved changes in the current project will be lost.\n\nSave the project first if you want to keep them.",
+                "Version history", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        var dialog = new VersionHistoryDialog { Owner = this };
+        if (dialog.ShowDialog() == true)
+            Application.Current.Shutdown();
+    }
+
     private void OpenLogFolder_Click(object sender, RoutedEventArgs e)
     {
         try

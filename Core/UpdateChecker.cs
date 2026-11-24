@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
@@ -22,6 +24,18 @@ public class UpdateInfo
     public string AssetUrl = "";
     public string AssetName = "";
     public long AssetSize;
+    public DateTimeOffset? PublishedAt;
+}
+
+/// <summary>Outcome of a pre-install backup: where it landed and how much it
+/// captured. Dir stays null when there was nothing to back up (fresh install)
+/// or when every copy failed - an install never fails because of the backup.</summary>
+public class BackupResult
+{
+    public string? Dir;
+    public int Copied;
+    public int Skipped;
+    public bool Created => Dir != null;
 }
 
 /// <summary>
@@ -34,6 +48,9 @@ public class UpdateInfo
 /// after exit). Windows permits renaming a running image, so locked files are
 /// renamed to *.old, the new payload is copied in, a fresh instance is spawned,
 /// and this process exits; the next launch deletes the *.old leftovers.
+/// The same pipeline runs backwards for the Version history dialog: any older
+/// release installs the same way, optionally after backing up the files it
+/// replaces so a disappointing version can be undone again.
 /// All network failures are silent by design - offline users see nothing.
 /// </summary>
 public static class UpdateChecker
@@ -42,8 +59,15 @@ public static class UpdateChecker
     internal const string RepoName = "Custom-Moveset-Maker--Sifu-Mod-";
     internal const string ExpectedAssetName = "SifuMovesetEditor.zip";
     internal const string TempDirPrefix = "SifuUpdate_";
+    internal const string BackupDirName = "Backups";
+    private const int BackupsToKeep = 3;
     private const int CheckTimeoutSeconds = 15;
     private const int DownloadTimeoutMinutes = 15;
+
+    /// <summary>First release that shipped the launch-time update check. Older
+    /// builds had no way to get back on their own until the release assets were
+    /// retrofitted; the dialog still forces a backup for them as a safety net.</summary>
+    internal static readonly Version FirstAutoUpdateVersion = new(1, 3);
 
     public static Version CurrentVersion()
     {
@@ -71,53 +95,93 @@ public static class UpdateChecker
 
     internal static bool IsNewer(Version candidate, Version current) => candidate > current;
 
-    /// <summary>Returns the newest eligible release newer than the running
-    /// version, or null when up to date / nothing eligible. currentOverride
-    /// exists for the SIFU_UPDATE_FORCE=1 manual test hook.</summary>
-    public static async Task<UpdateInfo?> CheckForUpdateAsync(Version? currentOverride = null)
+    /// <summary>Every eligible published release, newest first: not draft, not
+    /// prerelease, tag parses as a version, and the SifuMovesetEditor.zip asset
+    /// exists. Duplicate versions keep the first (GitHub lists newest-published
+    /// first). Used by the Version history dialog; CheckForUpdateAsync uses it
+    /// too so there is a single parser.</summary>
+    public static async Task<List<UpdateInfo>> GetReleasesAsync(int perPage = 20)
     {
-        var current = currentOverride ?? CurrentVersion();
         using var http = CreateClient();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(CheckTimeoutSeconds));
-        var url = $"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases?per_page=20";
+        var url = $"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases?per_page={perPage}";
         var json = await http.GetStringAsync(url, cts.Token).ConfigureAwait(false);
-        var releases = JsonConvert.DeserializeObject<List<GitHubRelease>>(json) ?? new();
+        return ParseReleases(json);
+    }
 
-        UpdateInfo? best = null;
+    /// <summary>Pure half of GetReleasesAsync, split out so the smoke tests can
+    /// pin filtering, dedupe and ordering without a network call.</summary>
+    internal static List<UpdateInfo> ParseReleases(string? json)
+    {
+        var releases = string.IsNullOrWhiteSpace(json)
+            ? new List<GitHubRelease>()
+            : JsonConvert.DeserializeObject<List<GitHubRelease>>(json) ?? new List<GitHubRelease>();
+
+        var seen = new HashSet<Version>();
+        var result = new List<UpdateInfo>();
         foreach (var rel in releases)
         {
             if (rel == null || rel.draft || rel.prerelease) continue;
             var ver = ParseTagVersion(rel.tag_name);
-            if (ver == null || !IsNewer(ver, current)) continue;
+            if (ver == null) continue;
             var asset = (rel.assets ?? new List<GitHubAsset>()).FirstOrDefault(a =>
                 a != null &&
                 string.Equals(a.name, ExpectedAssetName, StringComparison.OrdinalIgnoreCase) &&
                 !string.IsNullOrEmpty(a.browser_download_url));
             if (asset == null) continue;
-            if (best == null || ver > best.Version)
+            if (!seen.Add(ver)) continue;
+            result.Add(new UpdateInfo
             {
-                best = new UpdateInfo
-                {
-                    Tag = rel.tag_name ?? "",
-                    VersionText = ver.ToString(),
-                    Version = ver,
-                    Notes = rel.body ?? "",
-                    AssetUrl = asset.browser_download_url ?? "",
-                    AssetName = asset.name ?? "",
-                    AssetSize = asset.size,
-                };
-            }
+                Tag = rel.tag_name ?? "",
+                VersionText = ver.ToString(),
+                Version = ver,
+                Notes = rel.body ?? "",
+                AssetUrl = asset.browser_download_url ?? "",
+                AssetName = asset.name ?? "",
+                AssetSize = asset.size,
+                PublishedAt = DateTimeOffset.TryParse(rel.published_at,
+                    CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var when)
+                    ? when
+                    : null,
+            });
+        }
+        return result.OrderByDescending(r => r.Version).ToList();
+    }
+
+    /// <summary>Highest release strictly newer than the running version, or
+    /// null when up to date. currentOverride exists for the SIFU_UPDATE_FORCE=1
+    /// manual test hook.</summary>
+    public static async Task<UpdateInfo?> CheckForUpdateAsync(Version? currentOverride = null)
+    {
+        var current = currentOverride ?? CurrentVersion();
+        var releases = await GetReleasesAsync().ConfigureAwait(false);
+        return FindNewest(releases, current);
+    }
+
+    /// <summary>Newest entry newer than <paramref name="current"/>; null when
+    /// the list holds nothing newer (including the equal-version case).</summary>
+    internal static UpdateInfo? FindNewest(IReadOnlyList<UpdateInfo> releases, Version current)
+    {
+        UpdateInfo? best = null;
+        foreach (var info in releases)
+        {
+            if (!IsNewer(info.Version, current)) continue;
+            if (best == null || info.Version > best.Version) best = info;
         }
         return best;
     }
 
-    /// <summary>Downloads the release zip to %TEMP%, extracts it, swaps the payload
-    /// over the app dir in place, spawns the new instance, and - on success -
-    /// deletes the staging dir. The caller must then shut this app down. Progress
-    /// covers download (0-80%) then the file swap (80-100%). Any failure either
-    /// happens before the swap (staging deleted, app untouched) or is rolled back
-    /// by SwapIntoPlace - so the dialog can truthfully say nothing was changed.</summary>
-    public static async Task ApplyUpdateAsync(UpdateInfo info, IProgress<double>? progress = null)
+    /// <summary>Downloads the release zip to %TEMP%, extracts it, optionally
+    /// backs up the files it will replace, swaps the payload over the app dir in
+    /// place, spawns the new instance, and - on success - deletes the staging
+    /// dir. Works in either direction: the same call installs v1.5 or reverts to
+    /// v1.2. Progress covers download (0-80%, or 0-75% with a backup), the
+    /// backup (75-85%) then the file swap (85-100%). Any failure either happens
+    /// before the swap (staging deleted, app untouched) or is rolled back by
+    /// SwapIntoPlace - so the dialog can truthfully say nothing was changed.
+    /// Returns the backup dir used, or null when none was requested/needed.</summary>
+    public static async Task<string?> ApplyUpdateAsync(UpdateInfo info, IProgress<double>? progress = null,
+        bool backupBeforeInstall = false)
     {
         var appDir = AppDomain.CurrentDomain.BaseDirectory
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
@@ -125,14 +189,19 @@ public static class UpdateChecker
             ?? throw new InvalidOperationException("Cannot determine the running executable path.");
         var exeName = Path.GetFileName(exePath);
 
+        // Split points stay fixed so the bar never jumps backwards between phases.
+        var downloadShare = backupBeforeInstall ? 0.75 : 0.8;
+        var swapStart = backupBeforeInstall ? 0.85 : 0.8;
+
         var root = Path.Combine(Path.GetTempPath(), TempDirPrefix + Guid.NewGuid().ToString("N").Substring(0, 8));
         Directory.CreateDirectory(root);
+        string? backupDir = null;
         try
         {
             var zipPath = Path.Combine(root, "update.zip");
             IProgress<double>? downloadProgress = progress == null
                 ? null
-                : new Progress<double>(v => progress.Report(v * 0.8));
+                : new Progress<double>(v => progress.Report(v * downloadShare));
             await DownloadToFileAsync(info.AssetUrl, zipPath, downloadProgress).ConfigureAwait(false);
 
             var extractDir = Path.Combine(root, "app");
@@ -142,8 +211,30 @@ public static class UpdateChecker
             // folder like SifuMovesetEditor/ (easier for users to extract by hand).
             var payloadDir = FindPayloadDir(extractDir, exeName);
 
-            progress?.Report(0.8);
-            SwapIntoPlace(payloadDir, appDir, p => progress?.Report(0.8 + p * 0.2));
+            if (backupBeforeInstall)
+            {
+                var current = CurrentVersion();
+                try
+                {
+                    // progress.Report is safe off the UI thread (Progress<T> marshals),
+                    // so the backup can run on this worker continuation.
+                    var backup = BackupInstall(payloadDir, appDir, current,
+                        v => progress?.Report(downloadShare + v * (swapStart - downloadShare)));
+                    backupDir = backup.Dir;
+                    ErrorLog.WriteRaw(backup.Created
+                        ? $"[UPDATE] backed up v{current} to {backup.Dir} ({backup.Copied} file(s), {backup.Skipped} skipped)"
+                        : $"[UPDATE] backup requested but there was nothing to back up");
+                }
+                catch (Exception ex)
+                {
+                    // A read-only install folder must not block the install itself.
+                    ErrorLog.WriteRaw($"[UPDATE] backup skipped: {ex.Message}");
+                }
+            }
+
+            progress?.Report(swapStart);
+            SwapIntoPlace(payloadDir, appDir, p => progress?.Report(swapStart + p * (1 - swapStart)));
+            if (backupBeforeInstall) PruneBackups(appDir);
             ErrorLog.WriteRaw($"[UPDATE] swap complete, relaunching {exeName}");
             try { Directory.Delete(root, true); } catch { }
 
@@ -161,6 +252,7 @@ public static class UpdateChecker
                 throw new InvalidOperationException(
                     $"Update installed, but the automatic restart failed ({ex.Message}) - start the tool again manually.", ex);
             }
+            return backupDir;
         }
         catch
         {
@@ -203,8 +295,30 @@ public static class UpdateChecker
             $"Downloaded update is missing {exeName} - could not find it at the zip root or in a top-level folder.");
     }
 
-    /// <summary>Copies every file under payloadDir over appDir (any settings.json
-    /// skipped; files missing from the payload are never deleted). Files that
+    /// <summary>True for payload-relative paths that belong to the user, not the
+    /// app: settings.json at any depth and the CustomAssets, GameContent,
+    /// ExportedMods, logs and Backups folders. Release zips normally ship none
+    /// of these, but an older or hand-made zip might - the updater must never
+    /// overwrite them.</summary>
+    internal static bool IsUserDataPath(string relativePath)
+    {
+        var rel = relativePath.Replace('/', Path.DirectorySeparatorChar);
+        if (string.Equals(Path.GetFileName(rel), "settings.json", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var first = rel.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault();
+        return first != null && (
+            first.Equals("CustomAssets", StringComparison.OrdinalIgnoreCase) ||
+            first.Equals("GameContent", StringComparison.OrdinalIgnoreCase) ||
+            first.Equals("ExportedMods", StringComparison.OrdinalIgnoreCase) ||
+            first.Equals("logs", StringComparison.OrdinalIgnoreCase) ||
+            first.Equals("Backups", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Copies every file under payloadDir over appDir (settings.json and
+    /// the user folders in <see cref="IsUserDataPath"/> skipped; files missing
+    /// from the payload are never deleted). Files that
     /// cannot be opened exclusively - the running exe and loaded DLLs - are
     /// renamed to *.old first, which Windows explicitly supports for in-use
     /// files, then the payload is copied into their place. A manifest at
@@ -216,7 +330,7 @@ public static class UpdateChecker
     {
         var relFiles = Directory.GetFiles(payloadDir, "*", SearchOption.AllDirectories)
             .Select(f => Path.GetRelativePath(payloadDir, f))
-            .Where(rel => !string.Equals(Path.GetFileName(rel), "settings.json", StringComparison.OrdinalIgnoreCase))
+            .Where(rel => !IsUserDataPath(rel))
             .OrderBy(rel => rel, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -421,6 +535,120 @@ public static class UpdateChecker
         catch { }
     }
 
+    /// <summary>
+    /// Copies the files this payload will overwrite into
+    /// {appDir}\Backups\v{current}-{yyyyMMdd-HHmmss}\, so a downgrade (or a bad
+    /// update) can be undone by hand. User data is never copied because the
+    /// swap never touches it either (see <see cref="IsUserDataPath"/>); the
+    /// folder gets a RESTORE.txt with the copy-back steps. A file that cannot
+    /// be read is counted as skipped and listed in backup.json; the install
+    /// itself is never failed by a backup problem.
+    /// </summary>
+    internal static BackupResult BackupInstall(string payloadDir, string appDir, Version installedVersion,
+        Action<double>? onProgress = null)
+    {
+        var result = new BackupResult();
+        var relFiles = Directory.GetFiles(payloadDir, "*", SearchOption.AllDirectories)
+            .Select(f => Path.GetRelativePath(payloadDir, f))
+            .Where(rel => !IsUserDataPath(rel))
+            .Where(rel => File.Exists(Path.Combine(appDir, rel)))
+            .OrderBy(rel => rel, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (relFiles.Count == 0) return result;
+
+        var root = Path.Combine(appDir, BackupDirName);
+        Directory.CreateDirectory(root);
+        var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        var dest = Path.Combine(root, $"v{installedVersion}-{stamp}");
+        for (var n = 2; Directory.Exists(dest); n++)
+            dest = Path.Combine(root, $"v{installedVersion}-{stamp}-{n}");
+        Directory.CreateDirectory(dest);
+
+        var skipped = new List<string>();
+        for (var i = 0; i < relFiles.Count; i++)
+        {
+            var rel = relFiles[i];
+            try
+            {
+                var dst = Path.Combine(dest, rel);
+                Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
+                File.Copy(Path.Combine(appDir, rel), dst, overwrite: true);
+                result.Copied++;
+            }
+            catch
+            {
+                skipped.Add(rel.Replace('\\', '/'));
+                result.Skipped++;
+            }
+            onProgress?.Invoke((double)(i + 1) / relFiles.Count);
+        }
+
+        if (result.Copied == 0)
+        {
+            try { Directory.Delete(dest, true); } catch { }
+            return result;
+        }
+
+        result.Dir = dest;
+        try
+        {
+            File.WriteAllText(Path.Combine(dest, "backup.json"), JsonConvert.SerializeObject(new BackupManifest
+            {
+                version = installedVersion.ToString(),
+                createdAt = DateTime.Now.ToString("o"),
+                copied = result.Copied,
+                skipped = skipped,
+                note = "Files this install replaced, with their relative paths. Copy the folder's contents back over the app folder to undo the install.",
+            }, Formatting.Indented));
+        }
+        catch { /* the copied files are what matter; the manifest is a convenience */ }
+
+        try
+        {
+            File.WriteAllText(Path.Combine(dest, "RESTORE.txt"),
+                $"To go back to v{installedVersion} (the version that was running before this install):" + Environment.NewLine +
+                "1. Close Sifu Moveset Editor." + Environment.NewLine +
+                "2. Copy everything in this folder into the folder that contains SifuMovesetEditor.exe." + Environment.NewLine +
+                "3. Choose \"Replace the files in the destination\" if Windows asks." + Environment.NewLine +
+                Environment.NewLine +
+                "Ignore RESTORE.txt and backup.json when copying - they are just notes." + Environment.NewLine);
+        }
+        catch { /* the copied files are what matter; the note is a convenience */ }
+        return result;
+    }
+
+    /// <summary>Keeps the newest <paramref name="keep"/> backups by the timestamp
+    /// embedded in their folder name and deletes the rest. Never throws.</summary>
+    internal static int PruneBackups(string appDir, int keep = BackupsToKeep)
+    {
+        var root = Path.Combine(appDir, BackupDirName);
+        if (!Directory.Exists(root)) return 0;
+        var dirs = Directory.GetDirectories(root)
+            .Select(d => (Path: d, Stamp: BackupStamp(Path.GetFileName(d))))
+            .OrderByDescending(d => d.Stamp, StringComparer.Ordinal)
+            .ThenByDescending(d => d.Path, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var removed = 0;
+        foreach (var dir in dirs.Skip(Math.Max(keep, 1)))
+        {
+            try
+            {
+                Directory.Delete(dir.Path, true);
+                removed++;
+            }
+            catch { }
+        }
+        return removed;
+    }
+
+    /// <summary>Sort key from a backup folder name ("v1.4-20261120-143012").
+    /// Missing stamps sort last so they are pruned before real backups.</summary>
+    internal static string BackupStamp(string dirName)
+    {
+        var match = Regex.Match(dirName ?? "", @"(\d{8}-\d{6})");
+        return match.Success ? match.Groups[1].Value : "00000000-000000";
+    }
+
     private static HttpClient CreateClient()
     {
         var client = new HttpClient(new SocketsHttpHandler
@@ -436,12 +664,22 @@ public static class UpdateChecker
         return client;
     }
 
+    private class BackupManifest
+    {
+        public string version { get; set; } = "";
+        public string createdAt { get; set; } = "";
+        public int copied { get; set; }
+        public List<string> skipped { get; set; } = new();
+        public string note { get; set; } = "";
+    }
+
     private class GitHubRelease
     {
         public string? tag_name { get; set; }
         public bool draft { get; set; }
         public bool prerelease { get; set; }
         public string? body { get; set; }
+        public string? published_at { get; set; }
         public List<GitHubAsset>? assets { get; set; }
     }
 

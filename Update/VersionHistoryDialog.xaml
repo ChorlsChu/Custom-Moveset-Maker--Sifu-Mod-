@@ -1,0 +1,197 @@
+<Window x:Class="SifuMovesetEditor.Update.VersionHistoryDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Sifu Moveset Editor - Version history"
+        Width="620" Height="620"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#1e1e2e"
+        Foreground="#cdd6f4">
+
+    <!-- Fixed height on purpose. SizeToContent="Height" made the dialog resize
+         after every selection (warning card and notes change the content
+         height), which moved the window - and the release rows - under the
+         mouse between mouse-down and mouse-up, so the click landed on the row
+         above. Never make this window auto-size. -->
+
+    <Window.Resources>
+        <Style x:Key="DarkButton" TargetType="Button">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#45475a"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#585b70"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#252536"/>
+                                <Setter Property="Foreground" Value="#6c7086"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource DarkButton}">
+            <Setter Property="Background" Value="#89b4fa"/>
+            <Setter Property="Foreground" Value="#1e1e2e"/>
+        </Style>
+        <Style x:Key="ReleaseItem" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="Margin" Value="0,0,0,2"/>
+            <!-- Explicit style setter, not inheritance: the Aero2 ListBoxItem
+                 theme style sets Foreground to black and wins over the
+                 window's inherited value. -->
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Bd" Background="Transparent" CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#252536"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#313244"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <DataTemplate x:Key="ReleaseTemplate">
+            <DockPanel>
+                <Border DockPanel.Dock="Right" Background="#313244" CornerRadius="3" Padding="5,1"
+                        Margin="6,0,0,0" VerticalAlignment="Center"
+                        Visibility="{Binding BadgeVisibility}">
+                    <TextBlock Text="{Binding Badge}" FontSize="9" Foreground="{Binding BadgeBrush}"/>
+                </Border>
+                <StackPanel>
+                    <TextBlock Text="{Binding Tag}" FontSize="12" Foreground="#cdd6f4"/>
+                    <TextBlock Text="{Binding DateText}" FontSize="10" Foreground="#6c7086"/>
+                </StackPanel>
+            </DockPanel>
+        </DataTemplate>
+    </Window.Resources>
+
+    <DockPanel Margin="16">
+        <Border DockPanel.Dock="Top" Background="#11111b" Padding="12,8" Margin="-16,-16,-16,12">
+            <StackPanel>
+                <TextBlock Text="Version history" FontWeight="Bold" Foreground="#89b4fa" FontSize="15"/>
+                <TextBlock Text="Install any published release. Projects and your custom library stay on disk."
+                           Foreground="#6c7086" FontSize="11" Margin="0,2,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <StackPanel DockPanel.Dock="Bottom">
+            <ProgressBar x:Name="installProgress" Height="8" Margin="0,12,0,0"
+                         Foreground="#89b4fa" Background="#313244" BorderThickness="0"
+                         Visibility="Collapsed"/>
+            <TextBlock x:Name="txtStatus" TextWrapping="Wrap" FontSize="11" Margin="0,8,0,0"
+                       Foreground="#a6adc8" Visibility="Collapsed"/>
+            <DockPanel Margin="0,14,0,0">
+                <Button x:Name="btnInstall" DockPanel.Dock="Right" Content="Install"
+                        Style="{StaticResource AccentButton}" Click="Install_Click"
+                        Padding="16,8" MinHeight="30" MinWidth="170" IsDefault="True" IsEnabled="False"/>
+                <Button x:Name="btnCancel" DockPanel.Dock="Right" Content="Cancel"
+                        Style="{StaticResource DarkButton}" Click="Cancel_Click" IsCancel="True"
+                        Padding="16,8" MinHeight="30" MinWidth="80" Margin="0,0,8,0"/>
+                <TextBlock x:Name="txtCurrent" Foreground="#6c7086" FontSize="11"
+                           VerticalAlignment="Center"/>
+            </DockPanel>
+        </StackPanel>
+
+        <Grid>
+            <StackPanel x:Name="loadingPanel" VerticalAlignment="Center" HorizontalAlignment="Center"
+                        Margin="0,36">
+                <ProgressBar IsIndeterminate="True" Width="220" Height="4"
+                             Foreground="#89b4fa" Background="#313244"/>
+                <TextBlock Text="Checking releases..." Foreground="#6c7086" FontSize="11"
+                           HorizontalAlignment="Center" Margin="0,10,0,0"/>
+            </StackPanel>
+
+            <StackPanel x:Name="errorPanel" Visibility="Collapsed" VerticalAlignment="Center"
+                        HorizontalAlignment="Center" Margin="0,24" MaxWidth="460">
+                <TextBlock Text="Could not load the release list" Foreground="#f9e2af"
+                           FontWeight="SemiBold" FontSize="13" HorizontalAlignment="Center"/>
+                <TextBlock x:Name="txtError" TextWrapping="Wrap" Foreground="#a6adc8" FontSize="11"
+                           Margin="0,8,0,0" TextAlignment="Center"/>
+                <Button Content="Retry" Style="{StaticResource DarkButton}" Click="Retry_Click"
+                        Padding="16,6" MinWidth="90" HorizontalAlignment="Center" Margin="0,12,0,0"/>
+            </StackPanel>
+
+            <Grid x:Name="contentPanel" Visibility="Collapsed" MinHeight="240">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="196"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <Border Background="#181825" CornerRadius="4" Padding="4">
+                    <ListBox x:Name="listReleases" Background="Transparent" BorderThickness="0"
+                             Foreground="#cdd6f4"
+                             IsSynchronizedWithCurrentItem="False"
+                             ItemContainerStyle="{StaticResource ReleaseItem}"
+                             ItemTemplate="{StaticResource ReleaseTemplate}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             SelectionChanged="Releases_SelectionChanged"/>
+                </Border>
+
+                <ScrollViewer Grid.Column="1" Margin="12,0,0,0"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
+                        <TextBlock x:Name="txtReleaseTitle" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="#cdd6f4" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="txtReleaseMeta" FontSize="11" Foreground="#6c7086"
+                                   Margin="0,2,0,0" TextWrapping="Wrap"/>
+
+                        <Border x:Name="notesCard" Background="#181825" CornerRadius="4" Padding="10,8"
+                                Margin="0,10,0,0">
+                            <StackPanel>
+                                <TextBlock Text="Release notes" FontWeight="SemiBold" Foreground="#a6e3a1"
+                                           FontSize="12"/>
+                                <ScrollViewer MaxHeight="168" Margin="0,4,0,0"
+                                              VerticalScrollBarVisibility="Auto">
+                                    <TextBlock x:Name="txtNotes" TextWrapping="Wrap" Foreground="#a6adc8"
+                                               FontSize="11" Text="No release notes for this version."/>
+                                </ScrollViewer>
+                            </StackPanel>
+                        </Border>
+
+                        <Border x:Name="warningCard" Background="#2b2320" BorderBrush="#f9e2af"
+                                BorderThickness="1" CornerRadius="4" Padding="10,8" Margin="0,10,0,0"
+                                Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="Going back can cost newer files" FontWeight="SemiBold"
+                                           Foreground="#f9e2af" FontSize="12"/>
+                                <TextBlock x:Name="txtWarning" TextWrapping="Wrap" Foreground="#a6adc8"
+                                           FontSize="11" Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <CheckBox x:Name="chkBackup" Content="Back up the current install first"
+                                  Foreground="#a6adc8" FontSize="11" Margin="0,12,0,0"
+                                  ToolTip="Copies the app files this release will replace into the Backups folder. The last three backups are kept."/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+    </DockPanel>
+</Window>

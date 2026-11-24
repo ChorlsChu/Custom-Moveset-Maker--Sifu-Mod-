@@ -3,9 +3,10 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
-    <!-- Release ships as 1.4; the local Debug build deliberately stays on 1.3. -->
-    <Version Condition="'$(Configuration)' == 'Release'">1.4</Version>
-    <Version Condition="'$(Configuration)' != 'Release'">1.3</Version>
+    <!-- Release ships as 1.4.1; the local Debug build reports 1.4 so it is not
+         offered the older v1.4 release by the launch update check. -->
+    <Version Condition="'$(Configuration)' == 'Release'">1.4.1</Version>
+    <Version Condition="'$(Configuration)' != 'Release'">1.4</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
@@ -24,6 +25,7 @@
     <InternalsVisibleTo Include="import_smoke" />
     <InternalsVisibleTo Include="attack_hit_smoke" />
     <InternalsVisibleTo Include="update_notes_smoke" />
+    <InternalsVisibleTo Include="version_history_smoke" />
   </ItemGroup>
 
   <ItemGroup>

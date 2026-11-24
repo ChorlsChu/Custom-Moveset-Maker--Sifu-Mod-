@@ -498,7 +498,28 @@ public static class HelpContent
                 "Authored redirects pointing at a removed vanilla node are removed with it; the status message counts them.",
                 "This is why vanilla deletions show a status hint instead of opening a dialog that cannot fix the still-present row."
             },
-            new[] { "vanilla", "removed", "marked", "deleted", "strikethrough", "restore", "export" })
+            new[] { "vanilla", "removed", "marked", "deleted", "strikethrough", "restore", "export" }),
+
+        T("revert-version", "Troubleshooting",
+            "A new version caused problems - go back",
+            "Install any earlier published release from Settings, without uninstalling or losing your projects.",
+            "Settings > Version history...",
+            new[]
+            {
+                "Open Settings and click Version history... next to the version number.",
+                "Pick a release on the left. Its date and release notes appear on the right.",
+                "Leave Back up the current install first ticked, then click Revert to vX & Restart.",
+                "The tool downloads that release, swaps it in place and restarts running it.",
+                "The startup update check still offers the newer version; press Not now to stay on the old one."
+            },
+            new[]
+            {
+                "Only app files are replaced. Projects, CustomAssets, settings and exported mods are left alone.",
+                "Backups go in the Backups folder next to the exe, and the last three are kept.",
+                "Projects saved by a newer version may not open correctly in an older one, so keep a copy first.",
+                "The same list takes you forward again once a fixed release is out."
+            },
+            new[] { "revert", "rollback", "downgrade", "older version", "previous version", "backup", "broken", "update" })
     };
 
     private static HelpTopic T(string id, string category, string title, string summary,
