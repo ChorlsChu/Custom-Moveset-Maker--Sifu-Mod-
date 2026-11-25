@@ -90,6 +90,11 @@ internal static class Program
         Run("ChanceGateDeletedCustomExplicit", TestChanceGateDeletedCustomExplicit);
         Run("ChanceGateDeletedCustomAuto", TestChanceGateDeletedCustomAuto);
         Run("DeleteChanceSources", TestDeleteChanceSources);
+        Run("EnemySlotPlansSharedSlot", TestEnemySlotPlansSharedSlot);
+        Run("EnemySlotPlansThreeTargets", TestEnemySlotPlansThreeTargets);
+        Run("EnemySlotPlansSameTarget", TestEnemySlotPlansSameTarget);
+        Run("EnemySlotPlansDistinctSlots", TestEnemySlotPlansDistinctSlots);
+        Run("EnemySlotPlansAlreadyTarget", TestEnemySlotPlansAlreadyTarget);
 
         Console.WriteLine();
         if (Failures.Count == 0)
@@ -2002,6 +2007,103 @@ internal static class Program
         Expect(ai != null, "no cross-file event in catalog");
         return ai!;
     }
+
+    /// <summary>Two nodes can replace the same vanilla attack slot (the tree's m_Attacks
+    /// registry is shared) with different moves: one keeps the renamed slot, the other
+    /// gets its own slot so both replacements survive the export.</summary>
+    private static void TestEnemySlotPlansSharedSlot()
+    {
+        var plans = ExportDialog.PlanEnemySlotSwaps(new[]
+        {
+            EnemyNode(1, 3, "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_GroundAttack",
+                "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_Sweep"),
+            EnemyNode(2, 18, "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_GroundAttack",
+                "Game/DB/AI/Archetypes/Bodyguard/Attacks/Barehands/GroundAttack/BodyGuard_barehands_GroundAttack"),
+        });
+
+        Expect(plans.Count == 2, $"expected 2 plans, got {plans.Count}");
+        Expect(plans.Count(p => p.IsPrimary) == 1, "expected exactly one primary plan");
+        var primary = plans.Single(p => p.IsPrimary);
+        Expect(primary.OldShortName == "Grunt_GroundAttack", $"primary old slot: {primary.OldShortName}");
+        Expect(primary.NewShortName == "Grunt_Sweep", $"primary target: {primary.NewShortName}");
+        Expect(primary.Nodes.Count == 1 && primary.Nodes[0].Id == 1, "primary must own only the first node");
+
+        var split = plans.Single(p => !p.IsPrimary);
+        Expect(split.OldShortName == "Grunt_GroundAttack", $"split old slot: {split.OldShortName}");
+        Expect(split.NewShortName == "BodyGuard_barehands_GroundAttack", $"split target: {split.NewShortName}");
+        Expect(split.NewFullPath == "/Game/DB/AI/Archetypes/Bodyguard/Attacks/Barehands/GroundAttack/BodyGuard_barehands_GroundAttack",
+            $"split full path: {split.NewFullPath}");
+        Expect(split.Nodes.Count == 1 && split.Nodes[0].Id == 2, "split must own only the second node");
+    }
+
+    private static void TestEnemySlotPlansThreeTargets()
+    {
+        var plans = ExportDialog.PlanEnemySlotSwaps(new[]
+        {
+            EnemyNode(1, 1, "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_Hook", "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_FastJab"),
+            EnemyNode(2, 2, "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_Hook", "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_MidJab"),
+            EnemyNode(3, 3, "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_Hook", "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_StraightJab"),
+        });
+
+        Expect(plans.Count == 3, $"expected 3 plans, got {plans.Count}");
+        Expect(plans.Count(p => p.IsPrimary) == 1, "expected exactly one primary plan");
+        Expect(plans.Where(p => !p.IsPrimary).All(p => p.OldShortName == "Grunt_Hook"),
+            "every split plan must name the shared vanilla slot");
+        Expect(plans.SelectMany(p => p.Nodes).Select(n => n.Id).OrderBy(i => i).SequenceEqual(new[] { 1, 2, 3 }),
+            "each node must land in exactly one plan");
+    }
+
+    private static void TestEnemySlotPlansSameTarget()
+    {
+        var plans = ExportDialog.PlanEnemySlotSwaps(new[]
+        {
+            EnemyNode(1, 1, "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_Hook", "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_FastJab"),
+            EnemyNode(2, 2, "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_Hook", "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_FastJab"),
+        });
+
+        Expect(plans.Count == 1, $"same target must not split (got {plans.Count} plans)");
+        Expect(plans[0].IsPrimary && plans[0].Nodes.Count == 2, "both nodes belong to the single renamed slot");
+    }
+
+    private static void TestEnemySlotPlansDistinctSlots()
+    {
+        var plans = ExportDialog.PlanEnemySlotSwaps(new[]
+        {
+            EnemyNode(1, 1, "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_Hook", "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_FastJab"),
+            EnemyNode(2, 2, "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_Elbow", "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_MidJab"),
+        });
+
+        Expect(plans.Count == 2, $"expected 2 plans, got {plans.Count}");
+        Expect(plans.All(p => p.IsPrimary), "different vanilla slots never need a split");
+    }
+
+    private static void TestEnemySlotPlansAlreadyTarget()
+    {
+        // The imported tree already points at the requested DB: nothing to rewrite,
+        // so it must not consume the primary slot or create a split.
+        var node = EnemyNode(1, 1, "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_Hook",
+            "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_FastJab");
+        node.ImportedDbPath = "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_FastJab";
+        var plans = ExportDialog.PlanEnemySlotSwaps(new[]
+        {
+            node,
+            EnemyNode(2, 2, "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_Hook", "Game/DB/AI/Archetypes/Grunt/Attacks/BareHands/Grunt_MidJab"),
+        });
+
+        Expect(plans.Count == 1, $"expected only the real replacement, got {plans.Count} plan(s)");
+        Expect(plans[0].IsPrimary && plans[0].Nodes.Count == 1 && plans[0].Nodes[0].Id == 2,
+            "the already-target node must be skipped");
+    }
+
+    private static ComboNode EnemyNode(int id, int treeIndex, string oldDb, string newDb) => new()
+    {
+        Id = id,
+        TreeIndex = treeIndex,
+        Kind = ComboNodeKind.Vanilla,
+        DisplayName = $"N{treeIndex}",
+        DefaultDBPath = oldDb,
+        SourceDBPath = newDb
+    };
 
     private static ComboNode BaseNode(int id, int treeIndex) => new()
     {

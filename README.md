@@ -6,11 +6,6 @@ A modding tool for [Sifu](https://www.sloclap.com/games/sifu/) that lets you cre
 
 > **Windows shows "Windows protected your PC"?** That's Microsoft SmartScreen flagging the app as unrecognized (it's currently unsigned while [code signing](https://signpath.org/) is being set up — it is not a virus). Click **More info → Run anyway**. If the downloaded zip is flagged, right-click it → **Properties → Unblock** before extracting. You can verify the source yourself: [github.com/ChorlsChu/Custom-Moveset-Maker--Sifu-Mod-](https://github.com/ChorlsChu/Custom-Moveset-Maker--Sifu-Mod-).
 
-## What's new in v1.4.1
-
-- **Version history** — Settings → Version history… lists every published release and installs the one you pick, older ones included. New in this release, so rollback only works from v1.4.1 onward.
-- **Exporter fixes** — a new MainChar node with several inputs now keeps a separate chance pool per input, and only the pools an edit actually touched are rebalanced. Untouched pools keep their exact odds. Enemy and boss move replacements also export again: the v1.4 guard that verifies every replaced move found its slot was checking the player's tree only, so an enemy-only project (like `VanillaEnemyMoveset.sifu-edit`) aborted with *"could not be written into the combo tree"* before the enemy pass ran.
-
 ## What it does
 
 - **Combo Tree Visualizer** — Displays the full attack combo tree as an interactive node graph. Click any node to preview its animation in a built-in 3D viewer. Drag-and-drop animations onto nodes to swap moves. Double-click nodes to reset to vanilla.
@@ -61,6 +56,8 @@ A modding tool for [Sifu](https://www.sloclap.com/games/sifu/) that lets you cre
 - **Export Pak** — Package your modified combo tree into a UE4 `.pak` mod that installs into Sifu's `~mods` folder.
 
 - **Import Mod** — Load existing mod paks for editing. Extracts the pak, detects stance, compares with vanilla, and restores original assets when done.
+
+- **Version history** — Settings → Version history… lists every published release and installs the one you pick, older ones included. New in this release, so rollback only works from v1.4.1 onward.
 
 ---
 
